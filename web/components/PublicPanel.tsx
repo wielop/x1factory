@@ -45,7 +45,7 @@ function safeBigintToNumber(value: bigint): number {
 
 export function PublicPanel() {
   const { connection } = useConnection();
-  const { publicKey, signTransaction, sendTransaction } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const anchorWallet = useAnchorWallet();
 
   const [config, setConfig] = useState<Awaited<ReturnType<typeof fetchConfig>> | null>(null);
@@ -124,7 +124,8 @@ export function PublicPanel() {
       const days = Number(durationDays);
       if (!Number.isFinite(days) || days <= 0) throw new Error("Invalid durationDays");
       const position = derivePositionPda(publicKey!);
-      const sig = await program.methods
+      const tx = new Transaction();
+      const ix = await program.methods
         .createPosition(days)
         .accounts({
           owner: publicKey!,
@@ -132,13 +133,20 @@ export function PublicPanel() {
           position,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .instruction();
+      tx.add(ix);
+
+      const sig = await signAndSend(tx);
       setLastSig(sig);
       await refresh();
     } catch (e: unknown) {
       console.error("[PublicPanel] createPosition failed", e);
-      setError(formatError(e));
-      throw e;
+      const msg = formatError(e);
+      setError(
+        msg.includes("Plugin Closed")
+          ? `${msg}\n\nTip: unlock the wallet + disable popup blockers, then try again.`
+          : msg
+      );
     } finally {
       setBusy(null);
     }
@@ -221,8 +229,12 @@ export function PublicPanel() {
       await refresh();
     } catch (e: any) {
       console.error("[PublicPanel] deposit failed", e);
-      setError(formatError(e));
-      throw e;
+      const msg = formatError(e);
+      setError(
+        msg.includes("Plugin Closed")
+          ? `${msg}\n\nTip: unlock the wallet + disable popup blockers, then try again.`
+          : msg
+      );
     } finally {
       setBusy(null);
     }
@@ -240,7 +252,8 @@ export function PublicPanel() {
       const program = getProgram(connection, anchorWallet!);
       const epochState = deriveEpochPda(epoch);
       const userEpoch = deriveUserEpochPda(publicKey!, epoch);
-      const sig = await program.methods
+      const tx = new Transaction();
+      const ix = await program.methods
         .heartbeat(new BN(epoch))
         .accounts({
           owner: publicKey!,
@@ -250,13 +263,20 @@ export function PublicPanel() {
           userEpoch,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .instruction();
+      tx.add(ix);
+
+      const sig = await signAndSend(tx);
       setLastSig(sig);
       await refresh();
     } catch (e: any) {
       console.error("[PublicPanel] heartbeat failed", e);
-      setError(formatError(e));
-      throw e;
+      const msg = formatError(e);
+      setError(
+        msg.includes("Plugin Closed")
+          ? `${msg}\n\nTip: unlock the wallet + disable popup blockers, then try again.`
+          : msg
+      );
     } finally {
       setBusy(null);
     }
@@ -276,7 +296,8 @@ export function PublicPanel() {
       const userEpoch = deriveUserEpochPda(publicKey!, epoch);
       const vaultAuthority = deriveVaultPda();
       const userMindAta = getAssociatedTokenAddressSync(config.mindMint, publicKey!);
-      const sig = await program.methods
+      const tx = new Transaction();
+      const ix = await program.methods
         .claim()
         .accounts({
           owner: publicKey!,
@@ -291,13 +312,20 @@ export function PublicPanel() {
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .instruction();
+      tx.add(ix);
+
+      const sig = await signAndSend(tx);
       setLastSig(sig);
       await refresh();
     } catch (e: any) {
       console.error("[PublicPanel] claim failed", e);
-      setError(formatError(e));
-      throw e;
+      const msg = formatError(e);
+      setError(
+        msg.includes("Plugin Closed")
+          ? `${msg}\n\nTip: unlock the wallet + disable popup blockers, then try again.`
+          : msg
+      );
     } finally {
       setBusy(null);
     }
@@ -356,7 +384,7 @@ export function PublicPanel() {
             <Input value={depositAmount} onChange={setDepositAmount} placeholder="amount (XNT)" />
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void deposit().catch((e) => setError(formatError(e)))}
+              onClick={() => void deposit()}
             >
               {busy === "deposit"
                 ? "Working..."
@@ -370,7 +398,7 @@ export function PublicPanel() {
             <div className="text-xs text-zinc-400">Heartbeat</div>
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void heartbeat().catch((e) => setError(formatError(e)))}
+              onClick={() => void heartbeat()}
             >
               {busy === "heartbeat" ? "Working..." : "Heartbeat current epoch"}
             </Button>
@@ -380,7 +408,7 @@ export function PublicPanel() {
             <div className="text-xs text-zinc-400">Claim</div>
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void claim().catch((e) => setError(formatError(e)))}
+              onClick={() => void claim()}
             >
               {busy === "claim" ? "Working..." : "Claim current epoch"}
             </Button>

@@ -9,6 +9,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
   createSyncNativeInstruction,
+  createCloseAccountInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
@@ -121,6 +122,7 @@ export function PublicPanel() {
   }, [config, nowTs]);
 
   const positionActive = !!position && position.lockedAmount > 0n;
+  const positionUnlockable = !!position && position.lockedAmount > 0n && nowTs != null && nowTs >= position.lockEndTs;
 
   const ensureWallet = () => {
     if (!publicKey) throw new Error("Connect a wallet first");
@@ -375,6 +377,78 @@ export function PublicPanel() {
     }
   };
 
+  const withdraw = async () => {
+    ensureWallet();
+    if (!config) throw new Error("Config not loaded");
+    setBusy("withdraw");
+    setLastSig(null);
+    setError(null);
+    try {
+      const program = getProgram(connection, anchorWallet!);
+      const xntMint = config.xntMint;
+      const positionPda = derivePositionPda(publicKey!);
+
+      const posInfo = await connection.getAccountInfo(positionPda, "confirmed");
+      if (!posInfo) throw new Error("Position does not exist");
+      const decoded = decodeUserPositionAccount(Buffer.from(posInfo.data));
+      if (decoded.lockedAmount === 0n) throw new Error("Nothing to withdraw (position inactive)");
+      if (nowTs == null) throw new Error("Clock not loaded");
+      if (nowTs < decoded.lockEndTs) throw new Error(`Lock not finished yet (unlockTs=${decoded.lockEndTs})`);
+
+      const ownerXntAta = getAssociatedTokenAddressSync(xntMint, publicKey!);
+      const vaultAuthority = deriveVaultPda();
+      const vaultXntAta = getAssociatedTokenAddressSync(xntMint, vaultAuthority, true);
+
+      const tx = new Transaction();
+      tx.add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey!,
+          ownerXntAta,
+          publicKey!,
+          xntMint,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        )
+      );
+
+      const ix = await program.methods
+        .withdraw()
+        .accounts({
+          owner: publicKey!,
+          config: deriveConfigPda(),
+          position: positionPda,
+          vaultAuthority,
+          xntMint,
+          vaultXntAta,
+          ownerXntAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+      tx.add(ix);
+
+      // If XNT is actually SOL (wrapped), optionally unwrap back to SOL by closing the ATA.
+      if (xntMint.equals(NATIVE_MINT)) {
+        tx.add(createCloseAccountInstruction(ownerXntAta, publicKey!, publicKey!));
+      }
+
+      const sig = await signAndSend(tx);
+      setLastSig(sig);
+      await refresh();
+    } catch (e: unknown) {
+      console.error("[PublicPanel] withdraw failed", e);
+      const msg = formatError(e);
+      setError(
+        msg.includes("Plugin Closed")
+          ? `${msg}\n\nTip: unlock the wallet + disable popup blockers, then try again.`
+          : msg
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="grid gap-4">
       <Card title="Config">
@@ -412,6 +486,20 @@ export function PublicPanel() {
                     ? `active (locked=${position.lockedAmount})`
                     : "inactive"
                   : "(unknown)"
+                : "(connect wallet)"
+            }
+          />
+          <Field
+            label="Unlock"
+            value={
+              publicKey
+                ? position && position.lockedAmount > 0n
+                  ? nowTs != null
+                    ? nowTs >= position.lockEndTs
+                      ? "ready"
+                      : `in ${position.lockEndTs - nowTs}s`
+                    : "(loading)"
+                  : "-"
                 : "(connect wallet)"
             }
           />
@@ -472,6 +560,13 @@ export function PublicPanel() {
               onClick={() => void claim()}
             >
               {busy === "claim" ? "Working..." : "Claim current epoch"}
+            </Button>
+          </div>
+
+          <div className="grid gap-2">
+            <div className="text-xs text-zinc-400">Withdraw</div>
+            <Button disabled={!publicKey || busy !== null || !positionUnlockable} onClick={() => void withdraw()}>
+              {busy === "withdraw" ? "Working..." : "Withdraw (after unlock)"}
             </Button>
           </div>
         </div>

@@ -26,6 +26,7 @@ import {
   getCurrentEpochFrom,
 } from "@/lib/solana";
 import { getProgram } from "@/lib/anchor";
+import { formatError } from "@/lib/formatError";
 
 export function PublicPanel() {
   const { connection } = useConnection();
@@ -165,7 +166,7 @@ export function PublicPanel() {
       setLastSig(sig2);
       await refresh();
     } catch (e: any) {
-      setError(String(e?.message ?? e));
+      setError(formatError(e));
       throw e;
     } finally {
       setBusy(null);
@@ -197,6 +198,9 @@ export function PublicPanel() {
         .rpc();
       setLastSig(sig);
       await refresh();
+    } catch (e: any) {
+      setError(formatError(e));
+      throw e;
     } finally {
       setBusy(null);
     }
@@ -234,6 +238,9 @@ export function PublicPanel() {
         .rpc();
       setLastSig(sig);
       await refresh();
+    } catch (e: any) {
+      setError(formatError(e));
+      throw e;
     } finally {
       setBusy(null);
     }
@@ -278,7 +285,7 @@ export function PublicPanel() {
             <Input value={durationDays} onChange={setDurationDays} placeholder="duration days (7/14/30)" />
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void createPosition().catch((e) => setError(String(e?.message ?? e)))}
+              onClick={() => void createPosition().catch((e) => setError(formatError(e)))}
             >
               {busy === "createPosition" ? "Working..." : "Create position"}
             </Button>
@@ -291,7 +298,7 @@ export function PublicPanel() {
             <Input value={depositAmount} onChange={setDepositAmount} placeholder="amount (XNT)" />
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void deposit().catch((e) => setError(String(e?.message ?? e)))}
+              onClick={() => void deposit().catch((e) => setError(formatError(e)))}
             >
               {busy === "deposit" ? "Working..." : "Deposit"}
             </Button>
@@ -301,7 +308,7 @@ export function PublicPanel() {
             <div className="text-xs text-zinc-400">Heartbeat</div>
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void heartbeat().catch((e) => setError(String(e?.message ?? e)))}
+              onClick={() => void heartbeat().catch((e) => setError(formatError(e)))}
             >
               {busy === "heartbeat" ? "Working..." : "Heartbeat current epoch"}
             </Button>
@@ -311,7 +318,7 @@ export function PublicPanel() {
             <div className="text-xs text-zinc-400">Claim</div>
             <Button
               disabled={!publicKey || busy !== null}
-              onClick={() => void claim().catch((e) => setError(String(e?.message ?? e)))}
+              onClick={() => void claim().catch((e) => setError(formatError(e)))}
             >
               {busy === "claim" ? "Working..." : "Claim current epoch"}
             </Button>

@@ -11,6 +11,7 @@ import {
   getCurrentEpochFrom,
 } from "@/lib/solana";
 import { getProgram } from "@/lib/anchor";
+import { formatError } from "@/lib/formatError";
 
 export function AdminPanel() {
   const { connection } = useConnection();
@@ -75,7 +76,7 @@ export function AdminPanel() {
       setLastSig(sig);
       await refresh();
     } catch (e: any) {
-      setError(String(e?.message ?? e));
+      setError(formatError(e));
       throw e;
     } finally {
       setBusy(false);

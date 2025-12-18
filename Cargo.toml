@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "programs/pocm_vault_mining",
+]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+strip = "debuginfo"
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
+
+[patch.crates-io]
+borsh = { path = "vendor/borsh-1.5.1" }
+borsh-derive = { path = "vendor/borsh-derive-1.5.1" }
+toml_edit = { path = "vendor/toml_edit-0.22.13" }
+proc-macro-crate = { path = "vendor/proc-macro-crate-3.4.0" }
+indexmap = { path = "vendor/indexmap-2.0.0" }
+toml = { path = "vendor/toml-0.8.12" }
+anchor-syn = { path = "vendor/anchor-syn-0.30.1" }

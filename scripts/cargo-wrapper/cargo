@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Anchor CLI sets `RUSTFLAGS=--cfg procmacro2_semver_exempt` for its IDL build cargo invocation.
+# That flag breaks IDL generation for this workspace, so we strip it only for the
+# `__anchor_private_print_idl` build.
+if [[ " $* " == *" __anchor_private_print_idl "* ]]; then
+  unset RUSTFLAGS
+  unset CARGO_ENCODED_RUSTFLAGS
+fi
+
+wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+log_file="${CARGO_WRAPPER_LOG_FILE:-$wrapper_dir/../../.tmp/cargo-invocations.log}"
+
+{
+  echo "---"
+  echo "ts=$(date -Iseconds)"
+  echo "pwd=$(pwd)"
+  echo "argv0=$0"
+  echo "args=$*"
+  echo "PATH=${PATH-}"
+  echo "RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN-}"
+  echo "RUSTFLAGS=${RUSTFLAGS-}"
+  echo "CARGO_ENCODED_RUSTFLAGS=${CARGO_ENCODED_RUSTFLAGS-}"
+  echo "CARGO_NET_OFFLINE=${CARGO_NET_OFFLINE-}"
+} >> "$log_file" 2>/dev/null || true
+
+# Find the real cargo by removing this wrapper directory from PATH.
+stripped_path="$(printf '%s' "${PATH-}" | tr ':' '\n' | awk -v w="$wrapper_dir" '$0!=w' | paste -sd: -)"
+real_cargo="$(PATH="$stripped_path" command -v cargo)"
+
+exec "$real_cargo" "$@"
+

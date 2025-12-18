@@ -1,0 +1,27 @@
+## Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+
+## Anchor / Solana
+.anchor/
+test-ledger/
+target/
+
+## Local env
+.env
+.env.local
+
+## Local scratch
+.tmp/
+
+## Keypairs / secrets
+**/*-keypair.json
+**/*keypair*.json
+
+## OS / Editor
+.DS_Store
+.idea/
+.vscode/

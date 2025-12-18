@@ -17,6 +17,9 @@ target/
 ## Local scratch
 .tmp/
 
+## Backup files
+Cargo.lock.*
+
 ## Keypairs / secrets
 **/*-keypair.json
 **/*keypair*.json

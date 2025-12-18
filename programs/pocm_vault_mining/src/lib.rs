@@ -128,7 +128,18 @@ pub mod pocm_vault_mining {
             ctx.accounts.owner.key(),
             ErrorCode::Unauthorized
         );
-        require!(position.locked_amount == 0, ErrorCode::PositionActive);
+        // Non-refundable mining fee model:
+        // - only one active mining cycle per wallet at a time
+        // - user can "renew" after the cycle ends (lock_end_ts passed)
+        let now = Clock::get()?.unix_timestamp;
+        if position.locked_amount != 0 {
+            require!(now >= position.lock_end_ts, ErrorCode::PositionActive);
+            // Cycle ended; reset and allow a new deposit.
+            position.locked_amount = 0;
+            position.lock_start_ts = 0;
+            position.lock_end_ts = 0;
+            position.last_active_epoch = 0;
+        }
         require!(
             time_multiplier_for_duration(position.duration_days).is_some(),
             ErrorCode::InvalidDuration
@@ -139,7 +150,6 @@ pub mod pocm_vault_mining {
         } else {
             SECONDS_PER_DAY
         };
-        let now = Clock::get()?.unix_timestamp;
         let lock_duration = (position.duration_days as i64)
             .checked_mul(lock_day_seconds)
             .ok_or(ErrorCode::MathOverflow)?;
@@ -320,20 +330,9 @@ pub mod pocm_vault_mining {
         let now = Clock::get()?.unix_timestamp;
         require!(now >= position.lock_end_ts, ErrorCode::LockNotFinished);
 
+        // Non-refundable mining fee model: XNT stays in the treasury.
+        // This instruction only "finalizes" the cycle by resetting the position.
         let amount = position.locked_amount;
-        let seeds: &[&[u8]] = &[VAULT_SEED, &[ctx.accounts.config.bumps.vault_authority]];
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault_xnt_ata.to_account_info(),
-                    to: ctx.accounts.owner_xnt_ata.to_account_info(),
-                    authority: ctx.accounts.vault_authority.to_account_info(),
-                },
-                &[seeds],
-            ),
-            amount,
-        )?;
 
         position.locked_amount = 0;
         position.lock_start_ts = 0;
@@ -344,6 +343,27 @@ pub mod pocm_vault_mining {
             owner: position.owner,
             amount,
         });
+        Ok(())
+    }
+
+    pub fn admin_withdraw_treasury_xnt(
+        ctx: Context<AdminWithdrawTreasuryXnt>,
+        amount: u64,
+    ) -> Result<()> {
+        require!(amount > 0, ErrorCode::InvalidAmount);
+        let seeds: &[&[u8]] = &[VAULT_SEED, &[ctx.accounts.config.bumps.vault_authority]];
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault_xnt_ata.to_account_info(),
+                    to: ctx.accounts.admin_xnt_ata.to_account_info(),
+                    authority: ctx.accounts.vault_authority.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount,
+        )?;
         Ok(())
     }
 
@@ -605,6 +625,43 @@ pub struct Withdraw<'info> {
         associated_token::authority = owner
     )]
     pub owner_xnt_ata: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AdminWithdrawTreasuryXnt<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config,
+        has_one = admin
+    )]
+    pub config: Account<'info, Config>,
+    #[account(
+        seeds = [VAULT_SEED],
+        bump = config.bumps.vault_authority
+    )]
+    /// CHECK: PDA authority
+    pub vault_authority: UncheckedAccount<'info>,
+    #[account(mut, constraint = xnt_mint.key() == config.xnt_mint)]
+    pub xnt_mint: Account<'info, Mint>,
+    #[account(
+        mut,
+        constraint = vault_xnt_ata.key() == config.vault_xnt_ata,
+        constraint = vault_xnt_ata.owner == vault_authority.key(),
+        constraint = vault_xnt_ata.mint == xnt_mint.key()
+    )]
+    pub vault_xnt_ata: Account<'info, TokenAccount>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        associated_token::mint = xnt_mint,
+        associated_token::authority = admin
+    )]
+    pub admin_xnt_ata: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,

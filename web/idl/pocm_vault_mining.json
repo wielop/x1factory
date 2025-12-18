@@ -59,6 +59,65 @@
       ]
     },
     {
+      "name": "admin_withdraw_treasury_xnt",
+      "discriminator": [
+        173,
+        253,
+        190,
+        253,
+        197,
+        166,
+        145,
+        83
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "relations": [
+            "admin"
+          ]
+        },
+        {
+          "name": "vault_authority"
+        },
+        {
+          "name": "xnt_mint",
+          "writable": true
+        },
+        {
+          "name": "vault_xnt_ata",
+          "writable": true
+        },
+        {
+          "name": "admin_xnt_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "associated_token_program"
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "claim",
       "discriminator": [
         62,

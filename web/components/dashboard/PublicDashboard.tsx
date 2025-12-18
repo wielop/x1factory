@@ -9,7 +9,6 @@ import {
   NATIVE_MINT,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
-  createCloseAccountInstruction,
   createSyncNativeInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
@@ -80,7 +79,7 @@ export function PublicDashboard() {
 
   const [durationDays, setDurationDays] = useState<7 | 14 | 30>(14);
   const [depositAmountUi, setDepositAmountUi] = useState("2");
-  const [busy, setBusy] = useState<null | "deposit" | "heartbeat" | "claim" | "withdraw" | "create">(null);
+  const [busy, setBusy] = useState<null | "deposit" | "heartbeat" | "claim" | "create">(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,8 +95,11 @@ export function PublicDashboard() {
 
   const positionPda = useMemo(() => (publicKey ? derivePositionPda(publicKey) : null), [publicKey]);
   const positionExists = !!positionPda && positionInfo !== null;
-  const positionActive = !!positionInfo && positionInfo.lockedAmount > 0n;
-  const unlockReady = !!positionInfo && positionInfo.lockedAmount > 0n && nowTs != null && nowTs >= positionInfo.lockEndTs;
+  const positionHasAmount = !!positionInfo && positionInfo.lockedAmount > 0n;
+  const positionActive =
+    !!positionInfo && positionInfo.lockedAmount > 0n && nowTs != null && nowTs < positionInfo.lockEndTs;
+  const positionEnded =
+    !!positionInfo && positionInfo.lockedAmount > 0n && nowTs != null && nowTs >= positionInfo.lockEndTs;
 
   const heartbeatDone = useMemo(() => {
     if (!userEpoch || currentEpoch == null) return false;
@@ -223,7 +225,7 @@ export function PublicDashboard() {
 
     setBusy("deposit");
     try {
-      await withTx(positionExists ? "Deposit" : "Create position + Deposit", async () => {
+      await withTx(positionExists ? (positionEnded ? "Renew mining cycle" : "Deposit") : "Create position + Deposit", async () => {
         const program = getProgram(connection, anchorWallet);
         const tx = new Transaction();
 
@@ -242,7 +244,10 @@ export function PublicDashboard() {
           tx.add(createIx);
         } else {
           const decoded = decodeUserPositionAccount(Buffer.from(posAcc.data));
-          if (decoded.lockedAmount > 0n) throw new Error("PositionActive");
+          if (decoded.lockedAmount > 0n) {
+            if (nowTs == null) throw new Error("Clock not loaded");
+            if (nowTs < decoded.lockEndTs) throw new Error("PositionActive");
+          }
         }
 
         const ownerXntAta = getAssociatedTokenAddressSync(xntMint, publicKey);
@@ -365,62 +370,6 @@ export function PublicDashboard() {
           })
           .instruction();
         const tx = new Transaction().add(ix);
-        return await signAndSend(tx);
-      });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onWithdraw = async () => {
-    if (!publicKey) throw new Error("Connect a wallet first");
-    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-    if (!config) throw new Error("Config not loaded");
-    if (busy) return;
-    if (!unlockReady) throw new Error("Lock not finished");
-
-    setBusy("withdraw");
-    try {
-      await withTx("Withdraw", async () => {
-        const program = getProgram(connection, anchorWallet);
-        const xntMint = config.xntMint;
-        const ownerXntAta = getAssociatedTokenAddressSync(xntMint, publicKey);
-        const vaultAuthority = deriveVaultPda();
-        const vaultXntAta = getAssociatedTokenAddressSync(xntMint, vaultAuthority, true);
-
-        const tx = new Transaction();
-        tx.add(
-          createAssociatedTokenAccountIdempotentInstruction(
-            publicKey,
-            ownerXntAta,
-            publicKey,
-            xntMint,
-            TOKEN_PROGRAM_ID,
-            ASSOCIATED_TOKEN_PROGRAM_ID
-          )
-        );
-
-        const ix = await program.methods
-          .withdraw()
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            position: derivePositionPda(publicKey),
-            vaultAuthority,
-            xntMint,
-            vaultXntAta,
-            ownerXntAta,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .instruction();
-        tx.add(ix);
-
-        if (xntMint.equals(NATIVE_MINT)) {
-          tx.add(createCloseAccountInstruction(ownerXntAta, publicKey, publicKey));
-        }
-
         return await signAndSend(tx);
       });
     } finally {
@@ -638,14 +587,14 @@ export function PublicDashboard() {
                           </button>
                         ))}
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-400">
-                        Estimated lock end (after deposit):{" "}
-                        <span className="font-mono text-zinc-200">{estimatedLockEndTs ? formatUnixTs(estimatedLockEndTs) : "-"}</span>
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">
+                        Deposit is non-refundable (treasury fee). Estimated cycle end:{" "}
+                        <span className="font-mono">{estimatedLockEndTs ? formatUnixTs(estimatedLockEndTs) : "-"}</span>
                       </div>
                     </div>
                   ) : null}
 
-                  {positionActive && positionInfo && config ? (
+                  {positionHasAmount && positionInfo && config ? (
                     <div className="grid gap-3">
                       <div className="grid gap-2 rounded-2xl border border-white/10 bg-white/5 p-3">
                         <div className="flex items-center justify-between gap-3">
@@ -655,8 +604,8 @@ export function PublicDashboard() {
                               {formatTokenAmount(positionInfo.lockedAmount, config.xntDecimals, 6)} XNT
                             </div>
                           </div>
-                          <Badge variant={unlockReady ? "success" : "warning"}>
-                            {unlockReady ? "unlock ready" : "locked"}
+                          <Badge variant={positionActive ? "success" : "muted"}>
+                            {positionActive ? "active" : "ended"}
                           </Badge>
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-zinc-400">
@@ -677,9 +626,12 @@ export function PublicDashboard() {
                           <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
                             <span>Progress</span>
                             <span className="font-mono">
-                              {countdownSeconds == null ? "-" : unlockReady ? "ready" : formatDurationSeconds(countdownSeconds)}
+                              {countdownSeconds == null ? "-" : positionEnded ? "ended" : formatDurationSeconds(countdownSeconds)}
                             </span>
                           </div>
+                        </div>
+                        <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">
+                          XNT stays in the treasury. When the cycle ends, deposit again to start a new cycle.
                         </div>
                       </div>
                     </div>
@@ -688,6 +640,9 @@ export function PublicDashboard() {
                       <div className="flex items-center justify-between">
                         <div className="text-xs text-zinc-400">XNT balance</div>
                         <div className="font-mono text-xs text-zinc-300">{xntBalanceUi ?? "(loading)"}</div>
+                      </div>
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">
+                        Deposit is non-refundable (treasury fee).
                       </div>
                       <Input
                         value={depositAmountUi}
@@ -708,12 +663,14 @@ export function PublicDashboard() {
                         {busy === "deposit"
                           ? "Submitting…"
                           : positionExists
-                            ? "Deposit"
+                            ? positionEnded
+                              ? "Renew mining (deposit again)"
+                              : "Deposit"
                             : "Create position + Deposit"}
                       </Button>
                       {positionActive ? (
                         <div className="text-xs text-zinc-400">
-                          Deposit is blocked because your position already has a lock. Use Heartbeat/Claim, then Withdraw after unlock.
+                          Deposit is blocked because your mining cycle is still active.
                         </div>
                       ) : null}
                     </div>
@@ -731,7 +688,9 @@ export function PublicDashboard() {
               {!publicKey ? (
                 <div className="mt-4 text-sm text-zinc-400">Connect wallet to see epoch actions.</div>
               ) : !positionActive ? (
-                <div className="mt-4 text-sm text-zinc-400">Deposit to activate your position.</div>
+                <div className="mt-4 text-sm text-zinc-400">
+                  {positionEnded ? "Cycle ended. Renew to keep mining." : "Deposit to activate your mining cycle."}
+                </div>
               ) : (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -791,31 +750,25 @@ export function PublicDashboard() {
 
           <div className="md:col-span-5">
             <Card>
-              <CardHeader title="Withdraw" description="Withdraw XNT after the lock ends. This resets your position." />
+              <CardHeader
+                title="Treasury"
+                description="Your XNT deposit stays in the protocol treasury (custodial model)."
+              />
               {!publicKey ? (
-                <div className="mt-4 text-sm text-zinc-400">Connect wallet to withdraw.</div>
-              ) : !positionActive ? (
-                <div className="mt-4 text-sm text-zinc-400">No active lock. Nothing to withdraw.</div>
+                <div className="mt-4 text-sm text-zinc-400">Connect wallet to see your cycle status.</div>
+              ) : !positionHasAmount ? (
+                <div className="mt-4 text-sm text-zinc-400">No deposit yet.</div>
               ) : (
                 <div className="mt-4 grid gap-3">
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-400">
-                    {unlockReady
-                      ? "Unlock ready. You can withdraw now."
+                    {positionEnded
+                      ? "Cycle ended. Renew by depositing again."
                       : countdownSeconds == null
-                        ? "Loading unlock time…"
-                        : `Available in ${formatDurationSeconds(countdownSeconds)}.`}
+                        ? "Loading time remaining…"
+                        : `Cycle ends in ${formatDurationSeconds(countdownSeconds)}.`}
                   </div>
-                  <Button
-                    size="lg"
-                    variant={unlockReady ? "primary" : "secondary"}
-                    disabled={busy !== null || !unlockReady}
-                    onClick={() => void onWithdraw().catch(() => null)}
-                    title={!unlockReady ? "LockNotFinished" : undefined}
-                  >
-                    {busy === "withdraw" ? "Submitting…" : "Withdraw (after unlock)"}
-                  </Button>
                   <div className="text-xs text-zinc-500">
-                    After withdraw you can deposit again. One active lock per wallet.
+                    Funds are held by the program treasury and are not withdrawable by users.
                   </div>
                 </div>
               )}
@@ -857,10 +810,10 @@ export function PublicDashboard() {
             <div className="text-xs text-zinc-400">
               {publicKey
                 ? positionActive
-                  ? unlockReady
-                    ? "Unlock ready"
-                    : "Lock active"
-                  : "Ready to deposit"
+                  ? "Mining active"
+                  : positionEnded
+                    ? "Cycle ended"
+                    : "Ready to deposit"
                 : "Connect wallet"}
             </div>
             <Button
@@ -869,18 +822,17 @@ export function PublicDashboard() {
                 busy !== null ||
                 !publicKey ||
                 emissionNotStarted ||
-                (positionActive && !unlockReady && heartbeatDone && claimed)
+                (positionActive && heartbeatDone && claimed)
               }
               onClick={() => {
                 if (!publicKey) return;
-                if (unlockReady) void onWithdraw();
-                else if (!positionActive) void onDeposit();
+                if (!positionActive) void onDeposit();
                 else if (!heartbeatDone) void onHeartbeat();
                 else if (!claimed) void onClaim();
               }}
               title={!publicKey ? "Connect wallet" : undefined}
             >
-              {busy ? "Working…" : unlockReady ? "Withdraw" : !positionActive ? "Deposit" : !heartbeatDone ? "Heartbeat" : !claimed ? "Claim" : "Up to date"}
+              {busy ? "Working…" : !positionActive ? (positionEnded ? "Renew" : "Deposit") : !heartbeatDone ? "Heartbeat" : !claimed ? "Claim" : "Up to date"}
             </Button>
           </div>
         </div>

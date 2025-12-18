@@ -5,7 +5,8 @@ import Link from "next/link";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { Transaction } from "@solana/web3.js";
+import { SystemProgram, Transaction } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, NATIVE_MINT } from "@solana/spl-token";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,8 @@ import { NetworkBadge } from "@/components/shared/NetworkBadge";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { useToast } from "@/components/shared/ToastProvider";
 import { getProgram } from "@/lib/anchor";
-import { deriveConfigPda, fetchClockUnixTs, fetchConfig, getCurrentEpochFrom } from "@/lib/solana";
-import { explorerTxUrl, formatTokenAmount, formatUnixTs, shortPk } from "@/lib/format";
+import { deriveConfigPda, deriveVaultPda, fetchClockUnixTs, fetchConfig, getCurrentEpochFrom } from "@/lib/solana";
+import { explorerTxUrl, formatTokenAmount, formatUnixTs, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
 
 export function AdminDashboard() {
@@ -37,8 +38,12 @@ export function AdminDashboard() {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [treasuryBusy, setTreasuryBusy] = useState(false);
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [treasuryBalanceUi, setTreasuryBalanceUi] = useState<string | null>(null);
+  const [treasuryWithdrawUi, setTreasuryWithdrawUi] = useState<string>("0.1");
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -51,6 +56,14 @@ export function AdminDashboard() {
     setTh2(cfg.th2.toString());
     setMpCapBps(String(cfg.mpCapBpsPerWallet));
     setEpochSeconds(cfg.epochSeconds.toString());
+
+    try {
+      const bal = await connection.getTokenAccountBalance(cfg.vaultXntAta, "confirmed");
+      const amountBase = bal.value.amount ? BigInt(bal.value.amount) : 0n;
+      setTreasuryBalanceUi(formatTokenAmount(amountBase, cfg.xntDecimals, 6));
+    } catch {
+      setTreasuryBalanceUi(null);
+    }
   }, [connection]);
 
   useEffect(() => {
@@ -153,6 +166,59 @@ export function AdminDashboard() {
     }
   };
 
+  const withdrawTreasury = async () => {
+    if (!publicKey) throw new Error("Connect wallet");
+    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
+    if (!config) throw new Error("Config not loaded");
+    if (!isAdmin) throw new Error("Connected wallet is not the admin");
+    if (treasuryBusy || busy) return;
+
+    const amountBase = parseUiAmountToBase(treasuryWithdrawUi, config.xntDecimals);
+    if (amountBase <= 0n) throw new Error("Amount must be > 0");
+
+    setTreasuryBusy(true);
+    setLastSig(null);
+    setError(null);
+    pushToast({ title: "Treasury withdraw", description: "Confirm in your wallet…", variant: "info" });
+    try {
+      const program = getProgram(connection, anchorWallet);
+      const vaultAuthority = deriveVaultPda();
+      const adminXntAta = getAssociatedTokenAddressSync(config.xntMint, publicKey);
+
+      const ix = await program.methods
+        .adminWithdrawTreasuryXnt(new BN(amountBase.toString()))
+        .accounts({
+          admin: publicKey,
+          config: deriveConfigPda(),
+          vaultAuthority,
+          xntMint: config.xntMint,
+          vaultXntAta: config.vaultXntAta,
+          adminXntAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+
+      const tx = new Transaction().add(ix);
+      const sig = await signAndSend(tx);
+      setLastSig(sig);
+      pushToast({ title: "Treasury withdrawn", description: shortPk(sig, 6), variant: "success" });
+      await refresh();
+    } catch (e: any) {
+      const msg = formatError(e);
+      setError(msg);
+      pushToast({
+        title: msg.includes("Plugin Closed") ? "Wallet action required" : "Treasury withdraw failed",
+        description: msg.includes("Plugin Closed") ? "Open/unlock the wallet and retry." : "See details on the page.",
+        variant: "error",
+      });
+      throw e;
+    } finally {
+      setTreasuryBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b border-white/5 bg-zinc-950/40 backdrop-blur-xl">
@@ -225,6 +291,15 @@ export function AdminDashboard() {
                     </div>
                     <div className="mt-1 text-xs text-zinc-400">start: {formatUnixTs(config.emissionStartTs.toNumber())}</div>
                   </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="text-xs text-zinc-400">Treasury (vault XNT)</div>
+                    <div className="mt-1 font-mono text-sm">
+                      {treasuryBalanceUi != null ? `${treasuryBalanceUi} XNT` : "(unavailable)"}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      vault ATA: <span className="font-mono">{shortPk(config.vaultXntAta.toBase58(), 8)}</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </Card>
@@ -280,6 +355,32 @@ export function AdminDashboard() {
                   Review & submit
                 </Button>
                 <Badge variant="muted">Config PDA: {shortPk(deriveConfigPda().toBase58(), 8)}</Badge>
+              </div>
+            </Card>
+
+            <Card className="mt-4">
+              <CardHeader
+                title="Treasury withdraw"
+                description="Custodial: move XNT from vault to the admin wallet."
+                right={
+                  config ? (
+                    <Badge variant="muted">{config.xntMint.equals(NATIVE_MINT) ? "XNT = wSOL" : "XNT = SPL"}</Badge>
+                  ) : null
+                }
+              />
+              <div className="mt-4 grid gap-3">
+                <Input value={treasuryWithdrawUi} onChange={setTreasuryWithdrawUi} placeholder="0.0" />
+                <Button
+                  size="lg"
+                  variant="danger"
+                  disabled={!publicKey || !isAdmin || !config || busy || treasuryBusy}
+                  onClick={() => void withdrawTreasury().catch(() => null)}
+                >
+                  {treasuryBusy ? "Submitting…" : "Withdraw from treasury"}
+                </Button>
+                <div className="text-xs text-zinc-500">
+                  This transfers from the program vault to your admin ATA. Users cannot withdraw their deposits.
+                </div>
               </div>
             </Card>
           </div>

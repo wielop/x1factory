@@ -1,5 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import type { Connection } from "@solana/web3.js";
+import type { AnchorWallet } from "@solana/wallet-adapter-react";
 import idl from "@/idl/pocm_vault_mining.json";
 import { PROGRAM_ID } from "@/lib/solana";
 
@@ -10,18 +11,10 @@ const idlForClient = {
   accounts: [],
 };
 
-export function getProgram(connection: Connection) {
-  const provider = new anchor.AnchorProvider(
-    connection,
-    // The wallet is injected by wallet-adapter at runtime via `anchor.setProvider`
-    // in the calling context. We provide a dummy here; Anchor will still use the
-    // wallet from `anchor.getProvider()` for `.rpc()` calls.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (anchor.getProvider() as any)?.wallet ?? ({} as any),
-    { commitment: "confirmed" }
-  );
-  anchor.setProvider(provider);
+export function getProgram(connection: Connection, wallet: AnchorWallet) {
+  const provider = new anchor.AnchorProvider(connection, wallet, {
+    commitment: "confirmed",
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new (anchor as any).Program(idlForClient, PROGRAM_ID, provider);
 }
-

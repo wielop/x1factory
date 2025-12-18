@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import {
   NATIVE_MINT,
@@ -30,6 +30,7 @@ import { getProgram } from "@/lib/anchor";
 export function PublicPanel() {
   const { connection } = useConnection();
   const { publicKey, signTransaction, sendTransaction } = useWallet();
+  const anchorWallet = useAnchorWallet();
 
   const [config, setConfig] = useState<Awaited<ReturnType<typeof fetchConfig>> | null>(null);
   const [nowTs, setNowTs] = useState<number | null>(null);
@@ -71,6 +72,7 @@ export function PublicPanel() {
 
   const ensureWallet = () => {
     if (!publicKey) throw new Error("Connect a wallet first");
+    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
     if (!signTransaction) throw new Error("Wallet does not support signTransaction");
   };
 
@@ -81,7 +83,7 @@ export function PublicPanel() {
     setLastSig(null);
     setError(null);
     try {
-      const program = getProgram(connection);
+      const program = getProgram(connection, anchorWallet!);
       const days = Number(durationDays);
       if (!Number.isFinite(days) || days <= 0) throw new Error("Invalid durationDays");
       const position = derivePositionPda(publicKey!);
@@ -108,7 +110,7 @@ export function PublicPanel() {
     setLastSig(null);
     setError(null);
     try {
-      const program = getProgram(connection);
+      const program = getProgram(connection, anchorWallet!);
       const xntMint = config.xntMint;
       const amountUi = Number(depositAmount);
       if (!Number.isFinite(amountUi) || amountUi <= 0) throw new Error("Invalid amount");
@@ -179,7 +181,7 @@ export function PublicPanel() {
     setLastSig(null);
     setError(null);
     try {
-      const program = getProgram(connection);
+      const program = getProgram(connection, anchorWallet!);
       const epochState = deriveEpochPda(epoch);
       const userEpoch = deriveUserEpochPda(publicKey!, epoch);
       const sig = await program.methods
@@ -209,7 +211,7 @@ export function PublicPanel() {
     setLastSig(null);
     setError(null);
     try {
-      const program = getProgram(connection);
+      const program = getProgram(connection, anchorWallet!);
       const epochState = deriveEpochPda(epoch);
       const userEpoch = deriveUserEpochPda(publicKey!, epoch);
       const vaultAuthority = deriveVaultPda();
@@ -330,4 +332,3 @@ export function PublicPanel() {
     </div>
   );
 }
-

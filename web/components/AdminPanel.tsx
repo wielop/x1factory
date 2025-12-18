@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
 import { Card, Field, Button, Input } from "@/components/Ui";
 import {
@@ -15,6 +15,7 @@ import { getProgram } from "@/lib/anchor";
 export function AdminPanel() {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
+  const anchorWallet = useAnchorWallet();
 
   const [config, setConfig] = useState<Awaited<ReturnType<typeof fetchConfig>> | null>(null);
   const [nowTs, setNowTs] = useState<number | null>(null);
@@ -50,13 +51,14 @@ export function AdminPanel() {
 
   const submit = async () => {
     if (!publicKey) throw new Error("Connect wallet");
+    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
     if (!config) throw new Error("Config not loaded");
     if (!isAdmin) throw new Error("Connected wallet is not the admin");
     setBusy(true);
     setLastSig(null);
     setError(null);
     try {
-      const program = getProgram(connection);
+      const program = getProgram(connection, anchorWallet);
       const sig = await program.methods
         .adminUpdateConfig({
           th1: new BN(th1),
@@ -147,4 +149,3 @@ export function AdminPanel() {
     </div>
   );
 }
-

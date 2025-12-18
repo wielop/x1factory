@@ -145,12 +145,9 @@ export function PublicPanel() {
         );
       }
 
-      const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction(sig, "confirmed");
-
       const amountBn = new BN(amountBase.toString());
       const position = derivePositionPda(publicKey!);
-      const sig2 = await program.methods
+      const depositIx = await program.methods
         .deposit(amountBn)
         .accounts({
           owner: publicKey!,
@@ -162,8 +159,12 @@ export function PublicPanel() {
           ownerXntAta,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .rpc();
-      setLastSig(sig2);
+        .instruction();
+      tx.add(depositIx);
+
+      const sig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(sig, "confirmed");
+      setLastSig(sig);
       await refresh();
     } catch (e: any) {
       setError(formatError(e));

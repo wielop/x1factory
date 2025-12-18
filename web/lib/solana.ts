@@ -55,6 +55,7 @@ export type DecodedConfig = {
   xntMint: PublicKey;
   mindMint: PublicKey;
   vaultXntAta: PublicKey;
+  stakingVaultXntAta: PublicKey;
   mindDecimals: number;
   xntDecimals: number;
   dailyEmissionInitial: BN;
@@ -71,6 +72,19 @@ export type DecodedConfig = {
   th1: BN;
   th2: BN;
   allowEpochSecondsEdit: boolean;
+  stakingVaultMindAta: PublicKey;
+  xpPer7d: BN;
+  xpPer14d: BN;
+  xpPer30d: BN;
+  xpTierSilver: BN;
+  xpTierGold: BN;
+  xpTierDiamond: BN;
+  xpBoostSilverBps: number;
+  xpBoostGoldBps: number;
+  xpBoostDiamondBps: number;
+  totalStakedMind: BN;
+  totalXp: BN;
+  bumps: { config: number; vaultAuthority: number };
 };
 
 export async function fetchClockUnixTs(connection: Connection) {
@@ -116,11 +130,21 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
     offset += 8;
     return new BN(v.toString());
   };
+  const readU128 = () => {
+    const lo = data.readBigUInt64LE(offset);
+    const hi = data.readBigUInt64LE(offset + 8);
+    offset += 16;
+    const loBn = new BN(lo.toString());
+    const hiBn = new BN(hi.toString());
+    hiBn.iushln(64);
+    return hiBn.iadd(loBn);
+  };
 
   const admin = readPubkey();
   const xntMint = readPubkey();
   const mindMint = readPubkey();
   const vaultXntAta = readPubkey();
+  const stakingVaultXntAta = readPubkey();
   const mindDecimals = readU8();
   const xntDecimals = readU8();
   const dailyEmissionInitial = readU64();
@@ -137,15 +161,28 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
   const th1 = readU64();
   const th2 = readU64();
   const allowEpochSecondsEdit = readBool();
+  const stakingVaultMindAta = readPubkey();
+  const xpPer7d = readU64();
+  const xpPer14d = readU64();
+  const xpPer30d = readU64();
+  const xpTierSilver = readU64();
+  const xpTierGold = readU64();
+  const xpTierDiamond = readU64();
+  const xpBoostSilverBps = readU16();
+  const xpBoostGoldBps = readU16();
+  const xpBoostDiamondBps = readU16();
+  const totalStakedMind = readU64();
+  const totalXp = readU128();
   // bumps: 2x u8
-  readU8();
-  readU8();
+  const bumpConfig = readU8();
+  const bumpVault = readU8();
 
   return {
     admin,
     xntMint,
     mindMint,
     vaultXntAta,
+    stakingVaultXntAta,
     mindDecimals,
     xntDecimals,
     dailyEmissionInitial,
@@ -162,6 +199,19 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
     th1,
     th2,
     allowEpochSecondsEdit,
+    stakingVaultMindAta,
+    xpPer7d,
+    xpPer14d,
+    xpPer30d,
+    xpTierSilver,
+    xpTierGold,
+    xpTierDiamond,
+    xpBoostSilverBps,
+    xpBoostGoldBps,
+    xpBoostDiamondBps,
+    totalStakedMind,
+    totalXp,
+    bumps: { config: bumpConfig, vaultAuthority: bumpVault },
   };
 }
 
@@ -179,3 +229,16 @@ export async function fetchTokenBalanceUi(connection: Connection, ata: PublicKey
     return "0";
   }
 }
+
+export const deriveStakingPositionPda = (
+  owner: PublicKey,
+  stakeIndex: bigint | number
+) =>
+  PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("stake"),
+      owner.toBuffer(),
+      new BN(stakeIndex).toArrayLike(Buffer, "le", 8),
+    ],
+    PROGRAM_ID
+  )[0];

@@ -6,7 +6,13 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
 import { SystemProgram, Transaction } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, NATIVE_MINT } from "@solana/spl-token";
+import {
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  NATIVE_MINT,
+} from "@solana/spl-token";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +26,11 @@ import { getProgram } from "@/lib/anchor";
 import { deriveConfigPda, deriveVaultPda, fetchClockUnixTs, fetchConfig, getCurrentEpochFrom } from "@/lib/solana";
 import { explorerTxUrl, formatTokenAmount, formatUnixTs, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
+
+function formatBps(bps: number) {
+  const percent = bps / 100;
+  return `${percent % 1 === 0 ? percent.toFixed(0) : percent.toFixed(2)}%`;
+}
 
 export function AdminDashboard() {
   const { connection } = useConnection();
@@ -35,15 +46,29 @@ export function AdminDashboard() {
   const [mpCapBps, setMpCapBps] = useState<string>("");
   const [updateEpochSeconds, setUpdateEpochSeconds] = useState(false);
   const [epochSeconds, setEpochSeconds] = useState<string>("");
+  const [updateXpConfig, setUpdateXpConfig] = useState(false);
+  const [xpPer7d, setXpPer7d] = useState<string>("");
+  const [xpPer14d, setXpPer14d] = useState<string>("");
+  const [xpPer30d, setXpPer30d] = useState<string>("");
+  const [xpTierSilver, setXpTierSilver] = useState<string>("");
+  const [xpTierGold, setXpTierGold] = useState<string>("");
+  const [xpTierDiamond, setXpTierDiamond] = useState<string>("");
+  const [xpBoostSilverBps, setXpBoostSilverBps] = useState<string>("");
+  const [xpBoostGoldBps, setXpBoostGoldBps] = useState<string>("");
+  const [xpBoostDiamondBps, setXpBoostDiamondBps] = useState<string>("");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [treasuryBusy, setTreasuryBusy] = useState(false);
+  const [stakingBusy, setStakingBusy] = useState(false);
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [treasuryBalanceUi, setTreasuryBalanceUi] = useState<string | null>(null);
   const [treasuryWithdrawUi, setTreasuryWithdrawUi] = useState<string>("0.1");
+  const [stakingVaultXntBalanceUi, setStakingVaultXntBalanceUi] = useState<string | null>(null);
+  const [stakingVaultMindBalanceUi, setStakingVaultMindBalanceUi] = useState<string | null>(null);
+  const [stakingFundAmountUi, setStakingFundAmountUi] = useState<string>("0.1");
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -56,6 +81,15 @@ export function AdminDashboard() {
     setTh2(cfg.th2.toString());
     setMpCapBps(String(cfg.mpCapBpsPerWallet));
     setEpochSeconds(cfg.epochSeconds.toString());
+    setXpPer7d(cfg.xpPer7d.toString());
+    setXpPer14d(cfg.xpPer14d.toString());
+    setXpPer30d(cfg.xpPer30d.toString());
+    setXpTierSilver(cfg.xpTierSilver.toString());
+    setXpTierGold(cfg.xpTierGold.toString());
+    setXpTierDiamond(cfg.xpTierDiamond.toString());
+    setXpBoostSilverBps(String(cfg.xpBoostSilverBps));
+    setXpBoostGoldBps(String(cfg.xpBoostGoldBps));
+    setXpBoostDiamondBps(String(cfg.xpBoostDiamondBps));
 
     try {
       const bal = await connection.getTokenAccountBalance(cfg.vaultXntAta, "confirmed");
@@ -63,6 +97,20 @@ export function AdminDashboard() {
       setTreasuryBalanceUi(formatTokenAmount(amountBase, cfg.xntDecimals, 6));
     } catch {
       setTreasuryBalanceUi(null);
+    }
+    try {
+      const stakingBalance = await connection.getTokenAccountBalance(cfg.stakingVaultXntAta, "confirmed");
+      const amountBase = stakingBalance.value.amount ? BigInt(stakingBalance.value.amount) : 0n;
+      setStakingVaultXntBalanceUi(formatTokenAmount(amountBase, cfg.xntDecimals, 6));
+    } catch {
+      setStakingVaultXntBalanceUi(null);
+    }
+    try {
+      const stakingMind = await connection.getTokenAccountBalance(cfg.stakingVaultMindAta, "confirmed");
+      const amountBase = stakingMind.value.amount ? BigInt(stakingMind.value.amount) : 0n;
+      setStakingVaultMindBalanceUi(formatTokenAmount(amountBase, cfg.mindDecimals, 6));
+    } catch {
+      setStakingVaultMindBalanceUi(null);
     }
   }, [connection]);
 
@@ -87,6 +135,19 @@ export function AdminDashboard() {
 
   const diff = useMemo(() => {
     if (!config) return null;
+    const xpDiffs = updateXpConfig
+      ? [
+          { k: "xp_per_7d", before: config.xpPer7d.toString(), after: xpPer7d },
+          { k: "xp_per_14d", before: config.xpPer14d.toString(), after: xpPer14d },
+          { k: "xp_per_30d", before: config.xpPer30d.toString(), after: xpPer30d },
+          { k: "xp_tier_silver", before: config.xpTierSilver.toString(), after: xpTierSilver },
+          { k: "xp_tier_gold", before: config.xpTierGold.toString(), after: xpTierGold },
+          { k: "xp_tier_diamond", before: config.xpTierDiamond.toString(), after: xpTierDiamond },
+          { k: "xp_boost_silver_bps", before: String(config.xpBoostSilverBps), after: xpBoostSilverBps },
+          { k: "xp_boost_gold_bps", before: String(config.xpBoostGoldBps), after: xpBoostGoldBps },
+          { k: "xp_boost_diamond_bps", before: String(config.xpBoostDiamondBps), after: xpBoostDiamondBps },
+        ]
+      : [];
     return [
       { k: "th1", before: config.th1.toString(), after: th1 },
       { k: "th2", before: config.th2.toString(), after: th2 },
@@ -96,8 +157,26 @@ export function AdminDashboard() {
         before: config.epochSeconds.toString(),
         after: updateEpochSeconds ? epochSeconds : "(unchanged)",
       },
+      ...xpDiffs,
     ];
-  }, [config, th1, th2, mpCapBps, updateEpochSeconds, epochSeconds]);
+  }, [
+    config,
+    th1,
+    th2,
+    mpCapBps,
+    updateEpochSeconds,
+    epochSeconds,
+    updateXpConfig,
+    xpPer7d,
+    xpPer14d,
+    xpPer30d,
+    xpTierSilver,
+    xpTierGold,
+    xpTierDiamond,
+    xpBoostSilverBps,
+    xpBoostGoldBps,
+    xpBoostDiamondBps,
+  ]);
 
   const signAndSend = useCallback(
     async (tx: Transaction) => {
@@ -139,6 +218,16 @@ export function AdminDashboard() {
           mpCapBpsPerWallet: Number(mpCapBps),
           updateEpochSeconds,
           epochSeconds: new BN(epochSeconds),
+          updateXpConfig,
+          xpPer7d: new BN(xpPer7d || "0"),
+          xpPer14d: new BN(xpPer14d || "0"),
+          xpPer30d: new BN(xpPer30d || "0"),
+          xpTierSilver: new BN(xpTierSilver || "0"),
+          xpTierGold: new BN(xpTierGold || "0"),
+          xpTierDiamond: new BN(xpTierDiamond || "0"),
+          xpBoostSilverBps: Number(xpBoostSilverBps || "0"),
+          xpBoostGoldBps: Number(xpBoostGoldBps || "0"),
+          xpBoostDiamondBps: Number(xpBoostDiamondBps || "0"),
         })
         .accounts({
           admin: publicKey,
@@ -219,6 +308,67 @@ export function AdminDashboard() {
     }
   };
 
+  const fundStakingVault = async () => {
+    if (!publicKey) throw new Error("Connect wallet");
+    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
+    if (!config) throw new Error("Config not loaded");
+    if (!isAdmin) throw new Error("Connected wallet is not the admin");
+    if (stakingBusy || busy || treasuryBusy) return;
+
+    const amountBase = parseUiAmountToBase(stakingFundAmountUi, config.xntDecimals);
+    if (amountBase <= 0n) throw new Error("Amount must be > 0");
+
+    setStakingBusy(true);
+    setLastSig(null);
+    setError(null);
+    pushToast({ title: "Staking vault funding", description: "Confirm in your wallet…", variant: "info" });
+    try {
+      const program = getProgram(connection, anchorWallet);
+      const vaultAuthority = deriveVaultPda();
+      const adminXntAta = getAssociatedTokenAddressSync(config.xntMint, publicKey);
+      const tx = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey,
+          adminXntAta,
+          publicKey,
+          config.xntMint,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        )
+      );
+      const ix = await program.methods
+        .adminFundStakingXnt(new BN(amountBase.toString()))
+        .accounts({
+          admin: publicKey,
+          config: deriveConfigPda(),
+          xntMint: config.xntMint,
+          stakingVaultXntAta: config.stakingVaultXntAta,
+          adminXntAta,
+          vaultAuthority,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+      tx.add(ix);
+      const sig = await signAndSend(tx);
+      setLastSig(sig);
+      pushToast({ title: "Staking vault funded", description: shortPk(sig, 6), variant: "success" });
+      await refresh();
+    } catch (e: any) {
+      const msg = formatError(e);
+      setError(msg);
+      pushToast({
+        title: msg.includes("Plugin Closed") ? "Wallet action required" : "Funding failed",
+        description: msg.includes("Plugin Closed") ? "Open/unlock the wallet and retry." : "See details on the page.",
+        variant: "error",
+      });
+      throw e;
+    } finally {
+      setStakingBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b border-white/5 bg-zinc-950/40 backdrop-blur-xl">
@@ -291,19 +441,51 @@ export function AdminDashboard() {
                     </div>
                     <div className="mt-1 text-xs text-zinc-400">start: {formatUnixTs(config.emissionStartTs.toNumber())}</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-zinc-400">Treasury (vault XNT)</div>
-                    <div className="mt-1 font-mono text-sm">
-                      {treasuryBalanceUi != null ? `${treasuryBalanceUi} XNT` : "(unavailable)"}
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-500">
-                      vault ATA: <span className="font-mono">{shortPk(config.vaultXntAta.toBase58(), 8)}</span>
-                    </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-zinc-400">Treasury (vault XNT)</div>
+                  <div className="mt-1 font-mono text-sm">
+                    {treasuryBalanceUi != null ? `${treasuryBalanceUi} XNT` : "(unavailable)"}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    vault ATA: <span className="font-mono">{shortPk(config.vaultXntAta.toBase58(), 8)}</span>
                   </div>
                 </div>
-              )}
-            </Card>
-          </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-zinc-400">Staking vault (XNT)</div>
+                  <div className="mt-1 font-mono text-sm">{stakingVaultXntBalanceUi ?? "(unavailable)"}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    vault ATA: <span className="font-mono">{shortPk(config.stakingVaultXntAta.toBase58(), 8)}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-zinc-400">Staking vault (MIND)</div>
+                  <div className="mt-1 font-mono text-sm">{stakingVaultMindBalanceUi ?? "(unavailable)"}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    tracked staked:{" "}
+                    <span className="font-mono">
+                      {config
+                        ? formatTokenAmount(BigInt(config.totalStakedMind.toString()), config.mindDecimals, 4)
+                        : "-"}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-zinc-400">XP boosts</div>
+                  <div className="mt-1 text-xs text-zinc-300">
+                    Silver @ {config.xpTierSilver.toString()} XP → +{formatBps(config.xpBoostSilverBps)}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-300">
+                    Gold @ {config.xpTierGold.toString()} XP → +{formatBps(config.xpBoostGoldBps)}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-300">
+                    Diamond @ {config.xpTierDiamond.toString()} XP → +{formatBps(config.xpBoostDiamondBps)}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">XP minted: {config.totalXp.toString()}</div>
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
 
           <div className="md:col-span-7">
             <Card>
@@ -345,6 +527,65 @@ export function AdminDashboard() {
                 </div>
               </div>
 
+              <div className="mt-5 border-t border-white/5 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm font-semibold">XP configuration</div>
+                  <label className="flex items-center gap-2 text-xs text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={updateXpConfig}
+                      onChange={(e) => setUpdateXpConfig(e.target.checked)}
+                    />
+                    update XP config
+                  </label>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">XP per 7d</div>
+                    <Input value={xpPer7d} onChange={setXpPer7d} placeholder="u64" mono disabled={!updateXpConfig} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">XP per 14d</div>
+                    <Input value={xpPer14d} onChange={setXpPer14d} placeholder="u64" mono disabled={!updateXpConfig} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">XP per 30d</div>
+                    <Input value={xpPer30d} onChange={setXpPer30d} placeholder="u64" mono disabled={!updateXpConfig} />
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">Silver tier XP</div>
+                    <Input value={xpTierSilver} onChange={setXpTierSilver} placeholder="u64" mono disabled={!updateXpConfig} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">Gold tier XP</div>
+                    <Input value={xpTierGold} onChange={setXpTierGold} placeholder="u64" mono disabled={!updateXpConfig} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">Diamond tier XP</div>
+                    <Input value={xpTierDiamond} onChange={setXpTierDiamond} placeholder="u64" mono disabled={!updateXpConfig} />
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">Silver boost (bps)</div>
+                    <Input value={xpBoostSilverBps} onChange={setXpBoostSilverBps} placeholder="bps" mono disabled={!updateXpConfig} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">Gold boost (bps)</div>
+                    <Input value={xpBoostGoldBps} onChange={setXpBoostGoldBps} placeholder="bps" mono disabled={!updateXpConfig} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400">Diamond boost (bps)</div>
+                    <Input value={xpBoostDiamondBps} onChange={setXpBoostDiamondBps} placeholder="bps" mono disabled={!updateXpConfig} />
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">
+                  XP directly affects staking boosts. Enable the toggle to push new parameters on-chain.
+                </div>
+              </div>
+
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <Button
                   size="lg"
@@ -380,6 +621,27 @@ export function AdminDashboard() {
                 </Button>
                 <div className="text-xs text-zinc-500">
                   This transfers from the program vault to your admin ATA. Users cannot withdraw their deposits.
+                </div>
+              </div>
+            </Card>
+
+            <Card className="mt-4">
+              <CardHeader
+                title="Staking vault fund"
+                description="Top-up rewards pool (25% of deposits + manual additions)."
+                right={config ? <Badge variant="muted">Vault {shortPk(config.stakingVaultXntAta.toBase58(), 8)}</Badge> : null}
+              />
+              <div className="mt-4 grid gap-3">
+                <Input value={stakingFundAmountUi} onChange={setStakingFundAmountUi} placeholder="Amount (XNT)" />
+                <Button
+                  size="lg"
+                  disabled={!publicKey || !isAdmin || !config || busy || stakingBusy}
+                  onClick={() => void fundStakingVault().catch(() => null)}
+                >
+                  {stakingBusy ? "Submitting…" : "Fund staking vault"}
+                </Button>
+                <div className="text-xs text-zinc-500">
+                  Rewards are drawn from this vault when users claim weekly staking rewards.
                 </div>
               </div>
             </Card>

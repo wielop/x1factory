@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Lightweight wrapper that calls Solana's bundled lld so we can fulfill the
+# `sbf-solana-solana` target's `linker = "rust-lld"` without requiring a
+# custom rustup component.
+SOLANA_BIN_DIR="${SOLANA_BIN_DIR:-$HOME/solana-v1.18.17/bin}"
+LLVM_LD="$SOLANA_BIN_DIR/sdk/sbf/dependencies/platform-tools/llvm/bin/ld.lld"
+
+if [[ ! -x "$LLVM_LD" ]]; then
+  echo "ld.lld not found under $SOLANA_BIN_DIR (set SOLANA_BIN_DIR if needed)" >&2
+  exit 1
+fi
+
+exec "$LLVM_LD" "$@"

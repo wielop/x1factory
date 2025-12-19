@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+stripped_path="$(printf '%s' "${PATH-}" | tr ':' '\n' | awk -v w="$wrapper_dir" '$0!=w' | paste -sd: -)"
+real_rustup="$(PATH="$stripped_path" command -v rustup)"
+
+if [[ -z "$real_rustup" ]]; then
+  echo "rustup executable not found" >&2
+  exit 1
+fi
+
+# Prevent Solana's tooling from wiping or relinking the shared `solana` alias.
+if [[ "$#" -ge 3 && "$1" == "toolchain" && "$2" == "uninstall" && "$3" == "solana" ]]; then
+  echo "Skipping rustup toolchain uninstall solana (wrapper)"
+  exit 0
+fi
+
+if [[ "$#" -ge 3 && "$1" == "toolchain" && "$2" == "link" && "$3" == "solana" ]]; then
+  echo "Skipping rustup toolchain link solana (wrapper)"
+  exit 0
+fi
+
+exec "$real_rustup" "$@"

@@ -27,13 +27,30 @@ Key rules:
 ## Local development
 Prereqs: Rust + Anchor 0.30.x, Node 18+, yarn/ts-node.
 
-This repo includes a `cargo` wrapper to work around an Anchor IDL-build `RUSTFLAGS` issue in this workspace:
+This repo includes wrappers to keep the Anchor toolchain hitting the Solana SBF target without relinking. The platform-toolchain Rust/Cargo already bundles the `sbf-solana-solana` backend, so make sure the aliases land there before running Anchor:
 
 ```
 yarn install          # install JS deps (requires npm registry access)
-PATH="$(pwd)/scripts/cargo-wrapper:$PATH" anchor build  # builds the program + IDL
-PATH="$(pwd)/scripts/cargo-wrapper:$PATH" anchor test --provider.cluster localnet
+export SOLANA_BIN_DIR="$HOME/solana-v1.18.17/bin"
+export SBF_TARGET_DIR="$(pwd)/scripts/sbf-target"
+export PATH="$SBF_TARGET_DIR/bin:$(pwd)/scripts/rustup-wrapper:$(pwd)/scripts/cargo-wrapper:$SOLANA_BIN_DIR:$PATH"
+export RUST_TARGET_PATH="$SBF_TARGET_DIR"
+export RUSTUP_TOOLCHAIN=solana
+export CARGO_NET_OFFLINE=true
+anchor build          # builds the program + IDL
+anchor test --provider.cluster localnet
 ```
+
+`$SBF_TARGET_DIR` ships `sbf-solana-solana.json` (target spec that matches Solana's bundled rustc) and a small `rust-lld` wrapper that points at the Solana platform-tools `ld.lld` so the new toolchain can link the SBF binaries.
+
+If `rustc +solana --print target-list` still fails to list `sbf-solana-solana`, point the alias at the SDK/`platform-tools` Rust once:
+
+```
+export SOLANA_BIN_DIR="$HOME/solana-v1.18.17/bin"
+rustup toolchain link solana "$SOLANA_BIN_DIR/sdk/sbf/dependencies/platform-tools/rust"
+```
+
+After this linking step, `cargo +solana`/`anchor build` will use the same Rust 1.75 toolchain that already ships the SBF target.
 
 Tests cover init → deposit → heartbeat/claim, inactivity (no UserEpoch), whale cap, and withdraw after the shortened lock.
 

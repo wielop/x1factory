@@ -824,6 +824,7 @@ pub struct CreateStake<'info> {
         seeds = [VAULT_SEED],
         bump = config.bumps.vault_authority
     )]
+    /// CHECK: PDA authority used for vaults/staking positions
     pub vault_authority: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -865,6 +866,7 @@ pub struct ClaimStakeReward<'info> {
         seeds = [VAULT_SEED],
         bump = config.bumps.vault_authority
     )]
+    /// CHECK: PDA authority used only for vault transfers
     pub vault_authority: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -903,6 +905,7 @@ pub struct WithdrawStake<'info> {
         seeds = [VAULT_SEED],
         bump = config.bumps.vault_authority
     )]
+    /// CHECK: PDA authority used only for vault transfers
     pub vault_authority: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -1077,6 +1080,7 @@ pub struct AdminFundStakingXnt<'info> {
         seeds = [VAULT_SEED],
         bump = config.bumps.vault_authority
     )]
+    /// CHECK: PDA authority for vault operations
     pub vault_authority: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,

@@ -28,6 +28,7 @@ import { TransactionStatus } from "@/components/dashboard/TransactionStatus";
 import { DashboardProvider, BusyAction, MiningPlanOption } from "@/components/dashboard/DashboardContext";
 import { useToast } from "@/components/shared/ToastProvider";
 import { getProgram } from "@/lib/anchor";
+import type { DecodedConfig } from "@/lib/solana";
 import {
   deriveConfigPda,
   deriveStakingPositionPda,

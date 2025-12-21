@@ -157,7 +157,9 @@ export function decodeUserProfileAccount(data: Buffer): DecodedUserProfile {
 
 export function decodeStakingPositionAccount(data: Buffer): DecodedStakingPosition {
   // discriminator (8) + StakingPosition fields.
-  assertMinLen(data, 8 + 32 + 8 + 8 + 8 + 2 + 2 + 16 + 8 + 8 + 1, "StakingPosition");
+  const baseFieldsLen = 32 + 8 + 8 + 8 + 2 + 2 + 8 + 8 + 1;
+  const hasRewardDebt = data.length >= 8 + baseFieldsLen + 16;
+  assertMinLen(data, 8 + baseFieldsLen, "StakingPosition");
   let offset = 8;
   const owner = data.subarray(offset, offset + 32);
   offset += 32;
@@ -171,8 +173,10 @@ export function decodeStakingPositionAccount(data: Buffer): DecodedStakingPositi
   offset += 2;
   const xpBoostBps = data.readUInt16LE(offset);
   offset += 2;
-  const rewardDebt = readU128LE(data, offset);
-  offset += 16;
+  const rewardDebt = hasRewardDebt ? readU128LE(data, offset) : 0n;
+  if (hasRewardDebt) {
+    offset += 16;
+  }
   const lastClaimTs = Number(data.readBigInt64LE(offset));
   offset += 8;
   const stakeIndex = data.readBigUInt64LE(offset);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,36 @@ export function MiningActivityPanel() {
     estimatedRewardBase,
     currentEpoch,
   } = useDashboard();
+
+  const [tickNowTs, setTickNowTs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (nowTs == null) return;
+    setTickNowTs(nowTs);
+    const id = window.setInterval(() => {
+      setTickNowTs((prev) => (prev == null ? null : prev + 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [nowTs]);
+
+  const liveNextEpochSeconds = useMemo(() => {
+    if (!config || tickNowTs == null) return null;
+    const startTs = config.emissionStartTs.toNumber();
+    if (tickNowTs < startTs) {
+      return Math.max(0, startTs - tickNowTs);
+    }
+    const epoch = getCurrentEpochFrom(config, tickNowTs);
+    const epochStart = startTs + epoch * config.epochSeconds.toNumber();
+    const nextStart = epochStart + config.epochSeconds.toNumber();
+    return Math.max(0, nextStart - tickNowTs);
+  }, [config, tickNowTs]);
+
+  const accruedSinceClaimBase = useMemo(() => {
+    if (!config || estimatedRewardBase == null || liveNextEpochSeconds == null) return null;
+    const epochSeconds = Math.max(1, config.epochSeconds.toNumber());
+    const elapsed = Math.max(0, epochSeconds - liveNextEpochSeconds);
+    return (estimatedRewardBase * BigInt(elapsed)) / BigInt(epochSeconds);
+  }, [config, estimatedRewardBase, liveNextEpochSeconds]);
 
   const rewardForDurationBase = (durationDays: number) => {
     if (!config) return null;
@@ -249,7 +280,11 @@ export function MiningActivityPanel() {
               <div className="mt-2 text-xs text-zinc-400">
                 Next epoch in{" "}
                 <span className="font-mono text-zinc-200">
-                  {nextEpochCountdown ? formatDurationSeconds(nextEpochCountdown.seconds) : "—"}
+                  {liveNextEpochSeconds != null
+                    ? formatDurationSeconds(liveNextEpochSeconds)
+                    : nextEpochCountdown
+                      ? formatDurationSeconds(nextEpochCountdown.seconds)
+                      : "—"}
                 </span>
               </div>
               <div className="mt-2 text-xs text-zinc-400">
@@ -257,6 +292,14 @@ export function MiningActivityPanel() {
                 <span className="font-mono text-zinc-200">
                   {config && estimatedRewardBase != null
                     ? `${formatTokenAmount(estimatedRewardBase, config.mindDecimals, 4)} MIND`
+                    : "—"}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-zinc-400">
+                Accrued since claim{" "}
+                <span className="font-mono text-zinc-200">
+                  {config && accruedSinceClaimBase != null
+                    ? `${formatTokenAmount(accruedSinceClaimBase, config.mindDecimals, 4)} MIND`
                     : "—"}
                 </span>
               </div>

@@ -1559,6 +1559,22 @@
           {
             "name": "xp_boost_diamond_bps",
             "type": "u16"
+          },
+          {
+            "name": "update_mind_rewards",
+            "type": "bool"
+          },
+          {
+            "name": "mind_reward_7d",
+            "type": "u64"
+          },
+          {
+            "name": "mind_reward_14d",
+            "type": "u64"
+          },
+          {
+            "name": "mind_reward_28d",
+            "type": "u64"
           }
         ]
       }
@@ -1735,6 +1751,18 @@
                 "name": "ConfigBumps"
               }
             }
+          },
+          {
+            "name": "mind_reward_7d",
+            "type": "u64"
+          },
+          {
+            "name": "mind_reward_14d",
+            "type": "u64"
+          },
+          {
+            "name": "mind_reward_28d",
+            "type": "u64"
           }
         ]
       }
@@ -1935,6 +1963,18 @@
           {
             "name": "xp_boost_diamond_bps",
             "type": "u16"
+          },
+          {
+            "name": "mind_reward_7d",
+            "type": "u64"
+          },
+          {
+            "name": "mind_reward_14d",
+            "type": "u64"
+          },
+          {
+            "name": "mind_reward_28d",
+            "type": "u64"
           }
         ]
       }

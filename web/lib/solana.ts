@@ -182,6 +182,9 @@ export type DecodedConfig = {
   xpBoostDiamondBps: number;
   totalStakedMind: BN;
   totalXp: BN;
+  mindReward7d: BN;
+  mindReward14d: BN;
+  mindReward28d: BN;
   bumps: { config: number; vaultAuthority: number };
 };
 
@@ -293,6 +296,10 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
   const xpBoostDiamondBps = readU16();
   const totalStakedMind = readU64();
   const totalXp = readU128();
+  const canReadRewards = offset + 24 <= data.length;
+  const mindReward7d = canReadRewards ? readU64() : new BN(0);
+  const mindReward14d = canReadRewards ? readU64() : new BN(0);
+  const mindReward28d = canReadRewards ? readU64() : new BN(0);
   // bumps: 2x u8
   const bumpConfig = readU8();
   const bumpVault = readU8();
@@ -331,6 +338,9 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
     xpBoostDiamondBps,
     totalStakedMind,
     totalXp,
+    mindReward7d,
+    mindReward14d,
+    mindReward28d,
     bumps: { config: bumpConfig, vaultAuthority: bumpVault },
   };
 }
@@ -436,6 +446,9 @@ function decodeConfigLegacy(data: Buffer): DecodedConfig {
     xpBoostDiamondBps: 0,
     totalStakedMind: zero,
     totalXp: zero,
+    mindReward7d: zero,
+    mindReward14d: zero,
+    mindReward28d: zero,
     bumps: { config: bumpConfig, vaultAuthority: bumpVault },
   };
 }

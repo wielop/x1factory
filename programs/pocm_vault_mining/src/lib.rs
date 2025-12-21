@@ -96,6 +96,9 @@ pub mod pocm_vault_mining {
         config.xp_boost_diamond_bps = params.xp_boost_diamond_bps;
         config.total_staked_mind = 0;
         config.total_xp = 0;
+        config.mind_reward_7d = params.mind_reward_7d;
+        config.mind_reward_14d = params.mind_reward_14d;
+        config.mind_reward_28d = params.mind_reward_28d;
         config.bumps = bumps;
 
         emit!(InitializeEvent {
@@ -435,8 +438,7 @@ pub mod pocm_vault_mining {
             if claimable_epochs == 0 {
                 continue;
             }
-            let total_reward_for_position =
-                reward_for_duration(position.duration_days, config.mind_decimals)?;
+            let total_reward_for_position = reward_for_duration(position.duration_days, config)?;
             let reward_per_epoch = total_reward_for_position
                 .checked_div(position.duration_days as u128)
                 .ok_or(ErrorCode::MathOverflow)?;
@@ -586,6 +588,11 @@ pub mod pocm_vault_mining {
             config.xp_boost_gold_bps = params.xp_boost_gold_bps;
             config.xp_boost_diamond_bps = params.xp_boost_diamond_bps;
         }
+        if params.update_mind_rewards {
+            config.mind_reward_7d = params.mind_reward_7d;
+            config.mind_reward_14d = params.mind_reward_14d;
+            config.mind_reward_28d = params.mind_reward_28d;
+        }
 
         emit!(ConfigUpdated {
             admin: config.admin,
@@ -679,6 +686,9 @@ pub struct InitializeParams {
     pub xp_boost_silver_bps: u16,
     pub xp_boost_gold_bps: u16,
     pub xp_boost_diamond_bps: u16,
+    pub mind_reward_7d: u64,
+    pub mind_reward_14d: u64,
+    pub mind_reward_28d: u64,
 }
 
 #[derive(Accounts)]
@@ -1015,9 +1025,13 @@ pub struct AdminUpdateConfig<'info> {
         mut,
         seeds = [CONFIG_SEED],
         bump = config.bumps.config,
-        has_one = admin
+        has_one = admin,
+        realloc = 8 + Config::INIT_SPACE,
+        realloc::payer = admin,
+        realloc::zero = false
     )]
     pub config: Box<Account<'info, Config>>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -1072,6 +1086,10 @@ pub struct AdminUpdateParams {
     pub xp_boost_silver_bps: u16,
     pub xp_boost_gold_bps: u16,
     pub xp_boost_diamond_bps: u16,
+    pub update_mind_rewards: bool,
+    pub mind_reward_7d: u64,
+    pub mind_reward_14d: u64,
+    pub mind_reward_28d: u64,
 }
 
 #[account]
@@ -1110,6 +1128,9 @@ pub struct Config {
     pub xp_boost_diamond_bps: u16,
     pub total_staked_mind: u64,
     pub total_xp: u128,
+    pub mind_reward_7d: u64,
+    pub mind_reward_14d: u64,
+    pub mind_reward_28d: u64,
     pub bumps: ConfigBumps,
 }
 
@@ -1287,20 +1308,15 @@ fn xp_for_duration(duration_days: u16, cfg: &Config) -> Result<u64> {
     }
 }
 
-fn reward_for_duration(duration_days: u16, mind_decimals: u8) -> Result<u128> {
-    let base = ten_pow(mind_decimals)? as u128;
-    match duration_days {
-        7 => Ok(base
-            .checked_mul(100)
-            .ok_or(ErrorCode::MathOverflow)?),
-        14 => Ok(base
-            .checked_mul(225)
-            .ok_or(ErrorCode::MathOverflow)?),
-        28 | 30 => Ok(base
-            .checked_mul(500)
-            .ok_or(ErrorCode::MathOverflow)?),
-        _ => err!(ErrorCode::InvalidDuration),
-    }
+fn reward_for_duration(duration_days: u16, cfg: &Config) -> Result<u128> {
+    let reward = match duration_days {
+        7 => cfg.mind_reward_7d,
+        14 => cfg.mind_reward_14d,
+        28 | 30 => cfg.mind_reward_28d,
+        _ => return err!(ErrorCode::InvalidDuration),
+    };
+    require!(reward > 0, ErrorCode::InvalidAmount);
+    Ok(reward as u128)
 }
 
 fn tier_from_xp(xp: u64, cfg: &Config) -> (u8, u16) {

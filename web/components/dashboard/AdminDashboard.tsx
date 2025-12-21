@@ -54,6 +54,10 @@ export function AdminDashboard() {
   const [xpBoostSilverBps, setXpBoostSilverBps] = useState<string>("");
   const [xpBoostGoldBps, setXpBoostGoldBps] = useState<string>("");
   const [xpBoostDiamondBps, setXpBoostDiamondBps] = useState<string>("");
+  const [updateMindRewards, setUpdateMindRewards] = useState(false);
+  const [mindReward7d, setMindReward7d] = useState<string>("");
+  const [mindReward14d, setMindReward14d] = useState<string>("");
+  const [mindReward28d, setMindReward28d] = useState<string>("");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,6 +95,9 @@ export function AdminDashboard() {
       setXpBoostSilverBps(String(cfg.xpBoostSilverBps));
       setXpBoostGoldBps(String(cfg.xpBoostGoldBps));
       setXpBoostDiamondBps(String(cfg.xpBoostDiamondBps));
+      setMindReward7d(cfg.mindReward7d.toString());
+      setMindReward14d(cfg.mindReward14d.toString());
+      setMindReward28d(cfg.mindReward28d.toString());
 
       try {
         const bal = await connection.getTokenAccountBalance(cfg.vaultXntAta, "confirmed");
@@ -155,6 +162,13 @@ export function AdminDashboard() {
           { k: "xp_boost_diamond_bps", before: String(config.xpBoostDiamondBps), after: xpBoostDiamondBps },
         ]
       : [];
+    const mindDiffs = updateMindRewards
+      ? [
+          { k: "mind_reward_7d", before: config.mindReward7d.toString(), after: mindReward7d },
+          { k: "mind_reward_14d", before: config.mindReward14d.toString(), after: mindReward14d },
+          { k: "mind_reward_28d", before: config.mindReward28d.toString(), after: mindReward28d },
+        ]
+      : [];
     return [
       { k: "th1", before: config.th1.toString(), after: th1 },
       { k: "th2", before: config.th2.toString(), after: th2 },
@@ -165,6 +179,7 @@ export function AdminDashboard() {
         after: updateEpochSeconds ? epochSeconds : "(unchanged)",
       },
       ...xpDiffs,
+      ...mindDiffs,
     ];
   }, [
     config,
@@ -183,6 +198,10 @@ export function AdminDashboard() {
     xpBoostSilverBps,
     xpBoostGoldBps,
     xpBoostDiamondBps,
+    updateMindRewards,
+    mindReward7d,
+    mindReward14d,
+    mindReward28d,
   ]);
 
   const signAndSend = useCallback(
@@ -226,19 +245,24 @@ export function AdminDashboard() {
           updateEpochSeconds,
           epochSeconds: new BN(epochSeconds),
           updateXpConfig,
-        xpPer7D: new BN(xpPer7d || "0"),
-        xpPer14D: new BN(xpPer14d || "0"),
-        xpPer30D: new BN(xpPer30d || "0"),
+          xpPer7D: new BN(xpPer7d || "0"),
+          xpPer14D: new BN(xpPer14d || "0"),
+          xpPer30D: new BN(xpPer30d || "0"),
           xpTierSilver: new BN(xpTierSilver || "0"),
           xpTierGold: new BN(xpTierGold || "0"),
           xpTierDiamond: new BN(xpTierDiamond || "0"),
           xpBoostSilverBps: Number(xpBoostSilverBps || "0"),
           xpBoostGoldBps: Number(xpBoostGoldBps || "0"),
           xpBoostDiamondBps: Number(xpBoostDiamondBps || "0"),
+          updateMindRewards,
+          mindReward7D: new BN(mindReward7d || "0"),
+          mindReward14D: new BN(mindReward14d || "0"),
+          mindReward28D: new BN(mindReward28d || "0"),
         })
         .accounts({
           admin: publicKey,
           config: deriveConfigPda(),
+          systemProgram: SystemProgram.programId,
         })
         .instruction();
 
@@ -470,6 +494,18 @@ export function AdminDashboard() {
                   </div>
                   <div className="mt-1 text-xs text-zinc-500">XP minted: {config.totalXp.toString()}</div>
                 </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-zinc-400">MIND rewards per plan</div>
+                  <div className="mt-1 text-xs text-zinc-300">
+                    7d: {formatTokenAmount(BigInt(config.mindReward7d.toString()), config.mindDecimals, 2)} MIND
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-300">
+                    14d: {formatTokenAmount(BigInt(config.mindReward14d.toString()), config.mindDecimals, 2)} MIND
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-300">
+                    28d: {formatTokenAmount(BigInt(config.mindReward28d.toString()), config.mindDecimals, 2)} MIND
+                  </div>
+                </div>
               </div>
             )}
           </Card>
@@ -571,6 +607,37 @@ export function AdminDashboard() {
                 </div>
                 <div className="mt-2 text-xs text-zinc-500">
                   XP directly affects staking boosts. Enable the toggle to push new parameters on-chain.
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-white/5 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm font-semibold">MIND rewards (per miner)</div>
+                  <label className="flex items-center gap-2 text-xs text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={updateMindRewards}
+                      onChange={(e) => setUpdateMindRewards(e.target.checked)}
+                    />
+                    update rewards
+                  </label>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400" title="Total MIND minted for a 7 day miner">MIND per 7d</div>
+                    <Input value={mindReward7d} onChange={setMindReward7d} placeholder="u64" mono disabled={!updateMindRewards} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400" title="Total MIND minted for a 14 day miner">MIND per 14d</div>
+                    <Input value={mindReward14d} onChange={setMindReward14d} placeholder="u64" mono disabled={!updateMindRewards} />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-xs text-zinc-400" title="Total MIND minted for a 28 day miner">MIND per 28d</div>
+                    <Input value={mindReward28d} onChange={setMindReward28d} placeholder="u64" mono disabled={!updateMindRewards} />
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">
+                  Rewards are total MIND minted across the full plan duration. These values affect mining claims.
                 </div>
               </div>
 

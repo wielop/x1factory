@@ -23,10 +23,9 @@ export function MiningActivityPanel() {
 
   const rewardForDurationBase = (durationDays: number) => {
     if (!config) return null;
-    const base = 10n ** BigInt(config.mindDecimals);
-    if (durationDays === 7) return base * 100n;
-    if (durationDays === 14) return base * 225n;
-    if (durationDays === 28 || durationDays === 30) return base * 500n;
+    if (durationDays === 7) return BigInt(config.mindReward7d.toString());
+    if (durationDays === 14) return BigInt(config.mindReward14d.toString());
+    if (durationDays === 28 || durationDays === 30) return BigInt(config.mindReward28d.toString());
     return null;
   };
 

@@ -34,6 +34,9 @@ const DEFAULT_XP_TIER_DIAMOND = 60_000;
 const DEFAULT_XP_BOOST_SILVER = 50;
 const DEFAULT_XP_BOOST_GOLD = 150;
 const DEFAULT_XP_BOOST_DIAMOND = 300;
+const DEFAULT_MIND_REWARD_7D = 100;
+const DEFAULT_MIND_REWARD_14D = 225;
+const DEFAULT_MIND_REWARD_28D = 500;
 
 const loadOrCreateKeypair = (path: string) => {
   if (fs.existsSync(path)) {
@@ -94,6 +97,16 @@ const main = async () => {
   const xpBoostSilverBps = Number(process.env.XP_BOOST_SILVER_BPS ?? DEFAULT_XP_BOOST_SILVER);
   const xpBoostGoldBps = Number(process.env.XP_BOOST_GOLD_BPS ?? DEFAULT_XP_BOOST_GOLD);
   const xpBoostDiamondBps = Number(process.env.XP_BOOST_DIAMOND_BPS ?? DEFAULT_XP_BOOST_DIAMOND);
+  const rewardBaseMul = new BN(10).pow(new BN(mindDecimals));
+  const mindReward7d = process.env.MIND_REWARD_7D
+    ? new BN(process.env.MIND_REWARD_7D)
+    : new BN(DEFAULT_MIND_REWARD_7D).mul(rewardBaseMul);
+  const mindReward14d = process.env.MIND_REWARD_14D
+    ? new BN(process.env.MIND_REWARD_14D)
+    : new BN(DEFAULT_MIND_REWARD_14D).mul(rewardBaseMul);
+  const mindReward28d = process.env.MIND_REWARD_28D
+    ? new BN(process.env.MIND_REWARD_28D)
+    : new BN(DEFAULT_MIND_REWARD_28D).mul(rewardBaseMul);
 
   const config = deriveConfigPda();
   const vaultAuthority = deriveVaultPda();
@@ -185,6 +198,9 @@ const main = async () => {
       xpBoostSilverBps,
       xpBoostGoldBps,
       xpBoostDiamondBps,
+      mindReward7D: mindReward7d,
+      mindReward14D: mindReward14d,
+      mindReward28D: mindReward28d,
     })
     .accounts({
       payer: wallet.publicKey,

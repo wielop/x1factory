@@ -65,15 +65,20 @@ function formatBps(bps: number) {
   return `${percent % 1 === 0 ? percent.toFixed(0) : percent.toFixed(2)}%`;
 }
 
-function rewardForDurationBase(durationDays: 7 | 14 | 28 | 30, mindDecimals: number) {
-  const base = 10n ** BigInt(mindDecimals);
-  if (durationDays === 7) return base * 100n;
-  if (durationDays === 14) return base * 225n;
-  return base * 500n;
+function rewardForDurationBase(
+  durationDays: 7 | 14 | 28 | 30,
+  cfg: Pick<DecodedConfig, "mindReward7d" | "mindReward14d" | "mindReward28d">
+) {
+  if (durationDays === 7) return BigInt(cfg.mindReward7d.toString());
+  if (durationDays === 14) return BigInt(cfg.mindReward14d.toString());
+  return BigInt(cfg.mindReward28d.toString());
 }
 
-function rewardPerEpochBase(durationDays: 7 | 14 | 28 | 30, mindDecimals: number) {
-  return rewardForDurationBase(durationDays, mindDecimals) / BigInt(durationDays);
+function rewardPerEpochBase(
+  durationDays: 7 | 14 | 28 | 30,
+  cfg: Pick<DecodedConfig, "mindReward7d" | "mindReward14d" | "mindReward28d">
+) {
+  return rewardForDurationBase(durationDays, cfg) / BigInt(durationDays);
 }
 
 const XP_TIER_LABELS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
@@ -700,7 +705,7 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
       ) {
         return acc;
       }
-      return acc + rewardPerEpochBase(position.data.durationDays, config.mindDecimals);
+      return acc + rewardPerEpochBase(position.data.durationDays, config);
     }, 0n);
     return total > 0n ? total : null;
   }, [activePositions, config]);

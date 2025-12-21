@@ -379,6 +379,7 @@ export function PublicDashboard() {
         const ownerXntAta = getAssociatedTokenAddressSync(xntMint, publicKey);
         const vaultAuthority = deriveVaultPda();
         const vaultXntAta = getAssociatedTokenAddressSync(xntMint, vaultAuthority, true);
+        const stakingVaultXntAta = config.stakingVaultXntAta;
 
         tx.add(
           createAssociatedTokenAccountIdempotentInstruction(
@@ -419,10 +420,12 @@ export function PublicDashboard() {
           .accounts({
             owner: publicKey,
             config: deriveConfigPda(),
+            userProfile: profilePda,
             position: positionPda,
             vaultAuthority,
             xntMint,
             vaultXntAta,
+            stakingVaultXntAta,
             ownerXntAta,
             tokenProgram: TOKEN_PROGRAM_ID,
           })

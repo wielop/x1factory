@@ -60,8 +60,36 @@ export function MiningActivityPanel() {
     return total / BigInt(durationDays);
   };
 
+  const claimableForPosition = (
+    durationDays: number,
+    lockStartTs: number,
+    lockEndTs: number,
+    claimedAmount: bigint
+  ) => {
+    if (!config) return 0n;
+    const now = tickNowTs ?? nowTs;
+    if (now == null || now <= lockStartTs) return 0n;
+    const totalReward = rewardForDurationBase(durationDays);
+    if (totalReward == null) return 0n;
+    const durationSeconds = Math.max(0, lockEndTs - lockStartTs);
+    if (durationSeconds <= 0) return 0n;
+    const elapsedSeconds = Math.max(0, Math.min(now, lockEndTs) - lockStartTs);
+    if (elapsedSeconds <= 0) return 0n;
+    const accrued =
+      (totalReward * BigInt(elapsedSeconds)) / BigInt(durationSeconds);
+    return accrued > claimedAmount ? accrued - claimedAmount : 0n;
+  };
+
   const claimablePositions = positions.filter((pos) => pos.data.lockedAmount > 0n);
-  const claimableTotalBase = claimablePositions.reduce((acc, pos) => acc + pos.data.accruedOwed, 0n);
+  const claimableTotalBase = claimablePositions.reduce((acc, pos) => {
+    const claimable = claimableForPosition(
+      pos.data.durationDays,
+      pos.data.lockStartTs,
+      pos.data.lockEndTs,
+      pos.data.accruedOwed
+    );
+    return acc + claimable;
+  }, 0n);
 
   const accruedSinceClaimBase = useMemo(() => claimableTotalBase, [claimableTotalBase]);
 

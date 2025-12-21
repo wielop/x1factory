@@ -121,6 +121,7 @@ export function PublicDashboard() {
   const [mindBalanceUi, setMindBalanceUi] = useState<string | null>(null);
   const [mindBalanceBase, setMindBalanceBase] = useState<bigint>(0n);
   const [stakingVaultXntBalanceUi, setStakingVaultXntBalanceUi] = useState<string | null>(null);
+  const [stakingVaultXntBalanceBase, setStakingVaultXntBalanceBase] = useState<bigint | null>(null);
   const [stakingVaultMindBalanceUi, setStakingVaultMindBalanceUi] = useState<string | null>(null);
 
   const [epochState, setEpochState] = useState<ReturnType<typeof decodeEpochStateAccount> | null>(null);
@@ -181,10 +182,11 @@ export function PublicDashboard() {
 
       try {
         const vaultBalance = await connection.getTokenAccountBalance(cfg.stakingVaultXntAta, "confirmed");
-        setStakingVaultXntBalanceUi(
-          formatTokenAmount(BigInt(vaultBalance.value.amount || "0"), cfg.xntDecimals, 6)
-        );
+        const base = BigInt(vaultBalance.value.amount || "0");
+        setStakingVaultXntBalanceBase(base);
+        setStakingVaultXntBalanceUi(formatTokenAmount(base, cfg.xntDecimals, 6));
       } catch {
+        setStakingVaultXntBalanceBase(null);
         setStakingVaultXntBalanceUi(null);
       }
 
@@ -203,6 +205,7 @@ export function PublicDashboard() {
         setXntBalanceUi(null);
         setMindBalanceUi(null);
         setMindBalanceBase(0n);
+        setStakingVaultXntBalanceBase(null);
         setEpochState(null);
         setUserEpoch(null);
         setUserProfile(null);
@@ -282,6 +285,33 @@ export function PublicDashboard() {
       setLoading(false);
     }
   }, [connection, publicKey]);
+
+  const estimateStakeRewardBase = useCallback(
+    (amountBase: bigint, boostBps: number, totalStakedBase: bigint, vaultBase: bigint) => {
+      if (amountBase <= 0n || totalStakedBase <= 0n || vaultBase <= 0n) return null;
+      const rewardBase = (vaultBase * amountBase) / totalStakedBase;
+      const reward = (rewardBase * BigInt(10_000 + boostBps)) / 10_000n;
+      return reward;
+    },
+    []
+  );
+
+  const stakeEstimateBase = useMemo(() => {
+    if (!config || !userProfile || stakingVaultXntBalanceBase == null) return null;
+    try {
+      const amountBase = parseUiAmountToBase(stakeAmountUi, config.mindDecimals);
+      if (amountBase <= 0n) return null;
+      const totalStaked = BigInt(config.totalStakedMind.toString()) + amountBase;
+      return estimateStakeRewardBase(
+        amountBase,
+        userProfile.xpBoostBps,
+        totalStaked,
+        stakingVaultXntBalanceBase
+      );
+    } catch {
+      return null;
+    }
+  }, [config, estimateStakeRewardBase, stakeAmountUi, stakingVaultXntBalanceBase, userProfile]);
 
   useEffect(() => {
     void refresh();
@@ -1088,8 +1118,19 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
                     {busy === "stake" ? "Submitting…" : "Stake MIND"}
                   </Button>
                 </div>
+                <div className="mt-2 text-xs text-zinc-400">
+                  Est. weekly reward:{" "}
+                  <span className="font-mono text-zinc-200">
+                    {config && stakeEstimateBase != null
+                      ? `${formatTokenAmount(stakeEstimateBase, config.xntDecimals, 6)} XNT`
+                      : "-"}
+                  </span>
+                </div>
                 <div className="mt-2 text-xs text-zinc-500">
                   Claim once every 7 days. Withdraw after the lock expires.
+                </div>
+                <div className="mt-1 text-[11px] text-zinc-500">
+                  Estimate uses current vault XNT and total staked MIND. Actual reward depends on pool at claim time.
                 </div>
               </div>
             </Card>
@@ -1262,6 +1303,16 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
                     const lockEndTs = stake.data.lockEndTs;
                     const startTs = stake.data.startTs;
                     const amount = stake.data.amount;
+                    const totalStakedBase = config ? BigInt(config.totalStakedMind.toString()) : 0n;
+                    const rewardEstimateBase =
+                      config && stakingVaultXntBalanceBase != null
+                        ? estimateStakeRewardBase(
+                            amount,
+                            stake.data.xpBoostBps,
+                            totalStakedBase,
+                            stakingVaultXntBalanceBase
+                          )
+                        : null;
                     const lockTotal = Math.max(1, lockEndTs - startTs);
                     const elapsed = nowTs != null ? Math.max(0, Math.min(nowTs - startTs, lockTotal)) : 0;
                     const progress = Math.min(100, Math.floor((elapsed / lockTotal) * 100));
@@ -1302,6 +1353,14 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
                         </div>
                         <div className="mt-2 text-xs text-zinc-400">
                           XP boost: <span className="font-mono text-zinc-200">+{formatBps(stake.data.xpBoostBps)}</span>
+                        </div>
+                        <div className="mt-2 text-xs text-zinc-400">
+                          Est. weekly reward:{" "}
+                          <span className="font-mono text-zinc-200">
+                            {config && rewardEstimateBase != null
+                              ? `${formatTokenAmount(rewardEstimateBase, config.xntDecimals, 6)} XNT`
+                              : "-"}
+                          </span>
                         </div>
                         <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
                           <div

@@ -3,6 +3,7 @@ import { BN } from "@coral-xyz/anchor";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  createAccount,
   createAssociatedTokenAccountIdempotent,
   createMint,
   getAssociatedTokenAddressSync,
@@ -103,13 +104,6 @@ const main = async () => {
     TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
-  const stakingVaultXntAta = getAssociatedTokenAddressSync(
-    xntMint,
-    vaultAuthority,
-    true,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  );
   const stakingVaultMindAta = getAssociatedTokenAddressSync(
     mindMint.publicKey,
     vaultAuthority,
@@ -122,7 +116,6 @@ const main = async () => {
   console.log("XNT mint:", xntMint.toBase58());
   console.log("MIND mint:", mindMint.publicKey.toBase58());
   console.log("Vault ATA:", vaultXntAta.toBase58());
-  console.log("Staking vault XNT ATA:", stakingVaultXntAta.toBase58());
   console.log("Staking vault MIND ATA:", stakingVaultMindAta.toBase58());
 
   // Ensure MIND mint exists and is owned by the vault PDA (program mint authority).
@@ -152,6 +145,14 @@ const main = async () => {
     ASSOCIATED_TOKEN_PROGRAM_ID,
     true
   );
+  // Create a dedicated staking vault XNT token account (non-ATA).
+  const stakingVaultXntAta = await createAccount(
+    provider.connection,
+    wallet.payer,
+    xntMint,
+    vaultAuthority
+  );
+  console.log("Staking vault XNT account:", stakingVaultXntAta.toBase58());
   // Ensure the vault PDA has an ATA for MIND (staking vault).
   await createAssociatedTokenAccountIdempotent(
     provider.connection,

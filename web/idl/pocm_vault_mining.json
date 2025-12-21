@@ -59,6 +59,68 @@
       ]
     },
     {
+      "name": "admin_update_staking_vault",
+      "discriminator": [
+        208,
+        68,
+        149,
+        101,
+        96,
+        226,
+        78,
+        236
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "staking_vault_xnt_ata"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "admin_withdraw_treasury_xnt",
       "discriminator": [
         173,

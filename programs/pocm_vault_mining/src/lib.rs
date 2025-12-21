@@ -648,6 +648,14 @@ pub mod pocm_vault_mining {
         });
         Ok(())
     }
+
+    pub fn admin_update_staking_vault(
+        ctx: Context<AdminUpdateStakingVault>,
+    ) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        config.staking_vault_xnt_ata = ctx.accounts.staking_vault_xnt_ata.key();
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -1097,6 +1105,29 @@ pub struct AdminUpdateConfig<'info> {
         has_one = admin
     )]
     pub config: Account<'info, Config>,
+}
+
+#[derive(Accounts)]
+pub struct AdminUpdateStakingVault<'info> {
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config,
+        has_one = admin
+    )]
+    pub config: Account<'info, Config>,
+    #[account(
+        seeds = [VAULT_SEED],
+        bump = config.bumps.vault_authority
+    )]
+    /// CHECK: PDA derived from VAULT_SEED/bump used as the vault authority
+    pub vault_authority: UncheckedAccount<'info>,
+    #[account(
+        constraint = staking_vault_xnt_ata.owner == vault_authority.key(),
+        constraint = staking_vault_xnt_ata.mint == config.xnt_mint
+    )]
+    pub staking_vault_xnt_ata: Account<'info, TokenAccount>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]

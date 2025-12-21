@@ -205,6 +205,9 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
   if (data.length < 8) {
     throw new Error(`Config account too small: ${data.length} bytes`);
   }
+  if (data.length === 233) {
+    return decodeConfigLegacy(data);
+  }
   let offset = 8;
   const ensure = (size: number, label: string) => {
     if (offset + size > data.length) {
@@ -328,6 +331,111 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
     xpBoostDiamondBps,
     totalStakedMind,
     totalXp,
+    bumps: { config: bumpConfig, vaultAuthority: bumpVault },
+  };
+}
+
+function decodeConfigLegacy(data: Buffer): DecodedConfig {
+  // Legacy layout (233 bytes total). No staking vault + XP fields.
+  let offset = 8;
+  const ensure = (size: number, label: string) => {
+    if (offset + size > data.length) {
+      throw new Error(
+        `Config legacy layout mismatch: need ${offset + size} bytes for ${label}, got ${data.length}.`
+      );
+    }
+  };
+  const readPubkey = () => {
+    ensure(32, "pubkey");
+    const pk = new PublicKey(data.subarray(offset, offset + 32));
+    offset += 32;
+    return pk;
+  };
+  const readU8 = () => {
+    ensure(1, "u8");
+    return data.readUInt8(offset++);
+  };
+  const readBool = () => {
+    ensure(1, "bool");
+    return data.readUInt8(offset++) !== 0;
+  };
+  const readU16 = () => {
+    ensure(2, "u16");
+    const v = data.readUInt16LE(offset);
+    offset += 2;
+    return v;
+  };
+  const readU64 = () => {
+    ensure(8, "u64");
+    const v = data.readBigUInt64LE(offset);
+    offset += 8;
+    return new BN(v.toString());
+  };
+  const readI64 = () => {
+    ensure(8, "i64");
+    const v = data.readBigInt64LE(offset);
+    offset += 8;
+    return new BN(v.toString());
+  };
+
+  const admin = readPubkey();
+  const xntMint = readPubkey();
+  const mindMint = readPubkey();
+  const vaultXntAta = readPubkey();
+  const mindDecimals = readU8();
+  const xntDecimals = readU8();
+  const dailyEmissionInitial = readU64();
+  const dailyEmissionCurrent = readU64();
+  const epochSeconds = readU64();
+  const softHalvingPeriodDays = readU64();
+  const softHalvingBpsDrop = readU16();
+  const emissionStartTs = readI64();
+  const lastEpochTs = readI64();
+  const minedTotal = readU64();
+  const minedCap = readU64();
+  const totalSupplyMind = readU64();
+  const mpCapBpsPerWallet = readU16();
+  const th1 = readU64();
+  const th2 = readU64();
+  const allowEpochSecondsEdit = readBool();
+  const bumpConfig = readU8();
+  const bumpVault = readU8();
+
+  const zero = new BN(0);
+  return {
+    admin,
+    xntMint,
+    mindMint,
+    vaultXntAta,
+    stakingVaultXntAta: vaultXntAta,
+    mindDecimals,
+    xntDecimals,
+    dailyEmissionInitial,
+    dailyEmissionCurrent,
+    epochSeconds,
+    softHalvingPeriodDays,
+    softHalvingBpsDrop,
+    emissionStartTs,
+    lastEpochTs,
+    minedTotal,
+    minedCap,
+    totalSupplyMind,
+    mpCapBpsPerWallet,
+    th1,
+    th2,
+    allowEpochSecondsEdit,
+    stakingVaultMindAta: vaultXntAta,
+    xpPer7d: zero,
+    xpPer14d: zero,
+    xpPer30d: zero,
+    xpTierSilver: zero,
+    xpTierGold: zero,
+    xpTierDiamond: zero,
+    xpBoostSilverBps: 0,
+    xpBoostGoldBps: 0,
+    xpBoostDiamondBps: 0,
+    totalStakedMind: zero,
+    totalXp: zero,
     bumps: { config: bumpConfig, vaultAuthority: bumpVault },
   };
 }

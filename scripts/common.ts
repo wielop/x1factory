@@ -8,14 +8,19 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const idl = require("../target/idl/pocm_vault_mining.json");
+const idl = require("../web/idl/pocm_vault_mining.json");
 
-export const PROGRAM_ID = new PublicKey(
-  process.env.PROGRAM_ID ?? idl.address
-);
+const programAddress =
+  process.env.PROGRAM_ID ?? idl.address ?? idl.metadata?.address;
+if (!programAddress) {
+  throw new Error("PROGRAM_ID is unknown (set via .env or IDL metadata).");
+}
+
+export const PROGRAM_ID = new PublicKey(programAddress);
 
 const idlForScripts = {
   ...idl,
+  address: programAddress,
   // The generated JSON IDL in this repo does not include account sizes/types in
   // `idl.accounts`, which breaks Anchor's Account namespace construction.
   // Scripts decode on-chain accounts manually where needed.
@@ -53,7 +58,7 @@ export const getProgram = () => {
 };
 
 export const deriveConfigPda = () =>
-  PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID)[0];
+  PublicKey.findProgramAddressSync([Buffer.from("config_v2")], PROGRAM_ID)[0];
 
 export const deriveVaultPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from("vault")], PROGRAM_ID)[0];

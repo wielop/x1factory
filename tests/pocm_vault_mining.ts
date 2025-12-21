@@ -39,7 +39,7 @@ describe("pocm_vault_mining", () => {
   const SCALE = new BN(10).pow(new BN(XNT_DECIMALS));
 
   const [configPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("config")],
+    [Buffer.from("config_v2")],
     program.programId
   );
   const [vaultAuthority] = PublicKey.findProgramAddressSync(

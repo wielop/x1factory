@@ -111,7 +111,7 @@ export async function checkRpcHealth(url = getRpcUrl()): Promise<HealthResult> {
 }
 
 export const deriveConfigPda = () =>
-  PublicKey.findProgramAddressSync([Buffer.from("config")], getProgramId())[0];
+  PublicKey.findProgramAddressSync([Buffer.from("config_v2")], getProgramId())[0];
 
 export const deriveVaultPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from("vault")], getProgramId())[0];

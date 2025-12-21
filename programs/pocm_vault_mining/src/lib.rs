@@ -7,7 +7,7 @@ const STAKING_POSITION_SEED: &[u8] = b"stake";
 
 declare_id!("2oJ68QPvNqvdegxPczqGYz7bmTyBSW9D6ZYs4w1HSpL9");
 
-const CONFIG_SEED: &[u8] = b"config";
+const CONFIG_SEED: &[u8] = b"config_v2";
 const VAULT_SEED: &[u8] = b"vault";
 const POSITION_SEED: &[u8] = b"position";
 const PROFILE_SEED: &[u8] = b"profile";

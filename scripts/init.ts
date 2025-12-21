@@ -4,12 +4,12 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAccount,
-  createAssociatedTokenAccountIdempotent,
+  createAssociatedTokenAccountIdempotentInstructionWithDerivation,
   createMint,
   getAssociatedTokenAddressSync,
   getMint,
 } from "@solana/spl-token";
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
 import fs from "fs";
 import dotenv from "dotenv";
 import {
@@ -58,6 +58,29 @@ const main = async () => {
   }
   const xntMint = new PublicKey(xntMintStr);
   const xntMintAccount = await getMint(provider.connection, xntMint);
+  const ensureAta = async (mint: PublicKey, owner: PublicKey) => {
+    const ata = getAssociatedTokenAddressSync(
+      mint,
+      owner,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const existing = await provider.connection.getAccountInfo(ata);
+    if (existing) return ata;
+    const tx = new Transaction().add(
+      createAssociatedTokenAccountIdempotentInstructionWithDerivation(
+        wallet.publicKey,
+        owner,
+        mint,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    );
+    await sendAndConfirmTransaction(provider.connection, tx, [wallet.payer]);
+    return ata;
+  };
 
   const mindMintPath =
     process.env.MIND_MINT_KEYPAIR ??
@@ -117,7 +140,7 @@ const main = async () => {
     TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
-  const stakingVaultMindAta = getAssociatedTokenAddressSync(
+  let stakingVaultMindAta = getAssociatedTokenAddressSync(
     mindMint.publicKey,
     vaultAuthority,
     true,
@@ -148,35 +171,20 @@ const main = async () => {
   }
 
   // Ensure the vault PDA has an ATA for XNT (wSOL).
-  await createAssociatedTokenAccountIdempotent(
-    provider.connection,
-    wallet.payer,
-    xntMint,
-    vaultAuthority,
-    undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    true
-  );
+  await ensureAta(xntMint, vaultAuthority);
   // Create a dedicated staking vault XNT token account (non-ATA).
+  const stakingVaultXntKeypair = Keypair.generate();
   const stakingVaultXntAta = await createAccount(
     provider.connection,
     wallet.payer,
     xntMint,
     vaultAuthority
+    ,
+    stakingVaultXntKeypair
   );
   console.log("Staking vault XNT account:", stakingVaultXntAta.toBase58());
   // Ensure the vault PDA has an ATA for MIND (staking vault).
-  await createAssociatedTokenAccountIdempotent(
-    provider.connection,
-    wallet.payer,
-    mindMint.publicKey,
-    vaultAuthority,
-    undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    true
-  );
+  stakingVaultMindAta = await ensureAta(mindMint.publicKey, vaultAuthority);
 
   await program.methods
     .initialize({

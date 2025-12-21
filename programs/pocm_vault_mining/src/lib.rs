@@ -1082,6 +1082,7 @@ pub struct AdminFundStakingXnt<'info> {
 
 #[derive(Accounts)]
 pub struct AdminUpdateConfig<'info> {
+    #[account(mut)]
     pub admin: Signer<'info>,
     #[account(
         mut,

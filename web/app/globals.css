@@ -35,6 +35,41 @@ body > * {
   z-index: 1;
 }
 
+.tier-badge {
+  color: var(--tier-text, rgba(240, 253, 255, 0.9));
+  border-color: var(--tier-border, rgba(255, 255, 255, 0.15));
+  background: var(--tier-bg, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 0 18px var(--tier-glow, rgba(255, 255, 255, 0.1));
+}
+
+.tier-badge[data-tier="Silver"] {
+  --tier-text: rgba(227, 232, 240, 0.95);
+  --tier-border: rgba(203, 213, 225, 0.4);
+  --tier-bg: rgba(148, 163, 184, 0.12);
+  --tier-glow: rgba(148, 163, 184, 0.35);
+}
+
+.tier-badge[data-tier="Gold"] {
+  --tier-text: rgba(254, 240, 138, 0.95);
+  --tier-border: rgba(250, 204, 21, 0.45);
+  --tier-bg: rgba(250, 204, 21, 0.12);
+  --tier-glow: rgba(250, 204, 21, 0.4);
+}
+
+.tier-badge[data-tier="Diamond"] {
+  --tier-text: rgba(186, 230, 253, 0.95);
+  --tier-border: rgba(56, 189, 248, 0.5);
+  --tier-bg: rgba(56, 189, 248, 0.14);
+  --tier-glow: rgba(56, 189, 248, 0.55);
+}
+
+.tier-badge[data-tier="Bronze"] {
+  --tier-text: rgba(253, 230, 138, 0.9);
+  --tier-border: rgba(217, 119, 6, 0.4);
+  --tier-bg: rgba(217, 119, 6, 0.1);
+  --tier-glow: rgba(217, 119, 6, 0.3);
+}
+
 a {
   @apply text-neon/80 transition hover:text-neon;
 }

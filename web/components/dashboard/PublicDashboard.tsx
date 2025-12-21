@@ -17,8 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TopBar } from "@/components/shared/TopBar";
 import { Tabs } from "@/components/ui/tabs";
-import { SummaryGrid } from "@/components/dashboard/SummaryGrid";
-import { ActionWizard } from "@/components/dashboard/ActionWizard";
+import { SummaryCards } from "@/components/dashboard/SummaryCards";
+import { MiningControlPanel } from "@/components/dashboard/MiningControlPanel";
 import { MineSection } from "@/components/dashboard/MineSection";
 import { StakeSection } from "@/components/dashboard/StakeSection";
 import { XPSection } from "@/components/dashboard/XPSection";
@@ -47,7 +47,7 @@ import {
   decodeUserPositionAccount,
   decodeUserProfileAccount,
 } from "@/lib/decoders";
-import { explorerTxUrl, formatDurationSeconds, formatTokenAmount, formatUnixTs, parseUiAmountToBase, shortPk } from "@/lib/format";
+import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
 
 function safeBigintToNumber(value: bigint): number {
@@ -60,7 +60,7 @@ function formatEpochCountdown(seconds: number) {
   return formatDurationSeconds(seconds);
 }
 
-function planFeeBase(durationDays: 7 | 14 | 28, decimals: number): bigint {
+function planFeeBase(durationDays: 7 | 14 | 30, decimals: number): bigint {
   const base = 10n ** BigInt(decimals);
   if (durationDays === 7) return base / 10n; // 0.1
   if (durationDays === 14) return base; // 1
@@ -121,10 +121,9 @@ export function PublicDashboard() {
   const [userEpoch, setUserEpoch] = useState<ReturnType<typeof decodeUserEpochAccount> | null>(null);
   const [userProfile, setUserProfile] = useState<ReturnType<typeof decodeUserProfileAccount> | null>(null);
 
-  const [durationDays, setDurationDays] = useState<7 | 14 | 28>(14);
+  const [durationDays, setDurationDays] = useState<7 | 14 | 30>(14);
   const [stakeDurationDays, setStakeDurationDays] = useState<7 | 14 | 30 | 60>(30);
   const [stakeAmountUi, setStakeAmountUi] = useState("");
-  const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastSig, setLastSig] = useState<string | null>(null);
@@ -695,7 +694,6 @@ const onStake = async () => {
       return await signAndSend(tx);
     });
     setStakeAmountUi("");
-    setStakeDialogOpen(false);
   } finally {
     setBusy(null);
   }
@@ -890,13 +888,13 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
   const planOptions: MiningPlanOption[] = config
     ? [
         { d: 7, mult: "1.0x", price: "0.1", xp: config.xpPer7d.toString() },
-        { d: 14, mult: "1.2x", price: "1", xp: config.xpPer14d.toString() },
-        { d: 28, mult: "1.4x", price: "5", xp: config.xpPer30d.toString() },
+        { d: 14, mult: "1.25x", price: "1", xp: config.xpPer14d.toString() },
+        { d: 30, mult: "1.5x", price: "5", xp: config.xpPer30d.toString() },
       ]
     : [
         { d: 7, mult: "1.0x", price: "0.1", xp: "—" },
-        { d: 14, mult: "1.2x", price: "1", xp: "—" },
-        { d: 28, mult: "1.4x", price: "5", xp: "—" },
+        { d: 14, mult: "1.25x", price: "1", xp: "—" },
+        { d: 30, mult: "1.5x", price: "5", xp: "—" },
       ];
 
   const handleStakeMax = () => {
@@ -948,8 +946,6 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
       setStakeDurationDays,
       stakeEstimate,
       handleStakeMax,
-      stakeDialogOpen,
-      setStakeDialogOpen,
       estimatedRewardBase,
       userProfile,
       xpStats,
@@ -989,7 +985,6 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
       refresh,
       rewardPoolSeries,
       stakeAmountUi,
-      stakeDialogOpen,
       stakeDurationDays,
       stakeEstimate,
       stakingPositions,
@@ -1002,7 +997,6 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
       xntBalanceUi,
       setDurationDays,
       setStakeAmountUi,
-      setStakeDialogOpen,
       setStakeDurationDays,
     ]
   );
@@ -1012,48 +1006,23 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
       <div className="min-h-dvh">
         <TopBar
           title="X1 Mining Vault"
-          subtitle="Mine XNT • Stake MIND"
+          subtitle="Mine XNT • Earn XP • Boost staking"
           link={{ href: "/admin", label: "Admin" }}
+          tier={xpStats?.tierName ?? "Bronze"}
         />
 
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-24 pt-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-semibold text-white">Mining + Staking</h1>
-              <div className="mt-2 text-sm text-zinc-400">
-                Unified dashboard for mining and staking.
-              </div>
-            </div>
-            {publicKey ? (
-              <div className="flex items-center gap-2">
-                <Badge variant="success">connected</Badge>
-                <Badge variant="muted">{shortPk(publicKey.toBase58(), 6)}</Badge>
-              </div>
-            ) : (
-              <Badge variant="warning">connect wallet</Badge>
-            )}
-          </div>
+          <MiningControlPanel />
 
-          {emissionNotStarted && config ? (
-            <div className="rounded-3xl border border-amber-400/30 bg-amber-400/10 p-4 text-xs text-amber-100">
-              Mining starts at{" "}
-              <span className="font-mono text-amber-50">
-                {formatUnixTs(config.emissionStartTs.toNumber())}
-              </span>
-              .
-            </div>
-          ) : null}
-
-          <SummaryGrid />
-          <ActionWizard />
+          <SummaryCards />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
               options={[
-                { value: "mine", label: "Mine XNT" },
-                { value: "stake", label: "Stake MIND" },
+                { value: "mine", label: "Mine" },
+                { value: "stake", label: "Stake" },
                 { value: "xp", label: "XP" },
               ]}
             />

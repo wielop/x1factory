@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { NetworkBadge } from "@/components/shared/NetworkBadge";
 import { cn } from "@/components/ui/cn";
+import { InfoPopover } from "@/components/shared/InfoPopover";
+import { TierBadge } from "@/components/xp/TierBadge";
 
 export function TopBar({
   title,
   subtitle,
   link,
+  tier,
   className,
 }: {
   title: string;
   subtitle?: string;
   link?: { href: string; label: string };
+  tier?: "Bronze" | "Silver" | "Gold" | "Diamond";
   className?: string;
 }) {
   return (
@@ -27,12 +30,13 @@ export function TopBar({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <NetworkBadge />
+          <InfoPopover />
           {link ? (
             <Link className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300 hover:text-white" href={link.href}>
               {link.label}
             </Link>
           ) : null}
+          {tier ? <TierBadge tier={tier} /> : null}
           <WalletMultiButton />
         </div>
       </div>

@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useDashboard } from "@/components/dashboard/DashboardContext";
 import { STAKE_DURATIONS } from "@/components/dashboard/constants";
@@ -38,7 +37,6 @@ export function StakeSection() {
     stakingPositions,
     stakingVaultXntBalanceBase,
     stakingVaultXntBalanceUi,
-    stakingVaultMindBalanceUi,
     stakeAmountUi,
     setStakeAmountUi,
     stakeDurationDays,
@@ -49,12 +47,18 @@ export function StakeSection() {
     onClaimStake,
     onWithdrawStake,
     busy,
-    stakeDialogOpen,
-    setStakeDialogOpen,
     rewardPoolSeries,
+    mindBalanceUi,
   } = useDashboard();
 
   const totalWeighted = useMemo(() => (config ? BigInt(config.totalStakedMind.toString()) : 0n), [config]);
+  const stakeDisabledReason = useMemo(() => {
+    if (!publicKey) return "Connect wallet.";
+    if (!config) return "Config loading.";
+    if (!stakeAmountUi) return "Enter amount.";
+    if (busy) return "Transaction pending.";
+    return null;
+  }, [busy, config, publicKey, stakeAmountUi]);
 
   return (
     <Card>
@@ -68,13 +72,69 @@ export function StakeSection() {
         <div className="mt-4 text-sm text-zinc-400">Connect wallet to stake and view rewards.</div>
       ) : (
         <div className="mt-4 grid gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="lg" onClick={() => setStakeDialogOpen(true)}>
-              Stake MIND
-            </Button>
-            <div className="text-xs text-zinc-400">
-              Total staked:{" "}
-              <span className="font-mono text-zinc-200">{stakingVaultMindBalanceUi ?? "—"} MIND</span>
+          <div className="rounded-3xl border border-white/5 bg-white/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs text-zinc-400">Stake MIND</div>
+                <div className="mt-1 text-sm text-zinc-300">
+                  Balance <span className="font-mono text-zinc-200">{mindBalanceUi ?? "—"} MIND</span>
+                </div>
+              </div>
+              <Badge variant="muted">Pool {stakingVaultXntBalanceUi ?? "—"} XNT</Badge>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <Input
+                value={stakeAmountUi}
+                onChange={setStakeAmountUi}
+                placeholder="Amount (MIND)"
+                disabled={busy !== null}
+                right={
+                  <button
+                    type="button"
+                    className="rounded-full border border-cyan-300/30 px-2 py-1 text-[10px] text-cyan-100"
+                    onClick={handleStakeMax}
+                  >
+                    Max
+                  </button>
+                }
+              />
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {STAKE_DURATIONS.map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => setStakeDurationDays(days)}
+                    className={[
+                      "rounded-2xl border px-3 py-2 text-sm transition",
+                      stakeDurationDays === days
+                        ? "border-cyan-300/50 bg-cyan-300/10 text-white"
+                        : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10",
+                    ].join(" ")}
+                  >
+                    {days}d
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-zinc-400">
+                  Est. pool share{" "}
+                  <span className="font-mono text-zinc-200">
+                    {config && stakeEstimate?.boosted != null
+                      ? `${formatTokenAmount(stakeEstimate.boosted, config.xntDecimals, 4)} XNT`
+                      : "—"}
+                  </span>
+                </div>
+                <Button
+                  size="lg"
+                  onClick={() => void onStake().catch(() => null)}
+                  disabled={!!stakeDisabledReason}
+                >
+                  {busy === "stake" ? "Submitting…" : "Stake MIND"}
+                </Button>
+              </div>
+              {stakeDisabledReason ? (
+                <div className="text-xs text-amber-200">{stakeDisabledReason}</div>
+              ) : null}
             </div>
           </div>
 
@@ -106,6 +166,18 @@ export function StakeSection() {
                 const unlocked = nowTs != null && nowTs >= lockEndTs;
                 const claimLabel = `claim-stake-${stake.pubkey}`;
                 const withdrawLabel = `withdraw-stake-${stake.pubkey}`;
+                const claimDisabledReason = claimReady
+                  ? null
+                  : busy
+                    ? "Transaction pending."
+                    : !publicKey
+                      ? "Connect wallet."
+                      : "Claim available once per 7 days.";
+                const withdrawDisabledReason = unlocked
+                  ? null
+                  : busy
+                    ? "Transaction pending."
+                    : "Lock not ended.";
 
                 return (
                   <div key={stake.pubkey} className="rounded-3xl border border-cyan-400/10 bg-ink/80 p-4">
@@ -152,6 +224,12 @@ export function StakeSection() {
                         {busy === withdrawLabel ? "Submitting…" : "Withdraw"}
                       </Button>
                     </div>
+                    {claimDisabledReason ? (
+                      <div className="mt-2 text-xs text-amber-200">{claimDisabledReason}</div>
+                    ) : null}
+                    {withdrawDisabledReason ? (
+                      <div className="mt-1 text-xs text-amber-200">{withdrawDisabledReason}</div>
+                    ) : null}
                   </div>
                 );
               })
@@ -176,77 +254,6 @@ export function StakeSection() {
         </div>
       )}
 
-      <Dialog
-        open={stakeDialogOpen}
-        onOpenChange={setStakeDialogOpen}
-        title="Stake MIND"
-        description="Choose amount + duration, then confirm in your wallet."
-        footer={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="secondary" onClick={() => setStakeDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void onStake().catch(() => null)}
-              disabled={!config || busy !== null || !stakeAmountUi}
-            >
-              {busy === "stake" ? "Submitting…" : "Confirm stake"}
-            </Button>
-          </div>
-        }
-      >
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <div className="text-xs text-zinc-400">Amount</div>
-            <Input
-              value={stakeAmountUi}
-              onChange={setStakeAmountUi}
-              placeholder="Amount (MIND)"
-              disabled={busy !== null}
-              right={
-                <button
-                  type="button"
-                  className="rounded-full border border-cyan-300/30 px-2 py-1 text-[10px] text-cyan-100"
-                  onClick={handleStakeMax}
-                >
-                  Max
-                </button>
-              }
-            />
-          </div>
-          <div>
-            <div className="text-xs text-zinc-400">Duration</div>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {STAKE_DURATIONS.map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  onClick={() => setStakeDurationDays(days)}
-                  className={[
-                    "rounded-2xl border px-3 py-2 text-sm transition",
-                    stakeDurationDays === days
-                      ? "border-cyan-300/50 bg-cyan-300/10 text-white"
-                      : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10",
-                  ].join(" ")}
-                >
-                  {days}d
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-400">
-            Est. pool share:{" "}
-            <span className="font-mono text-zinc-200">
-              {config && stakeEstimate?.boosted != null
-                ? `${formatTokenAmount(stakeEstimate.boosted, config.xntDecimals, 4)} XNT`
-                : "—"}
-            </span>
-          </div>
-          <div className="text-[11px] text-zinc-500">
-            Claims unlock every 7 days. Withdraw after the lock ends.
-          </div>
-        </div>
-      </Dialog>
     </Card>
   );
 }

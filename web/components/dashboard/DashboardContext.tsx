@@ -13,7 +13,7 @@ import {
 export type UserPosition = { pubkey: string; data: ReturnType<typeof decodeUserPositionAccount> };
 export type StakingPosition = { pubkey: string; data: ReturnType<typeof decodeStakingPositionAccount> };
 
-export type MiningPlanOption = { d: 7 | 14 | 28; mult: string; price: string; xp: string };
+export type MiningPlanOption = { d: 7 | 14 | 30; mult: string; price: string; xp: string };
 
 export type XpStats = {
   tier: number;
@@ -44,8 +44,8 @@ export type DashboardContextValue = {
   activePositions: UserPosition[];
   anyActive: boolean;
   stakingPositions: StakingPosition[];
-  durationDays: 7 | 14 | 28;
-  setDurationDays: (v: 7 | 14 | 28) => void;
+  durationDays: 7 | 14 | 30;
+  setDurationDays: (v: 7 | 14 | 30) => void;
   planOptions: MiningPlanOption[];
   emissionNotStarted: boolean;
   heartbeatDone: boolean;
@@ -75,8 +75,6 @@ export type DashboardContextValue = {
   setStakeDurationDays: (v: 7 | 14 | 30 | 60) => void;
   stakeEstimate: { base: bigint; boosted: bigint } | null;
   handleStakeMax: () => void;
-  stakeDialogOpen: boolean;
-  setStakeDialogOpen: (open: boolean) => void;
   estimatedRewardBase: bigint | null;
   userProfile: ReturnType<typeof decodeUserProfileAccount> | null;
   xpStats: XpStats | null;

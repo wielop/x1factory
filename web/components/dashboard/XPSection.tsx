@@ -59,6 +59,14 @@ export function XPSection() {
         </div>
       </div>
 
+      <details className="group mt-5 rounded-3xl border border-white/5 bg-white/5 p-4">
+        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300">
+          What is XP?
+        </summary>
+        <div className="mt-3 text-xs text-zinc-400">
+          XP boosts staking weight only; it does not mint tokens.
+        </div>
+      </details>
     </Card>
   );
 }

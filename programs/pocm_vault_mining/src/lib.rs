@@ -1307,7 +1307,7 @@ fn time_multiplier_for_duration(duration_days: u16) -> Option<u16> {
     match duration_days {
         7 => Some(10_000),
         14 => Some(12_000),
-        28 => Some(14_000),
+        28 | 30 => Some(14_000),
         _ => None,
     }
 }
@@ -1388,7 +1388,7 @@ fn fee_for_duration(duration_days: u16, xnt_decimals: u8) -> Result<u64> {
             Ok(base / 10) // 0.1 XNT
         }
         14 => Ok(base), // 1 XNT
-        28 => base
+        28 | 30 => base
             .checked_mul(5)
             .ok_or_else(|| ErrorCode::MathOverflow.into()), // 5 XNT
         _ => err!(ErrorCode::InvalidDuration),
@@ -1399,7 +1399,7 @@ fn xp_for_duration(duration_days: u16, cfg: &Config) -> Result<u64> {
     match duration_days {
         7 => Ok(cfg.xp_per_7d),
         14 => Ok(cfg.xp_per_14d),
-        28 => Ok(cfg.xp_per_30d),
+        28 | 30 => Ok(cfg.xp_per_30d),
         _ => err!(ErrorCode::InvalidDuration),
     }
 }

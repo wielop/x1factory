@@ -4,6 +4,7 @@ import Link from "next/link";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { cn } from "@/components/ui/cn";
 import { InfoPopover } from "@/components/shared/InfoPopover";
+import { HowItWorksPopover } from "@/components/shared/HowItWorksPopover";
 import { TierBadge } from "@/components/xp/TierBadge";
 
 export function TopBar({
@@ -35,6 +36,7 @@ export function TopBar({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <InfoPopover />
+          <HowItWorksPopover />
           {link ? (
             <Link className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300 hover:text-white" href={link.href}>
               {link.label}

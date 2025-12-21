@@ -11,12 +11,16 @@ export function TopBar({
   subtitle,
   link,
   tier,
+  xpProgress,
+  xpNextLabel,
   className,
 }: {
   title: string;
   subtitle?: string;
   link?: { href: string; label: string };
   tier?: "Bronze" | "Silver" | "Gold" | "Diamond";
+  xpProgress?: number | null;
+  xpNextLabel?: string | null;
   className?: string;
 }) {
   return (
@@ -36,7 +40,21 @@ export function TopBar({
               {link.label}
             </Link>
           ) : null}
-          {tier ? <TierBadge tier={tier} /> : null}
+          {tier ? (
+            <div className="flex flex-col items-end gap-1">
+              <TierBadge tier={tier} className="px-4 py-1.5 text-[11px]" />
+              {xpProgress != null ? (
+                <div className="w-24">
+                  <div className="h-1 rounded-full bg-white/10">
+                    <div className="h-1 rounded-full bg-cyan-300/70" style={{ width: `${xpProgress}%` }} />
+                  </div>
+                  {xpNextLabel ? (
+                    <div className="mt-1 text-[10px] text-zinc-500">{xpNextLabel}</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <WalletMultiButton />
         </div>
       </div>

@@ -15,6 +15,7 @@ export function MiningXpHero() {
         <div>
           <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Your XP</div>
           <div className="mt-2 text-2xl font-semibold text-white">Level up your rewards</div>
+          <div className="mt-2 text-lg font-semibold text-cyan-200">{tierName}</div>
         </div>
         <div className="flex items-center gap-2">
           <svg

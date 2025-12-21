@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useDashboard } from "@/components/dashboard/DashboardContext";
 import { formatTokenAmount } from "@/lib/format";
 
@@ -28,6 +29,7 @@ export function MiningControlPanel() {
     onDeposit,
     onClosePosition,
     busy,
+    estimatedRewardBase,
     xntBalanceUi,
   } = useDashboard();
 
@@ -60,6 +62,11 @@ export function MiningControlPanel() {
     return null;
   }, [amountUi, busy, config, emissionNotStarted, publicKey, selectedPlan]);
 
+  const planRewardUi =
+    config && estimatedRewardBase != null
+      ? formatTokenAmount(estimatedRewardBase, config.mindDecimals, 4)
+      : null;
+
   const withdrawDisabledReason = useMemo(() => {
     if (!publicKey) return "Connect wallet first.";
     if (!primaryPosition) return "No position.";
@@ -74,6 +81,11 @@ export function MiningControlPanel() {
           <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Control Panel</div>
           <div className="mt-2 text-2xl font-semibold text-white">
             {anyActive ? "Buy Miner" : "Start Mining"}
+          </div>
+          <div className="mt-2 text-sm text-zinc-400">
+            {anyActive
+              ? "Dodaj kolejnego minera i zwiększ swoją moc wydobycia."
+              : "Rozpocznij wydobycie XNT i zdobywaj MIND – zostań pionierem sieci X1."}
           </div>
         </div>
         <Badge variant={anyActive ? "success" : "muted"}>{anyActive ? "active" : "inactive"}</Badge>
@@ -100,6 +112,9 @@ export function MiningControlPanel() {
                   {PLAN_MULTS[opt.d as 7 | 14 | 30]}
                 </div>
                 <div className="mt-1 text-[11px] text-emerald-200">XP {opt.xp}</div>
+                <div className="mt-1 text-[11px] text-cyan-200">
+                  Est. {planRewardUi ?? "—"} MIND/epoch
+                </div>
                 <div className="mt-2 text-xs text-cyan-200">{opt.price} XNT</div>
               </button>
             ))}
@@ -130,6 +145,15 @@ export function MiningControlPanel() {
           </div>
         </div>
         <div className="flex flex-col justify-between gap-3">
+          {!publicKey ? (
+            <div className="rounded-3xl border border-cyan-400/20 bg-cyan-400/10 p-4">
+              <div className="text-sm font-semibold text-white">Connect wallet to get started</div>
+              <div className="mt-2 text-xs text-zinc-300">Start mining once your wallet is connected.</div>
+              <div className="mt-4">
+                <WalletMultiButton />
+              </div>
+            </div>
+          ) : null}
           <div className="mt-6">
             <Button
               size="lg"

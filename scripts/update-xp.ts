@@ -8,12 +8,12 @@ dotenv.config();
 const DEFAULT_XP_7D = "100";
 const DEFAULT_XP_14D = "1200";
 const DEFAULT_XP_30D = "7000";
-const DEFAULT_XP_TIER_SILVER = "1000";
-const DEFAULT_XP_TIER_GOLD = "5000";
-const DEFAULT_XP_TIER_DIAMOND = "15000";
-const DEFAULT_XP_BOOST_SILVER = "200";
-const DEFAULT_XP_BOOST_GOLD = "500";
-const DEFAULT_XP_BOOST_DIAMOND = "1000";
+const DEFAULT_XP_TIER_SILVER = "10000";
+const DEFAULT_XP_TIER_GOLD = "30000";
+const DEFAULT_XP_TIER_DIAMOND = "60000";
+const DEFAULT_XP_BOOST_SILVER = "50";
+const DEFAULT_XP_BOOST_GOLD = "150";
+const DEFAULT_XP_BOOST_DIAMOND = "300";
 
 const main = async () => {
   const program = getProgram();

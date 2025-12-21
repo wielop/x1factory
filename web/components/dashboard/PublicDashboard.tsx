@@ -91,6 +91,7 @@ type BusyAction =
   | "buy"
   | "heartbeat"
   | "claim"
+  | "claim-all"
   | "close"
   | "stake"
   | `claim-stake-${string}`
@@ -124,6 +125,9 @@ export function PublicDashboard() {
   const [stakingVaultXntBalanceBase, setStakingVaultXntBalanceBase] = useState<bigint | null>(null);
   const [stakingVaultMindBalanceUi, setStakingVaultMindBalanceUi] = useState<string | null>(null);
   const [rewardPoolHistory, setRewardPoolHistory] = useState<Array<{ ts: number; amount: bigint }>>([]);
+  const [unclaimedEpochs, setUnclaimedEpochs] = useState<
+    Array<{ epochIndex: bigint; pubkey: string }>
+  >([]);
 
   const [epochState, setEpochState] = useState<ReturnType<typeof decodeEpochStateAccount> | null>(null);
   const [userEpoch, setUserEpoch] = useState<ReturnType<typeof decodeUserEpochAccount> | null>(null);
@@ -207,6 +211,7 @@ export function PublicDashboard() {
         setMindBalanceUi(null);
         setMindBalanceBase(0n);
         setStakingVaultXntBalanceBase(null);
+        setUnclaimedEpochs([]);
         setEpochState(null);
         setUserEpoch(null);
         setUserProfile(null);
@@ -249,6 +254,28 @@ export function PublicDashboard() {
       setStakingPositions(decodedStakes);
 
       setUserProfile(profileAcc?.data ? decodeUserProfileAccount(Buffer.from(profileAcc.data)) : null);
+
+      try {
+        const userEpochGpa = await connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [
+            { dataSize: 66 },
+            { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
+          ],
+        });
+        const decodedEpochs = userEpochGpa
+          .map((a) => ({
+            pubkey: a.pubkey.toBase58(),
+            data: decodeUserEpochAccount(Buffer.from(a.account.data)),
+          }))
+          .filter((e) => !e.data.claimed)
+          .sort((a, b) => Number(a.data.epochIndex - b.data.epochIndex));
+        setUnclaimedEpochs(
+          decodedEpochs.map((e) => ({ epochIndex: e.data.epochIndex, pubkey: e.pubkey }))
+        );
+      } catch {
+        setUnclaimedEpochs([]);
+      }
 
       const xntMint = cfg.xntMint;
       if (xntMint.equals(NATIVE_MINT)) {
@@ -755,6 +782,49 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
           })
           .instruction();
         return await signAndSend(new Transaction().add(ix));
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onClaimAll = async () => {
+    if (!publicKey) throw new Error("Connect a wallet first");
+    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
+    if (!config) throw new Error("Config not loaded");
+    if (busy) return;
+    if (unclaimedEpochs.length === 0) throw new Error("No unclaimed epochs");
+
+    setBusy("claim-all");
+    try {
+      await withTx("Claim all epochs", async () => {
+        const program = getProgram(connection, anchorWallet);
+        const vaultAuthority = deriveVaultPda();
+        const userMindAta = getAssociatedTokenAddressSync(config.mindMint, publicKey);
+        let lastSig = "";
+        for (const epoch of unclaimedEpochs) {
+          const epochIndex = Number(epoch.epochIndex);
+          const epochStatePda = deriveEpochPda(epochIndex);
+          const userEpochPda = new PublicKey(epoch.pubkey);
+          const ix = await program.methods
+            .claim()
+            .accounts({
+              owner: publicKey,
+              config: deriveConfigPda(),
+              vaultAuthority,
+              epochState: epochStatePda,
+              userEpoch: userEpochPda,
+              mindMint: config.mindMint,
+              userMindAta,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction();
+          const tx = new Transaction().add(ix);
+          lastSig = await signAndSend(tx);
+        }
+        return lastSig || "";
       });
     } finally {
       setBusy(null);
@@ -1302,7 +1372,7 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
                           : "-"}
                       </span>
                     </div>
-                    <div className="mt-4">
+                    <div className="mt-4 flex flex-wrap gap-2">
                       <Button
                         onClick={() => void onClaim().catch(() => null)}
                         disabled={busy !== null || !heartbeatDone || claimed || !anyActive}
@@ -1317,6 +1387,16 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
                         }
                       >
                         {busy === "claim" ? "Submitting…" : "Claim current epoch"}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void onClaimAll().catch(() => null)}
+                        disabled={busy !== null || unclaimedEpochs.length === 0}
+                        title={unclaimedEpochs.length === 0 ? "No unclaimed epochs" : undefined}
+                      >
+                        {busy === "claim-all"
+                          ? "Submitting…"
+                          : `Claim all (${unclaimedEpochs.length})`}
                       </Button>
                     </div>
                     <div className="mt-3 text-xs text-zinc-400">

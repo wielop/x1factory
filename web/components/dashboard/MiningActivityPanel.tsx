@@ -43,6 +43,9 @@ export function MiningActivityPanel() {
             ? "Transaction pending."
             : null;
 
+  const visibleMiners = activePositions.slice(0, 2);
+  const extraMiners = activePositions.slice(2);
+
   return (
     <Card className="border-cyan-400/20 bg-ink/90">
       <CardHeader
@@ -58,7 +61,8 @@ export function MiningActivityPanel() {
               No active miners yet.
             </div>
           ) : (
-            activePositions.map((pos) => {
+            <>
+              {visibleMiners.map((pos) => {
               const remaining =
                 nowTs != null ? Math.max(0, pos.data.lockEndTs - nowTs) : null;
               const perMinerDaily =
@@ -122,7 +126,74 @@ export function MiningActivityPanel() {
                   </div>
                 </div>
               );
-            })
+            })}
+              {extraMiners.length > 0 ? (
+                <details className="group rounded-3xl border border-white/5 bg-white/5 p-4">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300">
+                    Show all miners ({extraMiners.length})
+                  </summary>
+                  <div className="mt-3 grid gap-3">
+                    {extraMiners.map((pos) => {
+                      const remaining =
+                        nowTs != null ? Math.max(0, pos.data.lockEndTs - nowTs) : null;
+                      const perMinerDaily =
+                        estimatedRewardBase != null && activePositions.length > 0
+                          ? estimatedRewardBase / BigInt(activePositions.length)
+                          : null;
+                      const remainingDays =
+                        remaining != null ? BigInt(Math.max(1, Math.ceil(remaining / 86_400))) : null;
+                      const totalRemaining =
+                        perMinerDaily != null && remainingDays != null
+                          ? perMinerDaily * remainingDays
+                          : null;
+                      return (
+                        <div
+                          key={pos.pubkey}
+                          className="rounded-3xl border border-white/5 bg-black/20 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-white">
+                              {config
+                                ? `${formatTokenAmount(pos.data.lockedAmount, config.xntDecimals, 4)} XNT`
+                                : "—"}
+                            </div>
+                            <Badge variant="success">active</Badge>
+                          </div>
+                          <div className="mt-2 text-xs text-zinc-400">
+                            Ends at{" "}
+                            <span className="font-mono text-zinc-200">
+                              {formatUnixTs(pos.data.lockEndTs)}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-zinc-400">
+                            Remaining{" "}
+                            <span className="font-mono text-zinc-200">
+                              {remaining != null ? formatDurationSeconds(remaining) : "—"}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-xs text-zinc-400">
+                            Est. daily{" "}
+                            <span className="font-mono text-zinc-200">
+                              {config && perMinerDaily != null
+                                ? `${formatTokenAmount(perMinerDaily, config.mindDecimals, 4)} MIND`
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-zinc-400">
+                            Est. total{" "}
+                            <span className="font-mono text-zinc-200">
+                              {config && totalRemaining != null
+                                ? `${formatTokenAmount(totalRemaining, config.mindDecimals, 4)} MIND`
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              ) : null}
+            </>
           )}
         </div>
 
@@ -132,6 +203,14 @@ export function MiningActivityPanel() {
             Next epoch in{" "}
             <span className="font-mono text-zinc-200">
               {nextEpochCountdown ? formatDurationSeconds(nextEpochCountdown.seconds) : "—"}
+            </span>
+          </div>
+          <div className="mt-2 text-xs text-zinc-400">
+            Next epoch reward{" "}
+            <span className="font-mono text-zinc-200">
+              {config && estimatedRewardBase != null
+                ? `${formatTokenAmount(estimatedRewardBase, config.mindDecimals, 4)} MIND`
+                : "—"}
             </span>
           </div>
           <div className="mt-4 grid gap-3">

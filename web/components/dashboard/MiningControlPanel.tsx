@@ -99,6 +99,7 @@ export function MiningControlPanel() {
                 <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                   {PLAN_MULTS[opt.d as 7 | 14 | 30]}
                 </div>
+                <div className="mt-1 text-[11px] text-emerald-200">XP {opt.xp}</div>
                 <div className="mt-2 text-xs text-cyan-200">{opt.price} XNT</div>
               </button>
             ))}
@@ -129,13 +130,15 @@ export function MiningControlPanel() {
           </div>
         </div>
         <div className="flex flex-col justify-between gap-3">
-          <Button
-            size="lg"
-            onClick={() => void onDeposit().catch(() => null)}
-            disabled={!!buyDisabledReason}
-          >
-            {busy === "buy" ? "Submitting…" : "BUY MINER"}
-          </Button>
+          <div className="mt-6">
+            <Button
+              size="lg"
+              onClick={() => void onDeposit().catch(() => null)}
+              disabled={!!buyDisabledReason}
+            >
+              {busy === "buy" ? "Submitting…" : "BUY MINER"}
+            </Button>
+          </div>
           {buyDisabledReason ? (
             <div className="text-xs text-amber-200">{buyDisabledReason}</div>
           ) : null}

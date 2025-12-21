@@ -19,6 +19,7 @@ import { TopBar } from "@/components/shared/TopBar";
 import { Tabs } from "@/components/ui/tabs";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { MiningControlPanel } from "@/components/dashboard/MiningControlPanel";
+import { MiningActivityPanel } from "@/components/dashboard/MiningActivityPanel";
 import { MineSection } from "@/components/dashboard/MineSection";
 import { StakeSection } from "@/components/dashboard/StakeSection";
 import { XPSection } from "@/components/dashboard/XPSection";
@@ -1013,6 +1014,7 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
 
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-24 pt-8">
           <MiningControlPanel />
+          <MiningActivityPanel />
 
           <SummaryCards />
 

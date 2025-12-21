@@ -57,7 +57,7 @@ function formatEpochCountdown(seconds: number) {
   return formatDurationSeconds(seconds);
 }
 
-function planFeeBase(durationDays: 7 | 14 | 30, decimals: number): bigint {
+function planFeeBase(durationDays: 7 | 14 | 28, decimals: number): bigint {
   const base = 10n ** BigInt(decimals);
   if (durationDays === 7) return base / 10n; // 0.1
   if (durationDays === 14) return base; // 1
@@ -101,7 +101,7 @@ const STAKE_DURATIONS: Array<7 | 14 | 30 | 60> = [7, 14, 30, 60];
 const XP_TIER_LABELS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 const XP_BADGE_VARIANTS: Array<"muted" | "warning" | "success"> = ["muted", "warning", "success", "success"];
 
-type MiningPlanOption = { d: 7 | 14 | 30; mult: string; price: string; xp: string };
+type MiningPlanOption = { d: 7 | 14 | 28; mult: string; price: string; xp: string };
 
 export function PublicDashboard() {
   const { connection } = useConnection();
@@ -127,7 +127,7 @@ export function PublicDashboard() {
   const [userEpoch, setUserEpoch] = useState<ReturnType<typeof decodeUserEpochAccount> | null>(null);
   const [userProfile, setUserProfile] = useState<ReturnType<typeof decodeUserProfileAccount> | null>(null);
 
-  const [durationDays, setDurationDays] = useState<7 | 14 | 30>(14);
+  const [durationDays, setDurationDays] = useState<7 | 14 | 28>(14);
   const [stakeDurationDays, setStakeDurationDays] = useState<7 | 14 | 30 | 60>(30);
   const [stakeAmountUi, setStakeAmountUi] = useState("");
   const [busy, setBusy] = useState<BusyAction | null>(null);
@@ -723,13 +723,13 @@ const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof 
   const planOptions: MiningPlanOption[] = config
     ? [
         { d: 7, mult: "1.0x", price: "0.1", xp: config.xpPer7d.toString() },
-        { d: 14, mult: "1.25x", price: "1", xp: config.xpPer14d.toString() },
-        { d: 30, mult: "1.5x", price: "5", xp: config.xpPer30d.toString() },
+        { d: 14, mult: "1.2x", price: "1", xp: config.xpPer14d.toString() },
+        { d: 28, mult: "1.4x", price: "5", xp: config.xpPer30d.toString() },
       ]
     : [
         { d: 7, mult: "1.0x", price: "0.1", xp: "—" },
-        { d: 14, mult: "1.25x", price: "1", xp: "—" },
-        { d: 30, mult: "1.5x", price: "5", xp: "—" },
+        { d: 14, mult: "1.2x", price: "1", xp: "—" },
+        { d: 28, mult: "1.4x", price: "5", xp: "—" },
       ];
 
   const handleStakeMax = () => {

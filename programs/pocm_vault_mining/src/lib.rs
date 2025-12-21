@@ -18,7 +18,7 @@ const DEFAULT_EPOCH_SECONDS: u64 = 86_400;
 const SECONDS_PER_DAY: i64 = 86_400;
 const DEFAULT_SOFT_HALVING_DAYS: u64 = 90;
 const DEFAULT_SOFT_HALVING_DROP_BPS: u16 = 1_000; // 10%
-const DEFAULT_MP_CAP_BPS: u16 = 200; // 2%
+const DEFAULT_MP_CAP_BPS: u16 = 1_000; // 10%
 const DAILY_EMISSION_TOKENS: u64 = 100_000;
 
 #[program]
@@ -1306,29 +1306,15 @@ pub struct StakeWithdrawn {
 fn time_multiplier_for_duration(duration_days: u16) -> Option<u16> {
     match duration_days {
         7 => Some(10_000),
-        14 => Some(12_500),
-        30 => Some(15_000),
+        14 => Some(12_000),
+        28 => Some(14_000),
         _ => None,
     }
 }
 
 fn compute_weighted_amount(amount: u64, th1: u64, th2: u64) -> u128 {
-    let amt = amount as u128;
-    let tier1 = amt.min(th1 as u128);
-    let tier2 = amt.saturating_sub(th1 as u128).min(th2 as u128);
-    let remainder = amt.saturating_sub((th1 as u128).saturating_add(th2 as u128));
-    let weighted_tier2 = tier2
-        .checked_mul(50)
-        .and_then(|v| v.checked_div(100))
-        .unwrap_or(0);
-    let weighted_remainder = remainder
-        .checked_mul(25)
-        .and_then(|v| v.checked_div(100))
-        .unwrap_or(0);
-    tier1
-        .checked_add(weighted_tier2)
-        .and_then(|v| v.checked_add(weighted_remainder))
-        .unwrap_or(0)
+    let _ = (th1, th2);
+    amount as u128
 }
 
 fn epoch_index_for_ts(config: &Config, ts: i64) -> Result<u64> {
@@ -1402,7 +1388,7 @@ fn fee_for_duration(duration_days: u16, xnt_decimals: u8) -> Result<u64> {
             Ok(base / 10) // 0.1 XNT
         }
         14 => Ok(base), // 1 XNT
-        30 => base
+        28 => base
             .checked_mul(5)
             .ok_or_else(|| ErrorCode::MathOverflow.into()), // 5 XNT
         _ => err!(ErrorCode::InvalidDuration),
@@ -1413,7 +1399,7 @@ fn xp_for_duration(duration_days: u16, cfg: &Config) -> Result<u64> {
     match duration_days {
         7 => Ok(cfg.xp_per_7d),
         14 => Ok(cfg.xp_per_14d),
-        30 => Ok(cfg.xp_per_30d),
+        28 => Ok(cfg.xp_per_30d),
         _ => err!(ErrorCode::InvalidDuration),
     }
 }

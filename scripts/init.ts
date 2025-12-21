@@ -24,6 +24,15 @@ dotenv.config();
 const DEFAULT_MIND_DECIMALS = 9;
 const DEFAULT_MINED_CAP_BPS = 7000;
 const DEFAULT_EPOCH_SECONDS = 86_400;
+const DEFAULT_XP_7D = 10;
+const DEFAULT_XP_14D = 120;
+const DEFAULT_XP_30D = 700;
+const DEFAULT_XP_TIER_SILVER = 1_000;
+const DEFAULT_XP_TIER_GOLD = 5_000;
+const DEFAULT_XP_TIER_DIAMOND = 15_000;
+const DEFAULT_XP_BOOST_SILVER = 200;
+const DEFAULT_XP_BOOST_GOLD = 500;
+const DEFAULT_XP_BOOST_DIAMOND = 1_000;
 
 const loadOrCreateKeypair = (path: string) => {
   if (fs.existsSync(path)) {
@@ -75,6 +84,15 @@ const main = async () => {
   );
   const th1 = new BN(process.env.THRESHOLD_1 ?? th1Default.toString());
   const th2 = new BN(process.env.THRESHOLD_2 ?? th2Default.toString());
+  const xpPer7d = new BN(process.env.XP_PER_7D ?? DEFAULT_XP_7D);
+  const xpPer14d = new BN(process.env.XP_PER_14D ?? DEFAULT_XP_14D);
+  const xpPer30d = new BN(process.env.XP_PER_30D ?? DEFAULT_XP_30D);
+  const xpTierSilver = new BN(process.env.XP_TIER_SILVER ?? DEFAULT_XP_TIER_SILVER);
+  const xpTierGold = new BN(process.env.XP_TIER_GOLD ?? DEFAULT_XP_TIER_GOLD);
+  const xpTierDiamond = new BN(process.env.XP_TIER_DIAMOND ?? DEFAULT_XP_TIER_DIAMOND);
+  const xpBoostSilverBps = Number(process.env.XP_BOOST_SILVER_BPS ?? DEFAULT_XP_BOOST_SILVER);
+  const xpBoostGoldBps = Number(process.env.XP_BOOST_GOLD_BPS ?? DEFAULT_XP_BOOST_GOLD);
+  const xpBoostDiamondBps = Number(process.env.XP_BOOST_DIAMOND_BPS ?? DEFAULT_XP_BOOST_DIAMOND);
 
   const config = deriveConfigPda();
   const vaultAuthority = deriveVaultPda();
@@ -157,6 +175,15 @@ const main = async () => {
       th2,
       allowEpochSecondsEdit,
       epochSeconds: new BN(epochSeconds),
+      xpPer7d,
+      xpPer14d,
+      xpPer30d,
+      xpTierSilver,
+      xpTierGold,
+      xpTierDiamond,
+      xpBoostSilverBps,
+      xpBoostGoldBps,
+      xpBoostDiamondBps,
     })
     .accounts({
       payer: wallet.publicKey,

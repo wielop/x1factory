@@ -193,10 +193,7 @@ export function PublicDashboard() {
         }),
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
-          filters: [
-            { dataSize: 85 },
-            { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
-          ],
+          filters: [{ memcmp: { offset: 8, bytes: publicKey.toBase58() } }],
         }),
         connection.getAccountInfo(deriveUserProfilePda(publicKey), "confirmed"),
       ]);

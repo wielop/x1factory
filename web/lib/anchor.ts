@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import type { Connection } from "@solana/web3.js";
 import type { AnchorWallet } from "@solana/wallet-adapter-react";
-import idl from "@/idl/pocm_vault_mining.json";
+import idl from "@/idl/mining_v2.json";
 import { getProgramId } from "@/lib/solana";
 
 // The IDL JSON in this repo does not include account sizes/types in `accounts`,

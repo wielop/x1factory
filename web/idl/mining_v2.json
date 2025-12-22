@@ -1,0 +1,164 @@
+{
+  "version": "0.1.0",
+  "name": "mining_v2",
+  "instructions": [
+    {
+      "name": "initConfig",
+      "accounts": [
+        { "name": "payer", "isMut": true, "isSigner": true },
+        { "name": "admin", "isMut": false, "isSigner": true },
+        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "mindMint", "isMut": false, "isSigner": false },
+        { "name": "xntMint", "isMut": false, "isSigner": false },
+        { "name": "stakingRewardVault", "isMut": false, "isSigner": false },
+        { "name": "treasuryVault", "isMut": false, "isSigner": false },
+        { "name": "stakingMindVault", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "rent", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "params", "type": { "defined": "InitConfigParams" } }
+      ]
+    },
+    {
+      "name": "buyContract",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "userProfile", "isMut": true, "isSigner": false },
+        { "name": "position", "isMut": true, "isSigner": false },
+        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
+        { "name": "xntMint", "isMut": true, "isSigner": false },
+        { "name": "stakingRewardVault", "isMut": true, "isSigner": false },
+        { "name": "treasuryVault", "isMut": true, "isSigner": false },
+        { "name": "ownerXntAta", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "contractType", "type": "u8" },
+        { "name": "positionIndex", "type": "u64" }
+      ]
+    },
+    {
+      "name": "claimMind",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "userProfile", "isMut": true, "isSigner": false },
+        { "name": "position", "isMut": true, "isSigner": false },
+        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
+        { "name": "mindMint", "isMut": true, "isSigner": false },
+        { "name": "userMindAta", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "deactivatePosition",
+      "accounts": [
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "position", "isMut": true, "isSigner": false },
+        { "name": "userProfile", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "stakeMind",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "userProfile", "isMut": true, "isSigner": false },
+        { "name": "userStake", "isMut": true, "isSigner": false },
+        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
+        { "name": "stakingMindVault", "isMut": true, "isSigner": false },
+        { "name": "ownerMindAta", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "unstakeMind",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "userStake", "isMut": true, "isSigner": false },
+        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
+        { "name": "stakingMindVault", "isMut": true, "isSigner": false },
+        { "name": "ownerMindAta", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "claimXnt",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "userProfile", "isMut": true, "isSigner": false },
+        { "name": "userStake", "isMut": true, "isSigner": false },
+        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
+        { "name": "stakingRewardVault", "isMut": true, "isSigner": false },
+        { "name": "ownerXntAta", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "rollEpoch",
+      "accounts": [
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "stakingRewardVault", "isMut": true, "isSigner": false }
+      ],
+      "args": [
+        { "name": "epochSeconds", "type": "u64" }
+      ]
+    },
+    {
+      "name": "adminUpdateConfig",
+      "accounts": [
+        { "name": "admin", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false }
+      ],
+      "args": [
+        { "name": "emissionPerSec", "type": "u64" },
+        { "name": "maxEffectiveHp", "type": "u64" }
+      ]
+    },
+    {
+      "name": "adminSetBadge",
+      "accounts": [
+        { "name": "admin", "isMut": true, "isSigner": true },
+        { "name": "config", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": false, "isSigner": false },
+        { "name": "userProfile", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "badgeTier", "type": "u8" },
+        { "name": "badgeBonusBps", "type": "u16" }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "InitConfigParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "emissionPerSec", "type": "u64" },
+          { "name": "maxEffectiveHp", "type": "u64" },
+          { "name": "secondsPerDay", "type": "u64" }
+        ]
+      }
+    }
+  ]
+}

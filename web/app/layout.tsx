@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PoCM Mining",
-  description: "PoCM vault mining on X1 testnet",
+  title: "Mining V2",
+  description: "Mining + staking V2 on X1 testnet",
 };
 
 export default function RootLayout({

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "programs/pocm_vault_mining",
+    "programs/mining_v2",
 ]
 resolver = "2"
 

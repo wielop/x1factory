@@ -1,0 +1,21 @@
+[package]
+name = "mining-v2"
+version = "0.1.0"
+description = "Mining + Staking V2 for X1"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "mining_v2"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+
+[dependencies]
+anchor-lang = { version = "0.28.0", features = ["init-if-needed"] }
+anchor-spl = { version = "0.28.0", features = ["token", "associated_token"] }
+solana-program = "=1.16.27"

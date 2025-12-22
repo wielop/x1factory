@@ -3,146 +3,90 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, Transaction } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  NATIVE_MINT,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
-  createSyncNativeInstruction,
   getAssociatedTokenAddressSync,
+  getMint,
 } from "@solana/spl-token";
-import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { TopBar } from "@/components/shared/TopBar";
-import { Tabs } from "@/components/ui/tabs";
-import { SummaryCards } from "@/components/dashboard/SummaryCards";
-import { MiningControlPanel } from "@/components/dashboard/MiningControlPanel";
-import { MiningActivityPanel } from "@/components/dashboard/MiningActivityPanel";
-import { MiningXpHero } from "@/components/dashboard/MiningXpHero";
-import { MineSection } from "@/components/dashboard/MineSection";
-import { StakeSection } from "@/components/dashboard/StakeSection";
-import { XPSection } from "@/components/dashboard/XPSection";
-import { TransactionStatus } from "@/components/dashboard/TransactionStatus";
-import { DashboardProvider, BusyAction, MiningPlanOption } from "@/components/dashboard/DashboardContext";
 import { useToast } from "@/components/shared/ToastProvider";
 import { getProgram } from "@/lib/anchor";
 import type { DecodedConfig } from "@/lib/solana";
 import {
   deriveConfigPda,
-  deriveStakingPositionPda,
+  derivePositionPda,
   deriveUserProfilePda,
-  derivePositionPdaV2,
+  deriveUserStakePda,
   deriveVaultPda,
   fetchClockUnixTs,
   fetchConfig,
-  fetchTokenBalanceUi,
-  getCurrentEpochFrom,
   getProgramId,
 } from "@/lib/solana";
 import {
-  decodeStakingPositionAccount,
-  decodeUserPositionAccount,
-  decodeUserProfileAccount,
-  tryDecodeStakingPositionAccount,
+  decodeMinerPositionAccount,
+  decodeUserMiningProfileAccount,
+  MINER_POSITION_LEN,
+  tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
 import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
 
-function safeBigintToNumber(value: bigint): number {
-  if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Amount is too large");
-  return Number(value);
-}
+const ACC_SCALE = 1_000_000_000_000_000_000n;
+const BPS_DENOMINATOR = 10_000n;
+const BADGE_BONUS_CAP_BPS = 2_000n;
+const CONTRACTS = [
+  { key: 0, label: "Starter Rig", durationDays: 7, costXnt: 1, hp: 1 },
+  { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 10, hp: 5 },
+  { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 20, hp: 7 },
+] as const;
 
-function planFeeBase(durationDays: 7 | 14 | 30, decimals: number): bigint {
-  const base = 10n ** BigInt(decimals);
-  if (durationDays === 7) return base / 10n; // 0.1
-  if (durationDays === 14) return base; // 1
-  return base * 5n; // 5
+function statValue(value: string, label: string) {
+  return (
+    <Card className="p-4">
+      <div className="text-xl font-semibold text-white">{value}</div>
+      <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">{label}</div>
+    </Card>
+  );
 }
-
-function formatBps(bps: number) {
-  const percent = bps / 100;
-  return `${percent % 1 === 0 ? percent.toFixed(0) : percent.toFixed(2)}%`;
-}
-
-function rewardForDurationBase(
-  durationDays: 7 | 14 | 28 | 30,
-  cfg: Pick<DecodedConfig, "mindReward7d" | "mindReward14d" | "mindReward28d">
-) {
-  if (durationDays === 7) return BigInt(cfg.mindReward7d.toString());
-  if (durationDays === 14) return BigInt(cfg.mindReward14d.toString());
-  return BigInt(cfg.mindReward28d.toString());
-}
-
-function rewardPerEpochBase(
-  durationDays: 7 | 14 | 28 | 30,
-  cfg: Pick<DecodedConfig, "mindReward7d" | "mindReward14d" | "mindReward28d">
-) {
-  return rewardForDurationBase(durationDays, cfg) / BigInt(durationDays);
-}
-
-const XP_TIER_LABELS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 
 export function PublicDashboard() {
   const { connection } = useConnection();
-  const { publicKey, signTransaction } = useWallet();
+  const { publicKey } = useWallet();
   const anchorWallet = useAnchorWallet();
   const { push: pushToast } = useToast();
 
-  const [config, setConfig] = useState<Awaited<ReturnType<typeof fetchConfig>> | null>(null);
+  const [config, setConfig] = useState<DecodedConfig | null>(null);
   const [nowTs, setNowTs] = useState<number | null>(null);
   const [positions, setPositions] = useState<
-    Array<{ pubkey: string; data: ReturnType<typeof decodeUserPositionAccount> }>
+    Array<{ pubkey: string; data: ReturnType<typeof decodeMinerPositionAccount> }>
   >([]);
-  const [stakingPositions, setStakingPositions] = useState<
-    Array<{ pubkey: string; data: ReturnType<typeof decodeStakingPositionAccount> }>
-  >([]);
-  const [xntBalanceUi, setXntBalanceUi] = useState<string | null>(null);
-  const [mindBalanceUi, setMindBalanceUi] = useState<string | null>(null);
-  const [mindBalanceBase, setMindBalanceBase] = useState<bigint>(0n);
-  const [stakingVaultXntBalanceUi, setStakingVaultXntBalanceUi] = useState<string | null>(null);
-  const [stakingVaultXntBalanceBase, setStakingVaultXntBalanceBase] = useState<bigint | null>(null);
-  const [stakingVaultMindBalanceUi, setStakingVaultMindBalanceUi] = useState<string | null>(null);
-  const [rewardPoolHistory, setRewardPoolHistory] = useState<Array<{ ts: number; amount: bigint }>>([]);
-  const [userProfile, setUserProfile] = useState<ReturnType<typeof decodeUserProfileAccount> | null>(null);
+  const [userProfile, setUserProfile] = useState<
+    ReturnType<typeof decodeUserMiningProfileAccount> | null
+  >(null);
+  const [userStake, setUserStake] = useState<ReturnType<typeof decodeUserStakeAccount> | null>(null);
+  const [mintDecimals, setMintDecimals] = useState<{ xnt: number; mind: number } | null>(null);
+  const [xntBalance, setXntBalance] = useState<bigint>(0n);
+  const [mindBalance, setMindBalance] = useState<bigint>(0n);
+  const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
+  const [stakingMindBalance, setStakingMindBalance] = useState<bigint>(0n);
+  const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
 
-  const [durationDays, setDurationDays] = useState<7 | 14 | 30>(14);
-  const [stakeDurationDays, setStakeDurationDays] = useState<7 | 14 | 30 | 60>(30);
-  const [stakeAmountUi, setStakeAmountUi] = useState("");
-  const [busy, setBusy] = useState<BusyAction | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [selectedContract, setSelectedContract] = useState<number>(1);
+  const [stakeAmountUi, setStakeAmountUi] = useState<string>("");
+  const [unstakeAmountUi, setUnstakeAmountUi] = useState<string>("");
+  const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  const currentEpoch = useMemo(() => {
-    if (!config || nowTs == null) return null;
-    return getCurrentEpochFrom(config, nowTs);
-  }, [config, nowTs]);
-
-  const emissionNotStarted = useMemo(() => {
-    if (!config || nowTs == null) return false;
-    return nowTs < config.emissionStartTs.toNumber();
-  }, [config, nowTs]);
-
-  const nextEpochCountdown = useMemo(() => {
-    if (!config || nowTs == null) return null;
-    if (nowTs < config.emissionStartTs.toNumber()) {
-      return { label: "starts in", seconds: Math.max(0, config.emissionStartTs.toNumber() - nowTs) };
-    }
-    const epoch = getCurrentEpochFrom(config, nowTs);
-    const epochStart = config.emissionStartTs.toNumber() + epoch * config.epochSeconds.toNumber();
-    const nextStart = epochStart + config.epochSeconds.toNumber();
-    return { label: "next epoch in", seconds: Math.max(0, nextStart - nowTs) };
-  }, [config, nowTs]);
-
-  const activePositions = useMemo(() => {
-    if (nowTs == null) return [];
-    return positions.filter((p) => p.data.lockedAmount > 0n && nowTs < p.data.lockEndTs);
-  }, [positions, nowTs]);
-
-  const anyActive = activePositions.length > 0;
+  const contract = CONTRACTS.find((c) => c.key === selectedContract) ?? CONTRACTS[0];
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -153,92 +97,94 @@ export function PublicDashboard() {
       const ts = await fetchClockUnixTs(connection);
       setNowTs(ts);
 
-      try {
-        const vaultBalance = await connection.getTokenAccountBalance(cfg.stakingVaultXntAta, "confirmed");
-        const base = BigInt(vaultBalance.value.amount || "0");
-        setStakingVaultXntBalanceBase(base);
-        setStakingVaultXntBalanceUi(formatTokenAmount(base, cfg.xntDecimals, 6));
-      } catch {
-        setStakingVaultXntBalanceBase(null);
-        setStakingVaultXntBalanceUi(null);
-      }
+      const [xntMintInfo, mindMintInfo] = await Promise.all([
+        getMint(connection, cfg.xntMint, "confirmed"),
+        getMint(connection, cfg.mindMint, "confirmed"),
+      ]);
+      setMintDecimals({ xnt: xntMintInfo.decimals, mind: mindMintInfo.decimals });
 
-      try {
-        const vaultMind = await connection.getTokenAccountBalance(cfg.stakingVaultMindAta, "confirmed");
-        setStakingVaultMindBalanceUi(
-          formatTokenAmount(BigInt(vaultMind.value.amount || "0"), cfg.mindDecimals, 6)
-        );
-      } catch {
-        setStakingVaultMindBalanceUi(null);
-      }
+      const [rewardBal, mindBal] = await Promise.all([
+        connection.getTokenAccountBalance(cfg.stakingRewardVault, "confirmed"),
+        connection.getTokenAccountBalance(cfg.stakingMindVault, "confirmed"),
+      ]);
+      setStakingRewardBalance(BigInt(rewardBal.value.amount || "0"));
+      setStakingMindBalance(BigInt(mindBal.value.amount || "0"));
 
       if (!publicKey) {
         setPositions([]);
-        setStakingPositions([]);
-        setXntBalanceUi(null);
-        setMindBalanceUi(null);
-        setMindBalanceBase(0n);
-        setStakingVaultXntBalanceBase(null);
         setUserProfile(null);
+        setUserStake(null);
+        setXntBalance(0n);
+        setMindBalance(0n);
         return;
       }
 
       const programId = getProgramId();
-      const [positionsGpa, stakingGpa, profileAcc] = await Promise.all([
+      const [posGpa, profileAcc, stakeAcc] = await Promise.all([
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
           filters: [
-            { dataSize: 93 },
+            { dataSize: MINER_POSITION_LEN },
             { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
           ],
         }),
-        connection.getProgramAccounts(programId, {
-          commitment: "confirmed",
-          filters: [{ memcmp: { offset: 8, bytes: publicKey.toBase58() } }],
-        }),
         connection.getAccountInfo(deriveUserProfilePda(publicKey), "confirmed"),
+        connection.getAccountInfo(deriveUserStakePda(publicKey), "confirmed"),
       ]);
 
-      const decoded = positionsGpa
-        .map((a) => ({
-          pubkey: a.pubkey.toBase58(),
-          data: decodeUserPositionAccount(Buffer.from(a.account.data)),
+      const decodedPositions = posGpa
+        .map((p) => ({
+          pubkey: p.pubkey.toBase58(),
+          data: decodeMinerPositionAccount(Buffer.from(p.account.data)),
         }))
-        .sort((a, b) => b.data.lockStartTs - a.data.lockStartTs);
-      setPositions(decoded);
-
-      const decodedStakes = stakingGpa
-        .map((a) => {
-          const decoded = tryDecodeStakingPositionAccount(Buffer.from(a.account.data));
-          if (!decoded) return null;
-          return { pubkey: a.pubkey.toBase58(), data: decoded };
-        })
-        .filter((entry): entry is { pubkey: string; data: ReturnType<typeof decodeStakingPositionAccount> } => entry !== null)
         .sort((a, b) => b.data.startTs - a.data.startTs);
-      setStakingPositions(decodedStakes);
+      setPositions(decodedPositions);
 
-      setUserProfile(profileAcc?.data ? decodeUserProfileAccount(Buffer.from(profileAcc.data)) : null);
+      setUserProfile(
+        profileAcc?.data ? decodeUserMiningProfileAccount(Buffer.from(profileAcc.data)) : null
+      );
+      setUserStake(
+        stakeAcc?.data ? tryDecodeUserStakeAccount(Buffer.from(stakeAcc.data)) : null
+      );
 
-      const xntMint = cfg.xntMint;
-      if (xntMint.equals(NATIVE_MINT)) {
-        const lamports = await connection.getBalance(publicKey, "confirmed");
-        setXntBalanceUi(formatTokenAmount(BigInt(lamports), 9, 6));
-      } else {
-        const ownerXntAta = getAssociatedTokenAddressSync(xntMint, publicKey);
-        setXntBalanceUi(await fetchTokenBalanceUi(connection, ownerXntAta));
+      const xntAta = getAssociatedTokenAddressSync(cfg.xntMint, publicKey);
+      const mindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);
+      const [xntBal, mindBalUser] = await Promise.all([
+        connection
+          .getTokenAccountBalance(xntAta, "confirmed")
+          .then((b) => BigInt(b.value.amount || "0"))
+          .catch(() => 0n),
+        connection
+          .getTokenAccountBalance(mindAta, "confirmed")
+          .then((b) => BigInt(b.value.amount || "0"))
+          .catch(() => 0n),
+      ]);
+      setXntBalance(xntBal);
+      setMindBalance(mindBalUser);
+
+      if (typeof window !== "undefined") {
+        const key = "mining_v2_network_hp_history";
+        const historyRaw = window.localStorage.getItem(key);
+        const history: Array<{ ts: number; hp: string }> = historyRaw ? JSON.parse(historyRaw) : [];
+        const pruned = history.filter((entry) => ts - entry.ts <= 86_400);
+        const last = pruned[pruned.length - 1];
+        if (!last || ts - last.ts >= 3_600) {
+          pruned.push({ ts, hp: cfg.networkHpActive.toString() });
+        } else {
+          pruned[pruned.length - 1] = { ts, hp: cfg.networkHpActive.toString() };
+        }
+        while (pruned.length > 32) pruned.shift();
+        window.localStorage.setItem(key, JSON.stringify(pruned));
+        const oldest = pruned[0];
+        if (oldest && ts - oldest.ts >= 86_400) {
+          const prevHp = BigInt(oldest.hp);
+          const delta = cfg.networkHpActive - prevHp;
+          const pct = prevHp > 0n ? Number((delta * 10_000n) / prevHp) / 100 : 0;
+          setNetworkTrend({ delta, pct });
+        } else {
+          setNetworkTrend(null);
+        }
       }
-
-      const userMindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);
-      try {
-        const mindBalance = await connection.getTokenAccountBalance(userMindAta, "confirmed");
-        const amountBase = BigInt(mindBalance.value.amount || "0");
-        setMindBalanceBase(amountBase);
-        setMindBalanceUi(mindBalance.value.uiAmountString ?? "0");
-      } catch {
-        setMindBalanceBase(0n);
-        setMindBalanceUi("0");
-      }
-
     } catch (e: unknown) {
       console.error(e);
       setError(formatError(e));
@@ -246,109 +192,6 @@ export function PublicDashboard() {
       setLoading(false);
     }
   }, [connection, publicKey]);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("pocm_reward_pool_history");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Array<{ ts: number; amount: string }>;
-      if (!Array.isArray(parsed)) return;
-      setRewardPoolHistory(
-        parsed
-          .filter((p) => typeof p.ts === "number" && typeof p.amount === "string")
-          .map((p) => ({ ts: p.ts, amount: BigInt(p.amount) }))
-      );
-    } catch {
-      // ignore corrupted cache
-    }
-  }, []);
-
-  useEffect(() => {
-    if (stakingVaultXntBalanceBase == null || nowTs == null) return;
-    setRewardPoolHistory((prev) => {
-      const next = [...prev];
-      const last = next[next.length - 1];
-      if (!last || nowTs - last.ts >= 60) {
-        next.push({ ts: nowTs, amount: stakingVaultXntBalanceBase });
-      } else {
-        next[next.length - 1] = { ts: nowTs, amount: stakingVaultXntBalanceBase };
-      }
-      const cutoff = nowTs - 24 * 60 * 60;
-      const trimmed = next.filter((p) => p.ts >= cutoff).slice(-64);
-      try {
-        localStorage.setItem(
-          "pocm_reward_pool_history",
-          JSON.stringify(trimmed.map((p) => ({ ts: p.ts, amount: p.amount.toString() })))
-        );
-      } catch {
-        // ignore storage quota
-      }
-      return trimmed;
-    });
-  }, [nowTs, stakingVaultXntBalanceBase]);
-
-  const rewardPoolSeries = useMemo(() => {
-    if (rewardPoolHistory.length < 2) return null;
-    const amounts = rewardPoolHistory.map((p) => p.amount);
-    let min = amounts[0];
-    let max = amounts[0];
-    for (const v of amounts) {
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    const span = max > min ? max - min : 1n;
-    const points = rewardPoolHistory.map((p, idx) => {
-      const x = (idx / Math.max(1, rewardPoolHistory.length - 1)) * 100;
-      const y = 100 - Number(((p.amount - min) * 100n) / span);
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
-    return { points: points.join(" "), min, max };
-  }, [rewardPoolHistory]);
-
-  const estimateStakeRewardParts = useCallback(
-    (
-      amountBase: bigint,
-      boostBps: number,
-      durationDays: number,
-      totalWeighted: bigint,
-      vaultBase: bigint
-    ) => {
-      if (amountBase <= 0n || totalWeighted <= 0n || vaultBase <= 0n) return null;
-      const durationMult =
-        durationDays === 7 ? 10_000n : durationDays === 14 ? 11_000n : durationDays === 30 ? 12_500n : 15_000n;
-      const baseWeight = (amountBase * durationMult) / 10_000n;
-      const boostedWeight = (baseWeight * BigInt(10_000 + boostBps)) / 10_000n;
-      const base = (vaultBase * baseWeight) / totalWeighted;
-      const boosted = (vaultBase * boostedWeight) / totalWeighted;
-      return { base, boosted };
-    },
-    []
-  );
-
-  const stakeEstimate = useMemo(() => {
-    if (!config || !userProfile || stakingVaultXntBalanceBase == null) return null;
-    try {
-      const amountBase = parseUiAmountToBase(stakeAmountUi, config.mindDecimals);
-      if (amountBase <= 0n) return null;
-      const totalWeighted = BigInt(config.totalStakedMind.toString());
-      return estimateStakeRewardParts(
-        amountBase,
-        userProfile.xpBoostBps,
-        stakeDurationDays,
-        totalWeighted,
-        stakingVaultXntBalanceBase
-      );
-    } catch {
-      return null;
-    }
-  }, [
-    config,
-    estimateStakeRewardParts,
-    stakeAmountUi,
-    stakeDurationDays,
-    stakingVaultXntBalanceBase,
-    userProfile,
-  ]);
 
   useEffect(() => {
     void refresh();
@@ -359,561 +202,497 @@ export function PublicDashboard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const signAndSend = useCallback(
-    async (tx: Transaction) => {
-      if (!publicKey) throw new Error("Connect a wallet first");
-      if (!signTransaction) throw new Error("Wallet does not support signTransaction");
-      tx.feePayer = publicKey;
-      const latest = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = latest.blockhash;
-      const signed = await signTransaction(tx);
-      const sig = await connection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-      });
-      await connection.confirmTransaction(
-        {
-          signature: sig,
-          blockhash: latest.blockhash,
-          lastValidBlockHeight: latest.lastValidBlockHeight,
-        },
-        "confirmed"
-      );
-      return sig;
-    },
-    [connection, publicKey, signTransaction]
-  );
+  const userHp = useMemo(() => {
+    if (userProfile) return userProfile.activeHp;
+    if (!nowTs) return 0n;
+    return positions
+      .filter((p) => !p.data.deactivated && nowTs < p.data.endTs)
+      .reduce((acc, p) => acc + p.data.hp, 0n);
+  }, [positions, userProfile, nowTs]);
 
-  const withTx = useCallback(
-    async (label: string, fn: () => Promise<string>) => {
-      setError(null);
-      setLastSig(null);
-      pushToast({ title: label, description: "Confirm in your wallet…", variant: "info" });
-      try {
-        const sig = await fn();
-        setLastSig(sig);
-        pushToast({ title: "Transaction confirmed", description: shortPk(sig, 6), variant: "success" });
-        await refresh();
-        return sig;
-      } catch (e: unknown) {
-        const msg = formatError(e);
-        setError(msg);
-        pushToast({
-          title: msg.includes("Plugin Closed") ? "Wallet action required" : "Transaction failed",
-          description: msg.includes("Plugin Closed") ? "Open/unlock the wallet and retry." : "See error details on the page.",
-          variant: "error",
-        });
-        throw e;
-      }
-    },
-    [pushToast, refresh]
-  );
+  const effectiveUserHp = useMemo(() => {
+    if (!config) return userHp;
+    return userHp > config.maxEffectiveHp ? config.maxEffectiveHp : userHp;
+  }, [config, userHp]);
 
-  const onDeposit = async () => {
-    if (!publicKey) throw new Error("Connect a wallet first");
-    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-    if (!config) throw new Error("Config not loaded");
-    if (busy) return;
-    if (emissionNotStarted) throw new Error(`Mining not started yet (start=${config.emissionStartTs.toNumber()})`);
+  const networkHp = config?.networkHpActive ?? 0n;
+  const sharePct = networkHp > 0n ? Number((effectiveUserHp * 10_000n) / networkHp) / 100 : 0;
 
-    const feeBase = planFeeBase(durationDays, config.xntDecimals);
-    const xntMint = config.xntMint;
+  const pendingByPosition = useMemo(() => {
+    if (!config) return [] as Array<bigint>;
+    return positions.map((p) => {
+      const acc = p.data.deactivated ? p.data.finalAccMindPerHp : config.accMindPerHp;
+      const earned = (p.data.hp * acc) / ACC_SCALE;
+      const pending = earned > p.data.rewardDebt ? earned - p.data.rewardDebt : 0n;
+      return pending;
+    });
+  }, [positions, config]);
 
-    setBusy("buy");
+  const totalPendingMind = pendingByPosition.reduce((acc, v) => acc + v, 0n);
+
+  const basePendingXnt = useMemo(() => {
+    if (!config || !userStake) return 0n;
+    const earned = (userStake.stakedMind * config.stakingAccXntPerMind) / ACC_SCALE;
+    const pending = earned > userStake.rewardDebt ? earned - userStake.rewardDebt : 0n;
+    return pending + userStake.rewardOwed;
+  }, [config, userStake]);
+
+  const badgeBonusBps = userProfile?.badgeBonusBps ?? 0;
+  const effectiveBonusBps = Math.min(badgeBonusBps, Number(BADGE_BONUS_CAP_BPS));
+  const finalPendingXnt =
+    basePendingXnt > 0n
+      ? (basePendingXnt * (BPS_DENOMINATOR + BigInt(effectiveBonusBps))) / BPS_DENOMINATOR
+      : 0n;
+
+  const emissionPerDay = config ? config.emissionPerSec * 86_400n : 0n;
+  const estUserPerDay =
+    config && networkHp > 0n
+      ? (emissionPerDay * effectiveUserHp) / networkHp
+      : 0n;
+
+  const epochCountdown = useMemo(() => {
+    if (!config || nowTs == null) return null;
+    const remaining = Math.max(0, config.stakingEpochEndTs - nowTs);
+    return remaining;
+  }, [config, nowTs]);
+
+  const estRewardsPer1k = useMemo(() => {
+    if (!config || config.stakingTotalStakedMind === 0n) return null;
+    const rewards7d = config.stakingRewardRateXntPerSec * 86_400n * 7n;
+    return (rewards7d * 1_000n) / config.stakingTotalStakedMind;
+  }, [config]);
+
+  const ensureAta = async (owner: PublicKey, mint: PublicKey) => {
+    const ata = getAssociatedTokenAddressSync(mint, owner);
+    const info = await connection.getAccountInfo(ata, "confirmed");
+    if (info) return { ata, ix: null };
+    return {
+      ata,
+      ix: createAssociatedTokenAccountIdempotentInstruction(
+        owner,
+        ata,
+        owner,
+        mint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      ),
+    };
+  };
+
+  const withTx = async (label: string, fn: () => Promise<string>) => {
+    setBusy(label);
+    setError(null);
     try {
-      await withTx("Buy mining position", async () => {
-        const program = getProgram(connection, anchorWallet);
-        const tx = new Transaction();
-
-        // Determine next position index from UserProfile PDA (or 0 if missing).
-        const profilePda = deriveUserProfilePda(publicKey);
-        const profileAcc = await connection.getAccountInfo(profilePda, "confirmed");
-        const nextIndex = profileAcc?.data
-          ? decodeUserProfileAccount(Buffer.from(profileAcc.data)).nextPositionIndex
-          : 0n;
-
-        const positionPda = derivePositionPdaV2(publicKey, nextIndex);
-
-        const ownerXntAta = getAssociatedTokenAddressSync(xntMint, publicKey);
-        const vaultAuthority = deriveVaultPda();
-        const vaultXntAta = getAssociatedTokenAddressSync(xntMint, vaultAuthority, true);
-        const stakingVaultXntAta = config.stakingVaultXntAta;
-
-        tx.add(
-          createAssociatedTokenAccountIdempotentInstruction(
-            publicKey,
-            ownerXntAta,
-            publicKey,
-            xntMint,
-            TOKEN_PROGRAM_ID,
-            ASSOCIATED_TOKEN_PROGRAM_ID
-          )
-        );
-
-        if (xntMint.equals(NATIVE_MINT)) {
-          tx.add(
-            SystemProgram.transfer({
-              fromPubkey: publicKey,
-              toPubkey: ownerXntAta,
-              lamports: safeBigintToNumber(feeBase),
-            }),
-            createSyncNativeInstruction(ownerXntAta)
-          );
-        }
-
-        const createIx = await program.methods
-          .createPosition(durationDays, new BN(nextIndex.toString()))
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            userProfile: profilePda,
-            position: positionPda,
-            systemProgram: SystemProgram.programId,
-          })
-          .instruction();
-        tx.add(createIx);
-
-        const depositIx = await program.methods
-          .deposit(new BN(feeBase.toString()))
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            userProfile: profilePda,
-            position: positionPda,
-            vaultAuthority,
-            xntMint,
-            vaultXntAta,
-            stakingVaultXntAta,
-            ownerXntAta,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .instruction();
-        tx.add(depositIx);
-
-        return await signAndSend(tx);
-      });
+      const sig = await fn();
+      setLastSig(sig);
+      pushToast({ title: label, description: shortPk(sig, 6) });
+    } catch (e: unknown) {
+      console.error(e);
+      setError(formatError(e));
     } finally {
       setBusy(null);
+      await refresh();
     }
   };
 
-  const onClaim = async (amountBase: bigint) => {
-    if (!publicKey) throw new Error("Connect a wallet first");
-    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-    if (!config) throw new Error("Config not loaded");
-    if (busy) return;
-    if (!positions.some((p) => p.data.lockedAmount > 0n)) throw new Error("No miners found");
-    if (amountBase <= 0n) throw new Error("Amount must be greater than 0");
-
-    setBusy("claim");
-    try {
-      await withTx("Claim", async () => {
-        const program = getProgram(connection, anchorWallet);
-        const vaultAuthority = deriveVaultPda();
-        const userMindAta = getAssociatedTokenAddressSync(config.mindMint, publicKey);
-        const ix = await program.methods
-          .claim(new BN(amountBase.toString()))
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            vaultAuthority,
-            mindMint: config.mindMint,
-            userMindAta,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .remainingAccounts(
-            positions
-              .filter((p) => p.data.lockedAmount > 0n)
-              .map((p) => ({
-                pubkey: new PublicKey(p.pubkey),
-                isSigner: false,
-                isWritable: true,
-              }))
-          )
-          .instruction();
-        const tx = new Transaction().add(ix);
-        return await signAndSend(tx);
-      });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-const onStake = async () => {
-  if (!publicKey) throw new Error("Connect a wallet first");
-  if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-  if (!config) throw new Error("Config not loaded");
-  if (!userProfile) throw new Error("Your profile is not ready yet");
-  if (busy) return;
-
-  const amountBase = parseUiAmountToBase(stakeAmountUi, config.mindDecimals);
-  if (amountBase <= 0n) throw new Error("Amount must be greater than 0");
-  if (amountBase > mindBalanceBase) throw new Error("Insufficient MIND balance");
-
-  setBusy("stake");
-  try {
-    await withTx("Stake MIND", async () => {
-      const program = getProgram(connection, anchorWallet);
-      const ownerMindAta = getAssociatedTokenAddressSync(config.mindMint, publicKey);
-      const stakingPositionPda = deriveStakingPositionPda(publicKey, userProfile.nextStakeIndex);
-      const tx = new Transaction().add(
-        createAssociatedTokenAccountIdempotentInstruction(
-          publicKey,
-          ownerMindAta,
-          publicKey,
-          config.mindMint,
-          TOKEN_PROGRAM_ID,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        )
-      );
-      const ix = await program.methods
-        .createStake(
-          stakeDurationDays,
-          new BN(userProfile.nextStakeIndex.toString()),
-          new BN(amountBase.toString())
-        )
+  const onBuy = async () => {
+    if (!anchorWallet || !publicKey || !config) return;
+    const program = getProgram(connection, anchorWallet);
+    const nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);
+    const positionIndex = new BN(nextIndex.toString());
+    await withTx("Buy contract", async () => {
+      const ix = await ensureAta(publicKey, config.xntMint);
+      const tx = new Transaction();
+      if (ix.ix) tx.add(ix.ix);
+      const sig = await program.methods
+        .buyContract(contract.key, positionIndex)
         .accounts({
           owner: publicKey,
           config: deriveConfigPda(),
           userProfile: deriveUserProfilePda(publicKey),
-          stakingPosition: stakingPositionPda,
+          position: derivePositionPda(publicKey, nextIndex),
           vaultAuthority: deriveVaultPda(),
-          stakingVaultMindAta: config.stakingVaultMindAta,
-          ownerMindAta,
+          xntMint: config.xntMint,
+          stakingRewardVault: config.stakingRewardVault,
+          treasuryVault: config.treasuryVault,
+          ownerXntAta: ix.ata,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
-          rent: SYSVAR_RENT_PUBKEY,
         })
-        .instruction();
-      tx.add(ix);
-      return await signAndSend(tx);
+        .preInstructions(tx.instructions)
+        .rpc();
+      return sig;
     });
-    setStakeAmountUi("");
-  } finally {
-    setBusy(null);
-  }
-};
+  };
 
-const onClaimStake = async (
-  stake: { pubkey: string; data: ReturnType<typeof decodeStakingPositionAccount> },
-  amountBase: bigint
-) => {
-  if (!publicKey) throw new Error("Connect a wallet first");
-  if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-  if (!config) throw new Error("Config not loaded");
-  if (busy) return;
-  if (amountBase <= 0n) throw new Error("Amount must be greater than 0");
-
-  const stakeIndex = stake.data.stakeIndex;
-  const busyLabel = `claim-stake-${stake.pubkey}` as BusyAction;
-  setBusy(busyLabel);
-  try {
-    await withTx("Claim staking reward", async () => {
-      const program = getProgram(connection, anchorWallet);
-      const ownerXntAta = getAssociatedTokenAddressSync(config.xntMint, publicKey);
-      const tx = new Transaction().add(
-        createAssociatedTokenAccountIdempotentInstruction(
-          publicKey,
-          ownerXntAta,
-          publicKey,
-          config.xntMint,
-          TOKEN_PROGRAM_ID,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        )
-      );
-      const ix = await program.methods
-        .claimStakeReward(new BN(stakeIndex.toString()), new BN(amountBase.toString()))
+  const onClaim = async (posPubkey: string) => {
+    if (!anchorWallet || !publicKey || !config) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Claim MIND", async () => {
+      const ix = await ensureAta(publicKey, config.mindMint);
+      const tx = new Transaction();
+      if (ix.ix) tx.add(ix.ix);
+      const sig = await program.methods
+        .claimMind()
         .accounts({
           owner: publicKey,
           config: deriveConfigPda(),
-          stakingPosition: new PublicKey(stake.pubkey),
+          userProfile: deriveUserProfilePda(publicKey),
+          position: new PublicKey(posPubkey),
           vaultAuthority: deriveVaultPda(),
-          stakingVaultXntAta: config.stakingVaultXntAta,
-          ownerXntAta,
+          mindMint: config.mindMint,
+          userMindAta: ix.ata,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
         })
-        .instruction();
-      tx.add(ix);
-      return await signAndSend(tx);
+        .preInstructions(tx.instructions)
+        .rpc();
+      return sig;
     });
-  } finally {
-    setBusy(null);
-  }
-};
+  };
 
-const onWithdrawStake = async (stake: { pubkey: string; data: ReturnType<typeof decodeStakingPositionAccount> }) => {
-  if (!publicKey) throw new Error("Connect a wallet first");
-  if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-  if (!config) throw new Error("Config not loaded");
-  if (busy) return;
-
-  const busyLabel = `withdraw-stake-${stake.pubkey}` as BusyAction;
-  setBusy(busyLabel);
-  try {
-    await withTx("Withdraw stake", async () => {
-      const program = getProgram(connection, anchorWallet);
-      const ownerMindAta = getAssociatedTokenAddressSync(config.mindMint, publicKey);
-      const ix = await program.methods
-        .withdrawStake(new BN(stake.data.stakeIndex.toString()))
+  const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
+    if (!anchorWallet || !config) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Deactivate position", async () => {
+      const sig = await program.methods
+        .deactivatePosition()
         .accounts({
-          owner: publicKey,
           config: deriveConfigPda(),
-          stakingPosition: new PublicKey(stake.pubkey),
-          vaultAuthority: deriveVaultPda(),
-          stakingVaultMindAta: config.stakingVaultMindAta,
-          ownerMindAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          position: new PublicKey(posPubkey),
+          userProfile: deriveUserProfilePda(new PublicKey(ownerBytes)),
         })
-        .instruction();
-      return await signAndSend(new Transaction().add(ix));
+        .rpc();
+      return sig;
     });
-  } finally {
-    setBusy(null);
-  }
-};
+  };
 
-  const onClosePosition = async (positionPubkey: string) => {
-    if (!publicKey) throw new Error("Connect a wallet first");
-    if (!anchorWallet) throw new Error("Wallet is not ready for Anchor");
-    if (busy) return;
-
-    setBusy("close");
+  const onStake = async () => {
+    if (!anchorWallet || !publicKey || !config || !mintDecimals) return;
+    let amountBase: bigint;
     try {
-      await withTx("Close position", async () => {
-        const program = getProgram(connection, anchorWallet);
-        const ix = await program.methods
-          .withdraw()
-          .accounts({
-            owner: publicKey,
-            position: new PublicKey(positionPubkey),
-            systemProgram: SystemProgram.programId,
-          })
-          .instruction();
-        return await signAndSend(new Transaction().add(ix));
-      });
-    } finally {
-      setBusy(null);
+      amountBase = parseUiAmountToBase(stakeAmountUi, mintDecimals.mind);
+    } catch (e: unknown) {
+      setError(formatError(e));
+      return;
     }
+    if (amountBase <= 0n) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Stake MIND", async () => {
+      const ix = await ensureAta(publicKey, config.mindMint);
+      const tx = new Transaction();
+      if (ix.ix) tx.add(ix.ix);
+      const sig = await program.methods
+        .stakeMind(new BN(amountBase.toString()))
+        .accounts({
+          owner: publicKey,
+          config: deriveConfigPda(),
+          userProfile: deriveUserProfilePda(publicKey),
+          userStake: deriveUserStakePda(publicKey),
+          vaultAuthority: deriveVaultPda(),
+          stakingMindVault: config.stakingMindVault,
+          ownerMindAta: ix.ata,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .preInstructions(tx.instructions)
+        .rpc();
+      return sig;
+    });
   };
 
-  const estimatedRewardBase = useMemo(() => {
-    if (!config) return null;
-    const total = activePositions.reduce((acc, position) => {
-      if (
-        position.data.durationDays !== 7 &&
-        position.data.durationDays !== 14 &&
-        position.data.durationDays !== 28 &&
-        position.data.durationDays !== 30
-      ) {
-        return acc;
-      }
-      return acc + rewardPerEpochBase(position.data.durationDays, config);
-    }, 0n);
-    return total > 0n ? total : null;
-  }, [activePositions, config]);
-
-  const xpStats = useMemo(() => {
-    if (!config || !userProfile) return null;
-    const xpValue = BigInt(userProfile.miningXp.toString());
-    const thresholds = [
-      0n,
-      BigInt(config.xpTierSilver.toString()),
-      BigInt(config.xpTierGold.toString()),
-      BigInt(config.xpTierDiamond.toString()),
-    ];
-    const tier = Math.min(Number(userProfile.xpTier), XP_TIER_LABELS.length - 1);
-    const floor = thresholds[tier];
-    const nextThreshold = tier < thresholds.length - 1 ? thresholds[tier + 1] : null;
-    const baseDiff = nextThreshold && nextThreshold > floor ? nextThreshold - floor : 1n;
-    const relative = xpValue > floor ? xpValue - floor : 0n;
-    const progress = nextThreshold
-      ? Math.min(
-          100,
-          Number(((relative * 100n) / baseDiff).toString())
-        )
-      : 100;
-    const remaining = nextThreshold && xpValue < nextThreshold ? nextThreshold - xpValue : 0n;
-    return {
-      tier,
-      tierName: XP_TIER_LABELS[tier],
-      boostBps: userProfile.xpBoostBps,
-      progress,
-      remaining,
-      nextTierName: nextThreshold ? XP_TIER_LABELS[tier + 1] : null,
-    };
-  }, [config, userProfile]);
-
-  const planOptions: MiningPlanOption[] = config
-    ? [
-        { d: 7, mult: "1.0x", price: "0.1", xp: config.xpPer7d.toString() },
-        { d: 14, mult: "1.25x", price: "1", xp: config.xpPer14d.toString() },
-        { d: 30, mult: "1.5x", price: "5", xp: config.xpPer30d.toString() },
-      ]
-    : [
-        { d: 7, mult: "1.0x", price: "0.1", xp: "—" },
-        { d: 14, mult: "1.25x", price: "1", xp: "—" },
-        { d: 30, mult: "1.5x", price: "5", xp: "—" },
-      ];
-
-  const handleStakeMax = () => {
-    if (!config) return;
-    setStakeAmountUi(formatTokenAmount(mindBalanceBase, config.mindDecimals, config.mindDecimals));
+  const onUnstake = async () => {
+    if (!anchorWallet || !publicKey || !config || !mintDecimals) return;
+    let amountBase: bigint;
+    try {
+      amountBase = parseUiAmountToBase(unstakeAmountUi, mintDecimals.mind);
+    } catch (e: unknown) {
+      setError(formatError(e));
+      return;
+    }
+    if (amountBase <= 0n) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Unstake MIND", async () => {
+      const ix = await ensureAta(publicKey, config.mindMint);
+      const tx = new Transaction();
+      if (ix.ix) tx.add(ix.ix);
+      const sig = await program.methods
+        .unstakeMind(new BN(amountBase.toString()))
+        .accounts({
+          owner: publicKey,
+          config: deriveConfigPda(),
+          userStake: deriveUserStakePda(publicKey),
+          vaultAuthority: deriveVaultPda(),
+          stakingMindVault: config.stakingMindVault,
+          ownerMindAta: ix.ata,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .preInstructions(tx.instructions)
+        .rpc();
+      return sig;
+    });
   };
 
-  const [activeTab, setActiveTab] = useState<"mine" | "stake" | "xp">("mine");
+  const onClaimXnt = async () => {
+    if (!anchorWallet || !publicKey || !config) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Claim XNT", async () => {
+      const ix = await ensureAta(publicKey, config.xntMint);
+      const tx = new Transaction();
+      if (ix.ix) tx.add(ix.ix);
+      const sig = await program.methods
+        .claimXnt()
+        .accounts({
+          owner: publicKey,
+          config: deriveConfigPda(),
+          userProfile: deriveUserProfilePda(publicKey),
+          userStake: deriveUserStakePda(publicKey),
+          vaultAuthority: deriveVaultPda(),
+          stakingRewardVault: config.stakingRewardVault,
+          ownerXntAta: ix.ata,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .preInstructions(tx.instructions)
+        .rpc();
+      return sig;
+    });
+  };
 
-  const dashboardValue = useMemo(
-    () => ({
-      publicKey,
-      config,
-      nowTs,
-      currentEpoch,
-      nextEpochCountdown,
-      positions,
-      activePositions,
-      anyActive,
-      stakingPositions,
-      durationDays,
-      setDurationDays,
-      planOptions,
-      emissionNotStarted,
-      onDeposit,
-      onClaim,
-      onClosePosition,
-      onStake,
-      onClaimStake,
-      onWithdrawStake,
-      busy,
-      loading,
-      error,
-      lastSig,
-      refresh,
-      xntBalanceUi,
-      mindBalanceUi,
-      mindBalanceBase,
-      stakingVaultXntBalanceUi,
-      stakingVaultXntBalanceBase,
-      stakingVaultMindBalanceUi,
-      stakeAmountUi,
-      setStakeAmountUi,
-      stakeDurationDays,
-      setStakeDurationDays,
-      stakeEstimate,
-      handleStakeMax,
-      estimatedRewardBase,
-      userProfile,
-      xpStats,
-      rewardPoolSeries,
-    }),
-    [
-      activePositions,
-      anyActive,
-      busy,
-      config,
-      currentEpoch,
-      durationDays,
-      emissionNotStarted,
-      estimatedRewardBase,
-      error,
-      handleStakeMax,
-      lastSig,
-      loading,
-      mindBalanceBase,
-      mindBalanceUi,
-      nextEpochCountdown,
-      nowTs,
-      onClaim,
-      onClaimStake,
-      onClosePosition,
-      onDeposit,
-      onStake,
-      onWithdrawStake,
-      planOptions,
-      positions,
-      publicKey,
-      refresh,
-      rewardPoolSeries,
-      stakeAmountUi,
-      stakeDurationDays,
-      stakeEstimate,
-      stakingPositions,
-      stakingVaultMindBalanceUi,
-      stakingVaultXntBalanceBase,
-      stakingVaultXntBalanceUi,
-      userProfile,
-      xpStats,
-      xntBalanceUi,
-      setDurationDays,
-      setStakeAmountUi,
-      setStakeDurationDays,
-    ]
-  );
+  const buyDisabled = !publicKey || !config || busy;
+  const stakeDisabled = !publicKey || !config || !mintDecimals || busy || !stakeAmountUi;
+  const unstakeDisabled = !publicKey || !config || !mintDecimals || busy || !unstakeAmountUi;
 
   return (
-    <DashboardProvider value={dashboardValue}>
-      <div className="min-h-dvh">
-        <TopBar
-          title="X1 Mining Vault"
-          subtitle="Mine XNT • Earn XP • Boost staking"
-          link={{ href: "/admin", label: "Admin" }}
-          tier={xpStats?.tierName ?? "Bronze"}
-          xpProgress={xpStats?.progress ?? null}
-          xpNextLabel={xpStats?.nextTierName ? `Next: ${xpStats.nextTierName}` : null}
-        />
+    <div className="min-h-screen bg-ink text-white">
+      <TopBar title="Mining V2" subtitle="Pro-rata emission + staking rewards" link={{ href: "/admin", label: "Admin" }} />
 
-        <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-24 pt-8">
-          <MiningControlPanel />
-          <MiningActivityPanel />
-          <MiningXpHero />
+      <main className="mx-auto max-w-6xl px-4 pb-24 pt-10">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {statValue(`HP ${effectiveUserHp.toString()} (raw ${userHp.toString()})`, "Your HP")}
+          {statValue(`HP ${networkHp.toString()} (raw)`, "Network HP")}
+          {statValue(`${sharePct.toFixed(2)}%`, "Your share")}
+          {statValue(
+            config && mintDecimals
+              ? `${formatTokenAmount(estUserPerDay, mintDecimals.mind, 4)} MIND/day`
+              : "-",
+            "Est. MIND/day"
+          )}
+          {statValue(
+            config && mintDecimals
+              ? `${formatTokenAmount(totalPendingMind, mintDecimals.mind, 4)} MIND`
+              : "-",
+            "Accrued MIND"
+          )}
+          {statValue(
+            config && mintDecimals
+              ? `${formatTokenAmount(stakingRewardBalance, mintDecimals.xnt, 4)} XNT`
+              : "-",
+            "Reward pool"
+          )}
+          {statValue(
+            config && mintDecimals
+              ? `${formatTokenAmount(stakingMindBalance, mintDecimals.mind, 4)} MIND`
+              : "-",
+            "Total staked"
+          )}
+          {statValue(
+            epochCountdown != null ? formatDurationSeconds(epochCountdown) : "-",
+            "Epoch ends"
+          )}
+        </div>
 
-          <SummaryCards />
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
+          <Badge variant="muted">Max HP: {config?.maxEffectiveHp.toString() ?? "-"}</Badge>
+          <Badge variant="muted">
+            Emission/day: {config && mintDecimals ? formatTokenAmount(emissionPerDay, mintDecimals.mind, 4) : "-"}
+          </Badge>
+          <Badge variant="muted">
+            Network 24h:{" "}
+            {networkTrend
+              ? `${networkTrend.delta.toString()} (${networkTrend.pct.toFixed(2)}%)`
+              : "0 (warming up)"}
+          </Badge>
+          <Badge variant="muted">Badge bonus: +{effectiveBonusBps / 100}%</Badge>
+        </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              options={[
-                { value: "mine", label: "Mine" },
-                { value: "stake", label: "Stake" },
-                { value: "xp", label: "XP" },
-              ]}
-            />
-            <Button variant="secondary" onClick={() => void refresh()} disabled={busy !== null || loading}>
-              {loading ? "Refreshing…" : "Refresh"}
-            </Button>
-          </div>
+        <section className="mt-10 grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <Card className="border-cyan-400/20 bg-ink/90 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Contracts</div>
+                <div className="mt-2 text-2xl font-semibold">Buy hashpower</div>
+              </div>
+              <Badge variant="muted">HP cap {config?.maxEffectiveHp.toString() ?? "-"}</Badge>
+            </div>
 
-          {activeTab === "mine" ? <MineSection /> : null}
-          {activeTab === "stake" ? <StakeSection /> : null}
-          {activeTab === "xp" ? <XPSection /> : null}
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {CONTRACTS.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setSelectedContract(c.key)}
+                  className={[
+                    "rounded-2xl border px-4 py-3 text-left text-xs transition",
+                    selectedContract === c.key
+                      ? "border-cyan-300/50 bg-cyan-300/10 text-white"
+                      : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10",
+                  ].join(" ")}
+                >
+                  <div className="text-sm font-semibold">{c.label}</div>
+                  <div className="mt-1 text-[11px] text-zinc-400">{c.durationDays} days</div>
+                  <div className="mt-1 text-[11px] text-cyan-200">HP {c.hp}</div>
+                  <div className="mt-3 text-sm text-emerald-200">{c.costXnt} XNT</div>
+                </button>
+              ))}
+            </div>
 
-          <TransactionStatus />
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between text-xs text-zinc-400">
+                <span>Balance</span>
+                <span className="font-mono">
+                  {mintDecimals ? formatTokenAmount(xntBalance, mintDecimals.xnt, 4) : "-"} XNT
+                </span>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <div className="text-sm text-zinc-300">Selected: {contract.label}</div>
+                <Badge variant="success">HP {contract.hp}</Badge>
+                <Badge variant="muted">{contract.durationDays}d</Badge>
+              </div>
+              <div className="mt-4">
+                <Button size="lg" className="h-12" onClick={() => void onBuy()} disabled={buyDisabled}>
+                  {busy === "Buy contract" ? "Submitting..." : "Buy Contract"}
+                </Button>
+              </div>
+            </div>
+          </Card>
 
-          {error ? (
-            <Card className="border-rose-500/30">
-              <CardHeader
-                title="Error"
-                description="RPC or simulation details."
-                right={
-                  <div className="flex items-center gap-2">
-                    <Button variant="secondary" onClick={() => void refresh()} disabled={loading}>
-                      {loading ? "Retrying…" : "Retry"}
-                    </Button>
-                    <Badge variant="danger">failed</Badge>
-                  </div>
-                }
+          <Card className="border-cyan-400/20 bg-ink/90 p-6">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Positions</div>
+            <div className="mt-2 text-2xl font-semibold">Your rigs</div>
+            <div className="mt-4 grid gap-3">
+              {positions.length === 0 ? (
+                <div className="text-xs text-zinc-500">No positions yet.</div>
+              ) : (
+                positions.map((p, idx) => {
+                  const pending = pendingByPosition[idx] ?? 0n;
+                  const remaining = nowTs ? Math.max(0, p.data.endTs - nowTs) : null;
+                  const expired = nowTs != null && nowTs >= p.data.endTs;
+                  return (
+                    <div key={p.pubkey} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-zinc-200">HP {p.data.hp.toString()}</div>
+                        <Badge variant={expired ? "danger" : "success"}>
+                          {expired ? "expired" : "active"}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 text-xs text-zinc-400">
+                        Ends in {remaining == null ? "-" : formatDurationSeconds(remaining)}
+                      </div>
+                      <div className="mt-2 text-xs text-cyan-200">
+                        Pending {mintDecimals ? formatTokenAmount(pending, mintDecimals.mind, 4) : "-"} MIND
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => void onClaim(p.pubkey)}
+                          disabled={busy != null || pending === 0n}
+                        >
+                          Claim
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void onDeactivate(p.pubkey, p.data.owner)}
+                          disabled={busy != null || !expired}
+                        >
+                          Deactivate
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+        </section>
+
+        <section className="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <Card className="border-emerald-400/20 bg-ink/90 p-6">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Staking</div>
+            <div className="mt-2 text-2xl font-semibold">Stake MIND</div>
+            <div className="mt-3 text-xs text-zinc-400">
+              Pending rewards: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT
+            </div>
+            <div className="mt-4">
+              <Input
+                value={stakeAmountUi}
+                onChange={setStakeAmountUi}
+                placeholder="Amount (MIND)"
               />
-              <pre className="mt-3 whitespace-pre-wrap rounded-2xl border border-white/10 bg-ink/80 p-3 text-xs text-rose-100">
-                {error}
-              </pre>
-            </Card>
-          ) : null}
-        </main>
-      </div>
-    </DashboardProvider>
+              <Button
+                className="mt-3"
+                onClick={() => void onStake()}
+                disabled={stakeDisabled}
+              >
+                {busy === "Stake MIND" ? "Submitting..." : "Stake"}
+              </Button>
+            </div>
+            <div className="mt-6">
+              <Input
+                value={unstakeAmountUi}
+                onChange={setUnstakeAmountUi}
+                placeholder="Unstake amount (MIND)"
+              />
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={() => void onUnstake()}
+                disabled={unstakeDisabled}
+              >
+                {busy === "Unstake MIND" ? "Submitting..." : "Unstake"}
+              </Button>
+            </div>
+            <div className="mt-6">
+              <Button onClick={() => void onClaimXnt()} disabled={busy != null || finalPendingXnt === 0n}>
+                {busy === "Claim XNT" ? "Claiming..." : "Claim XNT"}
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="border-emerald-400/20 bg-ink/90 p-6">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Pool stats</div>
+            <div className="mt-2 text-2xl font-semibold">Rewards</div>
+            <div className="mt-4 grid gap-2 text-xs text-zinc-400">
+              <div>
+                Reward rate:{" "}
+                {config && mintDecimals
+                  ? `${formatTokenAmount(config.stakingRewardRateXntPerSec, mintDecimals.xnt, 6)} XNT/sec`
+                  : "-"}
+              </div>
+              <div>
+                7d est per 1k MIND: {mintDecimals && estRewardsPer1k
+                  ? `${formatTokenAmount(estRewardsPer1k, mintDecimals.xnt, 4)} XNT`
+                  : "-"}
+              </div>
+              <div>Epoch ends in: {epochCountdown != null ? formatDurationSeconds(epochCountdown) : "-"}</div>
+              <div>
+                Your staked:{" "}
+                {userStake && mintDecimals
+                  ? `${formatTokenAmount(userStake.stakedMind, mintDecimals.mind, 4)} MIND`
+                  : "-"}
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {error ? <div className="mt-6 text-sm text-amber-200">{error}</div> : null}
+        {lastSig ? (
+          <div className="mt-4 text-xs text-zinc-400">
+            Last tx: <span className="font-mono">{shortPk(lastSig, 8)}</span>
+          </div>
+        ) : null}
+        {loading ? <div className="mt-4 text-xs text-zinc-500">Refreshing...</div> : null}
+      </main>
+    </div>
   );
 }

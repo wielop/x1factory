@@ -1,8 +1,13 @@
 import { PublicKey, type Connection } from "@solana/web3.js";
-import { BN } from "@coral-xyz/anchor";
 
 export const DEFAULT_RPC_URL = "https://rpc.testnet.x1.xyz";
-export const DEFAULT_PROGRAM_ID = "2oJ68QPvNqvdegxPczqGYz7bmTyBSW9D6ZYs4w1HSpL9";
+export const DEFAULT_PROGRAM_ID = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw";
+
+const CONFIG_SEED = "config";
+const VAULT_SEED = "vault";
+const POSITION_SEED = "position";
+const PROFILE_SEED = "profile";
+const STAKE_SEED = "stake";
 
 type EnvCache = { rpcUrl: string; programId: PublicKey };
 let cachedEnv: EnvCache | null = null;
@@ -111,93 +116,63 @@ export async function checkRpcHealth(url = getRpcUrl()): Promise<HealthResult> {
 }
 
 export const deriveConfigPda = () =>
-  PublicKey.findProgramAddressSync([Buffer.from("config_v2")], getProgramId())[0];
+  PublicKey.findProgramAddressSync([Buffer.from(CONFIG_SEED)], getProgramId())[0];
 
 export const deriveVaultPda = () =>
-  PublicKey.findProgramAddressSync([Buffer.from("vault")], getProgramId())[0];
+  PublicKey.findProgramAddressSync([Buffer.from(VAULT_SEED)], getProgramId())[0];
 
-export const derivePositionPda = (owner: PublicKey) =>
-  PublicKey.findProgramAddressSync([Buffer.from("position"), owner.toBuffer()], getProgramId())[0];
-
-export const derivePositionPdaV2 = (owner: PublicKey, positionIndex: bigint | number) =>
-  PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("position"),
-      owner.toBuffer(),
-      new BN(positionIndex).toArrayLike(Buffer, "le", 8),
-    ],
+export const derivePositionPda = (owner: PublicKey, positionIndex: bigint | number) => {
+  const idx = typeof positionIndex === "bigint" ? positionIndex : BigInt(positionIndex);
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(idx);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(POSITION_SEED), owner.toBuffer(), buf],
     getProgramId()
   )[0];
+};
 
 export const deriveUserProfilePda = (owner: PublicKey) =>
-  PublicKey.findProgramAddressSync([Buffer.from("profile"), owner.toBuffer()], getProgramId())[0];
+  PublicKey.findProgramAddressSync([Buffer.from(PROFILE_SEED), owner.toBuffer()], getProgramId())[0];
 
-export const deriveEpochPda = (epochIndex: number) =>
-  PublicKey.findProgramAddressSync(
-    [Buffer.from("epoch"), new BN(epochIndex).toArrayLike(Buffer, "le", 8)],
-    getProgramId()
-  )[0];
-
-export const deriveUserEpochPda = (owner: PublicKey, epochIndex: number) =>
-  PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("user_epoch"),
-      owner.toBuffer(),
-      new BN(epochIndex).toArrayLike(Buffer, "le", 8),
-    ],
-    getProgramId()
-  )[0];
+export const deriveUserStakePda = (owner: PublicKey) =>
+  PublicKey.findProgramAddressSync([Buffer.from(STAKE_SEED), owner.toBuffer()], getProgramId())[0];
 
 export type DecodedConfig = {
   admin: PublicKey;
-  xntMint: PublicKey;
+  emissionPerSec: bigint;
+  accMindPerHp: bigint;
+  lastUpdateTs: number;
+  networkHpActive: bigint;
   mindMint: PublicKey;
-  vaultXntAta: PublicKey;
-  stakingVaultXntAta: PublicKey;
-  mindDecimals: number;
-  xntDecimals: number;
-  dailyEmissionInitial: BN;
-  dailyEmissionCurrent: BN;
-  epochSeconds: BN;
-  softHalvingPeriodDays: BN;
-  softHalvingBpsDrop: number;
-  emissionStartTs: BN;
-  lastEpochTs: BN;
-  minedTotal: BN;
-  minedCap: BN;
-  totalSupplyMind: BN;
-  mpCapBpsPerWallet: number;
-  th1: BN;
-  th2: BN;
-  allowEpochSecondsEdit: boolean;
-  stakingVaultMindAta: PublicKey;
-  xpPer7d: BN;
-  xpPer14d: BN;
-  xpPer30d: BN;
-  xpTierSilver: BN;
-  xpTierGold: BN;
-  xpTierDiamond: BN;
-  xpBoostSilverBps: number;
-  xpBoostGoldBps: number;
-  xpBoostDiamondBps: number;
-  totalStakedMind: BN;
-  stakingRewardPerWeight: BN;
-  stakingRewardPending: BN;
-  totalXp: BN;
-  mindReward7d: BN;
-  mindReward14d: BN;
-  mindReward28d: BN;
+  xntMint: PublicKey;
+  stakingRewardVault: PublicKey;
+  treasuryVault: PublicKey;
+  stakingMindVault: PublicKey;
+  maxEffectiveHp: bigint;
+  secondsPerDay: bigint;
+  stakingAccXntPerMind: bigint;
+  stakingLastUpdateTs: number;
+  stakingRewardRateXntPerSec: bigint;
+  stakingEpochEndTs: number;
+  stakingTotalStakedMind: bigint;
+  stakingUndistributedXnt: bigint;
+  stakingAccountedBalance: bigint;
   bumps: { config: number; vaultAuthority: number };
 };
 
 export async function fetchClockUnixTs(connection: Connection) {
   const info = await connection.getAccountInfo(
-    // SYSVAR_CLOCK_PUBKEY
     new PublicKey("SysvarC1ock11111111111111111111111111111111"),
     "confirmed"
   );
   if (!info) throw new Error("Clock sysvar unavailable");
   return Number(info.data.readBigInt64LE(32));
+}
+
+function readU128LE(data: Buffer, offset: number): bigint {
+  const lo = data.readBigUInt64LE(offset);
+  const hi = data.readBigUInt64LE(offset + 8);
+  return lo + (hi << 64n);
 }
 
 export async function fetchConfig(connection: Connection): Promise<DecodedConfig> {
@@ -209,9 +184,6 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
   const data = info.data;
   if (data.length < 8) {
     throw new Error(`Config account too small: ${data.length} bytes`);
-  }
-  if (data.length === 233) {
-    return decodeConfigLegacy(data);
   }
   let offset = 8;
   const ensure = (size: number, label: string) => {
@@ -232,260 +204,67 @@ export async function fetchConfig(connection: Connection): Promise<DecodedConfig
     ensure(1, "u8");
     return data.readUInt8(offset++);
   };
-  const readBool = () => {
-    ensure(1, "bool");
-    return data.readUInt8(offset++) !== 0;
-  };
-  const readU16 = () => {
-    ensure(2, "u16");
-    const v = data.readUInt16LE(offset);
-    offset += 2;
-    return v;
-  };
   const readU64 = () => {
     ensure(8, "u64");
     const v = data.readBigUInt64LE(offset);
     offset += 8;
-    return new BN(v.toString());
+    return v;
   };
   const readI64 = () => {
     ensure(8, "i64");
     const v = data.readBigInt64LE(offset);
     offset += 8;
-    return new BN(v.toString());
+    return Number(v);
   };
   const readU128 = () => {
     ensure(16, "u128");
-    const lo = data.readBigUInt64LE(offset);
-    const hi = data.readBigUInt64LE(offset + 8);
+    const v = readU128LE(data, offset);
     offset += 16;
-    const loBn = new BN(lo.toString());
-    const hiBn = new BN(hi.toString());
-    hiBn.iushln(64);
-    return hiBn.iadd(loBn);
-  };
-
-  const admin = readPubkey();
-  const xntMint = readPubkey();
-  const mindMint = readPubkey();
-  const vaultXntAta = readPubkey();
-  const stakingVaultXntAta = readPubkey();
-  const mindDecimals = readU8();
-  const xntDecimals = readU8();
-  const dailyEmissionInitial = readU64();
-  const dailyEmissionCurrent = readU64();
-  const epochSeconds = readU64();
-  const softHalvingPeriodDays = readU64();
-  const softHalvingBpsDrop = readU16();
-  const emissionStartTs = readI64();
-  const lastEpochTs = readI64();
-  const minedTotal = readU64();
-  const minedCap = readU64();
-  const totalSupplyMind = readU64();
-  const mpCapBpsPerWallet = readU16();
-  const th1 = readU64();
-  const th2 = readU64();
-  const allowEpochSecondsEdit = readBool();
-  const stakingVaultMindAta = readPubkey();
-  const xpPer7d = readU64();
-  const xpPer14d = readU64();
-  const xpPer30d = readU64();
-  const xpTierSilver = readU64();
-  const xpTierGold = readU64();
-  const xpTierDiamond = readU64();
-  const xpBoostSilverBps = readU16();
-  const xpBoostGoldBps = readU16();
-  const xpBoostDiamondBps = readU16();
-  const totalStakedMind = readU64();
-  const canReadStakingRewards = offset + 32 <= data.length;
-  const stakingRewardPerWeight = canReadStakingRewards ? readU128() : new BN(0);
-  const stakingRewardPending = canReadStakingRewards ? readU128() : new BN(0);
-  const totalXp = readU128();
-  const canReadRewards = offset + 24 <= data.length;
-  const mindReward7d = canReadRewards ? readU64() : new BN(0);
-  const mindReward14d = canReadRewards ? readU64() : new BN(0);
-  const mindReward28d = canReadRewards ? readU64() : new BN(0);
-  // bumps: 2x u8
-  const bumpConfig = readU8();
-  const bumpVault = readU8();
-
-  return {
-    admin,
-    xntMint,
-    mindMint,
-    vaultXntAta,
-    stakingVaultXntAta,
-    mindDecimals,
-    xntDecimals,
-    dailyEmissionInitial,
-    dailyEmissionCurrent,
-    epochSeconds,
-    softHalvingPeriodDays,
-    softHalvingBpsDrop,
-    emissionStartTs,
-    lastEpochTs,
-    minedTotal,
-    minedCap,
-    totalSupplyMind,
-    mpCapBpsPerWallet,
-    th1,
-    th2,
-    allowEpochSecondsEdit,
-    stakingVaultMindAta,
-    xpPer7d,
-    xpPer14d,
-    xpPer30d,
-    xpTierSilver,
-    xpTierGold,
-    xpTierDiamond,
-    xpBoostSilverBps,
-    xpBoostGoldBps,
-    xpBoostDiamondBps,
-    totalStakedMind,
-    stakingRewardPerWeight,
-    stakingRewardPending,
-    totalXp,
-    mindReward7d,
-    mindReward14d,
-    mindReward28d,
-    bumps: { config: bumpConfig, vaultAuthority: bumpVault },
-  };
-}
-
-function decodeConfigLegacy(data: Buffer): DecodedConfig {
-  // Legacy layout (233 bytes total). No staking vault + XP fields.
-  let offset = 8;
-  const ensure = (size: number, label: string) => {
-    if (offset + size > data.length) {
-      throw new Error(
-        `Config legacy layout mismatch: need ${offset + size} bytes for ${label}, got ${data.length}.`
-      );
-    }
-  };
-  const readPubkey = () => {
-    ensure(32, "pubkey");
-    const pk = new PublicKey(data.subarray(offset, offset + 32));
-    offset += 32;
-    return pk;
-  };
-  const readU8 = () => {
-    ensure(1, "u8");
-    return data.readUInt8(offset++);
-  };
-  const readBool = () => {
-    ensure(1, "bool");
-    return data.readUInt8(offset++) !== 0;
-  };
-  const readU16 = () => {
-    ensure(2, "u16");
-    const v = data.readUInt16LE(offset);
-    offset += 2;
     return v;
   };
-  const readU64 = () => {
-    ensure(8, "u64");
-    const v = data.readBigUInt64LE(offset);
-    offset += 8;
-    return new BN(v.toString());
-  };
-  const readI64 = () => {
-    ensure(8, "i64");
-    const v = data.readBigInt64LE(offset);
-    offset += 8;
-    return new BN(v.toString());
-  };
 
   const admin = readPubkey();
-  const xntMint = readPubkey();
+  const emissionPerSec = readU64();
+  const accMindPerHp = readU128();
+  const lastUpdateTs = readI64();
+  const networkHpActive = readU64();
   const mindMint = readPubkey();
-  const vaultXntAta = readPubkey();
-  const mindDecimals = readU8();
-  const xntDecimals = readU8();
-  const dailyEmissionInitial = readU64();
-  const dailyEmissionCurrent = readU64();
-  const epochSeconds = readU64();
-  const softHalvingPeriodDays = readU64();
-  const softHalvingBpsDrop = readU16();
-  const emissionStartTs = readI64();
-  const lastEpochTs = readI64();
-  const minedTotal = readU64();
-  const minedCap = readU64();
-  const totalSupplyMind = readU64();
-  const mpCapBpsPerWallet = readU16();
-  const th1 = readU64();
-  const th2 = readU64();
-  const allowEpochSecondsEdit = readBool();
-  const bumpConfig = readU8();
-  const bumpVault = readU8();
+  const xntMint = readPubkey();
+  const stakingRewardVault = readPubkey();
+  const treasuryVault = readPubkey();
+  const stakingMindVault = readPubkey();
+  const maxEffectiveHp = readU64();
+  const secondsPerDay = readU64();
+  const stakingAccXntPerMind = readU128();
+  const stakingLastUpdateTs = readI64();
+  const stakingRewardRateXntPerSec = readU64();
+  const stakingEpochEndTs = readI64();
+  const stakingTotalStakedMind = readU64();
+  const stakingUndistributedXnt = readU64();
+  const stakingAccountedBalance = readU64();
+  const configBump = readU8();
+  const vaultAuthorityBump = readU8();
 
-  const zero = new BN(0);
   return {
     admin,
-    xntMint,
+    emissionPerSec,
+    accMindPerHp,
+    lastUpdateTs,
+    networkHpActive,
     mindMint,
-    vaultXntAta,
-    stakingVaultXntAta: vaultXntAta,
-    mindDecimals,
-    xntDecimals,
-    dailyEmissionInitial,
-    dailyEmissionCurrent,
-    epochSeconds,
-    softHalvingPeriodDays,
-    softHalvingBpsDrop,
-    emissionStartTs,
-    lastEpochTs,
-    minedTotal,
-    minedCap,
-    totalSupplyMind,
-    mpCapBpsPerWallet,
-    th1,
-    th2,
-    allowEpochSecondsEdit,
-    stakingVaultMindAta: vaultXntAta,
-    xpPer7d: zero,
-    xpPer14d: zero,
-    xpPer30d: zero,
-    xpTierSilver: zero,
-    xpTierGold: zero,
-    xpTierDiamond: zero,
-    xpBoostSilverBps: 0,
-    xpBoostGoldBps: 0,
-    xpBoostDiamondBps: 0,
-    totalStakedMind: zero,
-    stakingRewardPerWeight: zero,
-    stakingRewardPending: zero,
-    totalXp: zero,
-    mindReward7d: zero,
-    mindReward14d: zero,
-    mindReward28d: zero,
-    bumps: { config: bumpConfig, vaultAuthority: bumpVault },
+    xntMint,
+    stakingRewardVault,
+    treasuryVault,
+    stakingMindVault,
+    maxEffectiveHp,
+    secondsPerDay,
+    stakingAccXntPerMind,
+    stakingLastUpdateTs,
+    stakingRewardRateXntPerSec,
+    stakingEpochEndTs,
+    stakingTotalStakedMind,
+    stakingUndistributedXnt,
+    stakingAccountedBalance,
+    bumps: { config: configBump, vaultAuthority: vaultAuthorityBump },
   };
 }
-
-export function getCurrentEpochFrom(cfg: Pick<DecodedConfig, "epochSeconds" | "emissionStartTs">, nowTs: number) {
-  return Math.floor(
-    (nowTs - cfg.emissionStartTs.toNumber()) / cfg.epochSeconds.toNumber()
-  );
-}
-
-export async function fetchTokenBalanceUi(connection: Connection, ata: PublicKey) {
-  try {
-    const bal = await connection.getTokenAccountBalance(ata, "confirmed");
-    return bal.value.uiAmountString ?? "0";
-  } catch {
-    return "0";
-  }
-}
-
-export const deriveStakingPositionPda = (
-  owner: PublicKey,
-  stakeIndex: bigint | number
-) =>
-  PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("stake"),
-      owner.toBuffer(),
-      new BN(stakeIndex).toArrayLike(Buffer, "le", 8),
-    ],
-    getProgramId()
-  )[0];

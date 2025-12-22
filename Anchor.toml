@@ -6,9 +6,11 @@ skip-lint = false
 
 [programs.localnet]
 pocm_vault_mining = "2oJ68QPvNqvdegxPczqGYz7bmTyBSW9D6ZYs4w1HSpL9"
+mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 
 [programs.testnet]
 pocm_vault_mining = "2oJ68QPvNqvdegxPczqGYz7bmTyBSW9D6ZYs4w1HSpL9"
+mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 
 [registry]
 url = "https://api.apr.dev"

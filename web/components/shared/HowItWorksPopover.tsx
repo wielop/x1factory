@@ -9,11 +9,11 @@ export function HowItWorksPopover() {
       <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-cyan-400/20 bg-ink/95 p-4 text-xs text-zinc-300 shadow-[0_0_24px_rgba(34,242,255,0.15)]">
         <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Mining flow</div>
         <ol className="mt-3 space-y-2 text-xs text-zinc-300">
-          <li>1) Choose a plan and deposit XNT (non-refundable per miner).</li>
-          <li>2) Rewards accrue automatically every 24h epoch (no heartbeat).</li>
-          <li>3) Claim MIND anytime; only full epochs are paid.</li>
-          <li>4) XP boosts staking weight (XP never mints tokens).</li>
-          <li>5) Stake MIND to amplify rewards.</li>
+          <li>1) Buy a mining contract to get fixed hashpower (HP) for a set time.</li>
+          <li>2) Global MIND emission is split pro-rata to active HP; if network HP is zero, emission pauses.</li>
+          <li>3) Claim MIND anytime; expired contracts can be deactivated to free HP.</li>
+          <li>4) Stake MIND to earn XNT rewards (smoothed per epoch).</li>
+          <li>5) Badges boost staking payouts up to +20%.</li>
         </ol>
       </div>
     </details>

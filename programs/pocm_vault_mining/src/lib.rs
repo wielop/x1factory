@@ -551,6 +551,7 @@ pub mod pocm_vault_mining {
                 .checked_add(u64::try_from(take).map_err(|_| ErrorCode::MathOverflow)?)
                 .ok_or(ErrorCode::MathOverflow)?;
             remaining_amount = remaining_amount.saturating_sub(take);
+            position.exit(ctx.program_id)?;
         }
 
         emit!(Claimed {

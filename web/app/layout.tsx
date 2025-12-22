@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import { WalletProviders } from "@/components/WalletProviders";
 import { ToastProvider } from "@/components/shared/ToastProvider";
+import { Providers } from "./providers";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -29,7 +30,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans`}>
         <WalletProviders>
-          <ToastProvider>{children}</ToastProvider>
+          <Providers>
+            <ToastProvider>{children}</ToastProvider>
+          </Providers>
         </WalletProviders>
       </body>
     </html>

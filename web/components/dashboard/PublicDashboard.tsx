@@ -1,10 +1,5 @@
 "use client";
 
-import { Buffer } from "buffer";
-if (!globalThis.Buffer) {
-  globalThis.Buffer = Buffer;
-}
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";

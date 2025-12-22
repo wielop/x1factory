@@ -85,6 +85,7 @@ export function PublicDashboard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
   const contract = CONTRACTS.find((c) => c.key === selectedContract) ?? CONTRACTS[0];
@@ -203,6 +204,21 @@ export function PublicDashboard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      pushLog(`Error: ${event.message}`);
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      pushLog(`Rejection: ${formatError(event.reason)}`);
+    };
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, []);
+
   const userHp = useMemo(() => {
     if (userProfile) return userProfile.activeHp;
     if (!nowTs) return 0n;
@@ -280,6 +296,10 @@ export function PublicDashboard() {
     };
   };
 
+  const pushLog = (message: string) => {
+    setLogs((prev) => [message, ...prev].slice(0, 8));
+  };
+
   const withTx = async (label: string, fn: () => Promise<string>) => {
     setBusy(label);
     setError(null);
@@ -290,6 +310,7 @@ export function PublicDashboard() {
     } catch (e: unknown) {
       console.error(e);
       setError(formatError(e));
+      pushLog(formatError(e));
     } finally {
       setBusy(null);
       await refresh();
@@ -683,6 +704,16 @@ export function PublicDashboard() {
         </section>
 
         {error ? <div className="mt-6 text-sm text-amber-200">{error}</div> : null}
+        {logs.length ? (
+          <div className="mt-6 space-y-1 text-xs text-amber-200">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Logs</div>
+            {logs.map((log, index) => (
+              <div key={`${log}-${index}`} className="rounded-sm bg-amber-500/10 px-2 py-1">
+                {log}
+              </div>
+            ))}
+          </div>
+        ) : null}
         {lastSig ? (
           <div className="mt-4 text-xs text-zinc-400">
             Last tx: <span className="font-mono">{shortPk(lastSig, 8)}</span>

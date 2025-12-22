@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import webpack from "webpack";
+import webpack from "next/dist/compiled/webpack/webpack-lib.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

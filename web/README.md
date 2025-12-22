@@ -8,7 +8,12 @@ Public app (Vercel-ready) for interacting with the on-chain program:
 ## Env vars (Vercel)
 
 - `NEXT_PUBLIC_RPC_URL` (default: `https://rpc.testnet.x1.xyz`)
-- `NEXT_PUBLIC_PROGRAM_ID` (default: `2oJ68QPvNqvdegxPczqGYz7bmTyBSW9D6ZYs4w1HSpL9`)
+- `NEXT_PUBLIC_PROGRAM_ID` (default: `uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw`)
+- `NEXT_PUBLIC_RPC_PROXY` (optional) – use `/api/rpc` for RPC CORS proxying if needed.
+
+## Uniterminal data proxy
+
+- Public GET endpoint: `/api/uniterminal?version=5` (returns Uniterminal config with CORS headers).
 
 ## Local run
 

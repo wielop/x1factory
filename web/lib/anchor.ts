@@ -6,10 +6,14 @@ import { getProgramId } from "@/lib/solana";
 
 // The IDL JSON in this repo does not include account sizes/types in `accounts`,
 // which breaks Anchor's `program.account.*` helpers. We only use `.methods`.
+const nonClientInstructions = ["initConfig"];
 const idlForClient = {
   ...idl,
   // Ensure the Program ID matches the runtime config.
   address: getProgramId().toBase58(),
+  instructions: (idl.instructions ?? []).filter(
+    (ix) => !nonClientInstructions.includes(ix.name)
+  ),
   accounts: [],
   events: [],
 };

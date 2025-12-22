@@ -297,6 +297,12 @@ export function PublicDashboard() {
   };
 
   const onBuy = async () => {
+    console.log("[PublicDashboard] onBuy called", {
+      anchorWallet: !!anchorWallet,
+      publicKey: publicKey?.toBase58(),
+      config: !!config,
+      busy,
+    });
     if (!anchorWallet || !publicKey || !config) return;
     const program = getProgram(connection, anchorWallet);
     const nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);

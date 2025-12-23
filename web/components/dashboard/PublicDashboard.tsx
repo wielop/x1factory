@@ -301,6 +301,22 @@ export function PublicDashboard() {
     const rewards7d = config.stakingRewardRateXntPerSec * 86_400n * 7n;
     return (rewards7d * 1_000n) / config.stakingTotalStakedMind;
   }, [config]);
+  const totalClaimedMind = mindBalance + (userStake?.stakedMind ?? 0n);
+  const secondsPerDayNumber = config ? Number(config.secondsPerDay) : 86_400;
+  const secondsIntoDay =
+    config && lastRefreshNowTs != null && secondsPerDayNumber > 0
+      ? lastRefreshNowTs % secondsPerDayNumber
+      : 0;
+  const baseMintedToday =
+    config && secondsIntoDay > 0
+      ? config.emissionPerSec * BigInt(secondsIntoDay)
+      : 0n;
+  const liveMintedToday =
+    baseMintedToday + (config ? config.emissionPerSec * elapsedSinceRefreshBig : 0n);
+  const dailyMintTarget =
+    config && secondsPerDayNumber > 0
+      ? config.emissionPerSec * BigInt(secondsPerDayNumber)
+      : 0n;
 
   const ensureAta = async (owner: PublicKey, mint: PublicKey) => {
     const ata = getAssociatedTokenAddressSync(mint, owner);
@@ -546,15 +562,27 @@ export function PublicDashboard() {
           )}
           {statValue(
             config && mintDecimals
-              ? `${formatTokenAmount(totalPendingMind, mintDecimals.mind, 4)} MIND`
+              ? `${formatTokenAmount(totalClaimedMind, mintDecimals.mind, 4)} MIND`
               : "-",
             "Accrued MIND"
           )}
           {statValue(
             config && mintDecimals
-              ? `${formatTokenAmount(livePendingMind, mintDecimals.mind, 4)} MIND`
+              ? `${formatTokenAmount(totalPendingMind, mintDecimals.mind, 4)} MIND`
               : "-",
-            "Live estimate"
+            "Pending MIND"
+          )}
+          {statValue(
+            config && mintDecimals
+              ? dailyMintTarget > 0n
+                ? `${formatTokenAmount(liveMintedToday, mintDecimals.mind, 4)} / ${formatTokenAmount(
+                    dailyMintTarget,
+                    mintDecimals.mind,
+                    4
+                  )} MIND`
+                : `${formatTokenAmount(liveMintedToday, mintDecimals.mind, 4)} MIND`
+              : "-",
+            "Live minted today"
           )}
           {statValue(
             config && mintDecimals

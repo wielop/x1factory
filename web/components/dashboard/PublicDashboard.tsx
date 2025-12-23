@@ -776,16 +776,22 @@ export function PublicDashboard() {
                       <div className="mt-2 text-xs text-zinc-400">
                         Ends in {remaining == null ? "-" : formatDurationSeconds(remaining)}
                       </div>
-                      <div className="mt-2 text-xs text-cyan-200">
-                        Pending{" "}
-                        {mintDecimals ? formatTokenAmount(pending, mintDecimals.mind, 4) : "-"}{" "}
-                        MIND
-                      </div>
-                      {mintDecimals ? (
-                        <div className="text-[11px] text-zinc-500">
-                          ~{formatTokenAmount(livePending, mintDecimals.mind, 4)} live
-                        </div>
-                      ) : null}
+                  <div className="mt-2 text-xs text-cyan-200">
+                    Pending{" "}
+                    {mintDecimals ? formatTokenAmount(pending, mintDecimals.mind, 4) : "-"}{" "}
+                    MIND
+                  </div>
+                  {mintDecimals ? (
+                    <div className="text-[11px] text-zinc-500">
+                      {networkHp > 0n
+                        ? `${formatTokenAmount(
+                            (config?.emissionPerSec ?? 0n) * 3_600n * p.data.hp / networkHp,
+                            mintDecimals.mind,
+                            4
+                          )} MIND/hr`
+                        : "Rate unavailable"}
+                    </div>
+                  ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button size="sm" onClick={() => void onDeactivate(p.pubkey, p.data.owner)} disabled={busy != null || !expired}>
                           Deactivate

@@ -577,6 +577,7 @@ pub struct BuyContract<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
+        mut,
         init_if_needed,
         payer = owner,
         space = 8 + UserMiningProfile::INIT_SPACE,
@@ -685,6 +686,7 @@ pub struct StakeMind<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
+        mut,
         init_if_needed,
         payer = owner,
         space = 8 + UserMiningProfile::INIT_SPACE,
@@ -693,6 +695,7 @@ pub struct StakeMind<'info> {
     )]
     pub user_profile: Box<Account<'info, UserMiningProfile>>,
     #[account(
+        mut,
         init_if_needed,
         payer = owner,
         space = 8 + UserStake::INIT_SPACE,
@@ -767,6 +770,7 @@ pub struct ClaimXnt<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
+        mut,
         init_if_needed,
         payer = owner,
         space = 8 + UserMiningProfile::INIT_SPACE,
@@ -841,6 +845,7 @@ pub struct AdminSetBadge<'info> {
     /// CHECK: used only for PDA derivation
     pub user: UncheckedAccount<'info>,
     #[account(
+        mut,
         init_if_needed,
         payer = admin,
         space = 8 + UserMiningProfile::INIT_SPACE,

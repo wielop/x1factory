@@ -5,147 +5,647 @@
     {
       "name": "initConfig",
       "accounts": [
-        { "name": "payer", "isMut": true, "isSigner": true },
-        { "name": "admin", "isMut": false, "isSigner": true },
-        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "mindMint", "isMut": false, "isSigner": false },
-        { "name": "xntMint", "isMut": false, "isSigner": false },
-        { "name": "stakingRewardVault", "isMut": false, "isSigner": false },
-        { "name": "treasuryVault", "isMut": false, "isSigner": false },
-        { "name": "stakingMindVault", "isMut": false, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false },
-        { "name": "rent", "isMut": false, "isSigner": false }
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "admin",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "xntMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "stakingMindVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "params", "type": { "defined": "InitConfigParams" } }
+        {
+          "name": "params",
+          "type": {
+            "defined": "InitConfigParams"
+          }
+        }
       ]
     },
     {
       "name": "buyContract",
       "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "userProfile", "isMut": true, "isSigner": false },
-        { "name": "position", "isMut": true, "isSigner": false },
-        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
-        { "name": "xntMint", "isMut": true, "isSigner": false },
-        { "name": "stakingRewardVault", "isMut": true, "isSigner": false },
-        { "name": "treasuryVault", "isMut": true, "isSigner": false },
-        { "name": "ownerXntAta", "isMut": true, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "xntMint",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerXntAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "contractType", "type": "u8" },
-        { "name": "positionIndex", "type": "u64" }
+        {
+          "name": "contractType",
+          "type": "u8"
+        },
+        {
+          "name": "positionIndex",
+          "type": "u64"
+        }
       ]
     },
     {
       "name": "claimMind",
       "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "userProfile", "isMut": true, "isSigner": false },
-        { "name": "position", "isMut": true, "isSigner": false },
-        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
-        { "name": "mindMint", "isMut": true, "isSigner": false },
-        { "name": "userMindAta", "isMut": true, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": []
     },
     {
       "name": "deactivatePosition",
       "accounts": [
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "position", "isMut": true, "isSigner": false },
-        { "name": "userProfile", "isMut": true, "isSigner": false }
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        }
       ],
       "args": []
     },
     {
       "name": "stakeMind",
       "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "userProfile", "isMut": true, "isSigner": false },
-        { "name": "userStake", "isMut": true, "isSigner": false },
-        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
-        { "name": "stakingMindVault", "isMut": true, "isSigner": false },
-        { "name": "ownerMindAta", "isMut": true, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userStake",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "stakingMindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "amount", "type": "u64" }
+        {
+          "name": "amount",
+          "type": "u64"
+        }
       ]
     },
     {
       "name": "unstakeMind",
       "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "userStake", "isMut": true, "isSigner": false },
-        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
-        { "name": "stakingMindVault", "isMut": true, "isSigner": false },
-        { "name": "ownerMindAta", "isMut": true, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userStake",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "stakingMindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "amount", "type": "u64" }
+        {
+          "name": "amount",
+          "type": "u64"
+        }
       ]
     },
     {
       "name": "claimXnt",
       "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "userProfile", "isMut": true, "isSigner": false },
-        { "name": "userStake", "isMut": true, "isSigner": false },
-        { "name": "vaultAuthority", "isMut": false, "isSigner": false },
-        { "name": "stakingRewardVault", "isMut": true, "isSigner": false },
-        { "name": "ownerXntAta", "isMut": true, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userStake",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerXntAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": []
     },
     {
       "name": "rollEpoch",
       "accounts": [
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "stakingRewardVault", "isMut": true, "isSigner": false }
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": true,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "epochSeconds", "type": "u64" }
+        {
+          "name": "epochSeconds",
+          "type": "u64"
+        }
       ]
     },
     {
       "name": "adminUpdateConfig",
       "accounts": [
-        { "name": "admin", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false }
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "emissionPerSec", "type": "u64" },
-        { "name": "maxEffectiveHp", "type": "u64" }
+        {
+          "name": "emissionPerSec",
+          "type": "u64"
+        },
+        {
+          "name": "maxEffectiveHp",
+          "type": "u64"
+        }
       ]
     },
     {
       "name": "adminSetBadge",
       "accounts": [
-        { "name": "admin", "isMut": true, "isSigner": true },
-        { "name": "config", "isMut": true, "isSigner": false },
-        { "name": "user", "isMut": false, "isSigner": false },
-        { "name": "userProfile", "isMut": true, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "user",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
       ],
       "args": [
-        { "name": "badgeTier", "type": "u8" },
-        { "name": "badgeBonusBps", "type": "u16" }
+        {
+          "name": "badgeTier",
+          "type": "u8"
+        },
+        {
+          "name": "badgeBonusBps",
+          "type": "u16"
+        }
       ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "publicKey"
+          },
+          {
+            "name": "emissionPerSec",
+            "type": "u64"
+          },
+          {
+            "name": "accMindPerHp",
+            "type": "u128"
+          },
+          {
+            "name": "lastUpdateTs",
+            "type": "i64"
+          },
+          {
+            "name": "networkHpActive",
+            "type": "u64"
+          },
+          {
+            "name": "mindMint",
+            "type": "publicKey"
+          },
+          {
+            "name": "xntMint",
+            "type": "publicKey"
+          },
+          {
+            "name": "stakingRewardVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "treasuryVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "stakingMindVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "maxEffectiveHp",
+            "type": "u64"
+          },
+          {
+            "name": "secondsPerDay",
+            "type": "u64"
+          },
+          {
+            "name": "stakingAccXntPerMind",
+            "type": "u128"
+          },
+          {
+            "name": "stakingLastUpdateTs",
+            "type": "i64"
+          },
+          {
+            "name": "stakingRewardRateXntPerSec",
+            "type": "u64"
+          },
+          {
+            "name": "stakingEpochEndTs",
+            "type": "i64"
+          },
+          {
+            "name": "stakingTotalStakedMind",
+            "type": "u64"
+          },
+          {
+            "name": "stakingUndistributedXnt",
+            "type": "u64"
+          },
+          {
+            "name": "stakingAccountedBalance",
+            "type": "u64"
+          },
+          {
+            "name": "bumps",
+            "type": {
+              "defined": "ConfigBumps"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserMiningProfile",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "nextPositionIndex",
+            "type": "u64"
+          },
+          {
+            "name": "activeHp",
+            "type": "u64"
+          },
+          {
+            "name": "xp",
+            "type": "u64"
+          },
+          {
+            "name": "badgeTier",
+            "type": "u8"
+          },
+          {
+            "name": "badgeBonusBps",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MinerPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "hp",
+            "type": "u64"
+          },
+          {
+            "name": "startTs",
+            "type": "i64"
+          },
+          {
+            "name": "endTs",
+            "type": "i64"
+          },
+          {
+            "name": "rewardDebt",
+            "type": "u128"
+          },
+          {
+            "name": "finalAccMindPerHp",
+            "type": "u128"
+          },
+          {
+            "name": "deactivated",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserStake",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "stakedMind",
+            "type": "u64"
+          },
+          {
+            "name": "rewardDebt",
+            "type": "u128"
+          },
+          {
+            "name": "rewardOwed",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
     }
   ],
   "types": [
@@ -154,11 +654,223 @@
       "type": {
         "kind": "struct",
         "fields": [
-          { "name": "emissionPerSec", "type": "u64" },
-          { "name": "maxEffectiveHp", "type": "u64" },
-          { "name": "secondsPerDay", "type": "u64" }
+          {
+            "name": "emissionPerSec",
+            "type": "u64"
+          },
+          {
+            "name": "maxEffectiveHp",
+            "type": "u64"
+          },
+          {
+            "name": "secondsPerDay",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConfigBumps",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "u8"
+          },
+          {
+            "name": "vaultAuthority",
+            "type": "u8"
+          }
         ]
       }
     }
-  ]
+  ],
+  "events": [
+    {
+      "name": "ConfigInitialized",
+      "fields": [
+        {
+          "name": "admin",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "emissionPerSec",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "maxEffectiveHp",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "ContractPurchased",
+      "fields": [
+        {
+          "name": "owner",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "hp",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "durationDays",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "costBase",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "MindClaimed",
+      "fields": [
+        {
+          "name": "owner",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "MindStaked",
+      "fields": [
+        {
+          "name": "owner",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "MindUnstaked",
+      "fields": [
+        {
+          "name": "owner",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "XntClaimed",
+      "fields": [
+        {
+          "name": "owner",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "amount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "bonusBps",
+          "type": "u16",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "EpochRolled",
+      "fields": [
+        {
+          "name": "rate",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "epochEndTs",
+          "type": "i64",
+          "index": false
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6001,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6002,
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidPositionIndex",
+      "msg": "Invalid position index"
+    },
+    {
+      "code": 6004,
+      "name": "MaxEffectiveHpExceeded",
+      "msg": "Max effective HP exceeded"
+    },
+    {
+      "code": 6005,
+      "name": "NothingToClaim",
+      "msg": "Nothing to claim"
+    },
+    {
+      "code": 6006,
+      "name": "PositionNotExpired",
+      "msg": "Position not expired"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidMintAuthority",
+      "msg": "Invalid mint authority"
+    },
+    {
+      "code": 6008,
+      "name": "InsufficientStake",
+      "msg": "Insufficient stake balance"
+    },
+    {
+      "code": 6009,
+      "name": "InsufficientVaultBalance",
+      "msg": "Insufficient vault balance"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidContractType",
+      "msg": "Invalid contract type"
+    }
+  ],
+  "metadata": {
+    "address": "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
+  }
 }

@@ -6,7 +6,8 @@
     "test": "yarn run ts-mocha -p ./tsconfig.json -t 200000 tests/**/*.ts",
     "build:program": "anchor build",
     "testnet:deploy": "bash scripts/testnet-v2-deploy.sh",
-    "testnet:smoke": "ts-node scripts/testnet-v2-smoke.ts"
+    "testnet:smoke": "ts-node scripts/testnet-v2-smoke.ts",
+    "claim-mind-bot": "ts-node scripts/claim-mind-bot.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

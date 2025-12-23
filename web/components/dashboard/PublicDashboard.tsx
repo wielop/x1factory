@@ -86,6 +86,7 @@ export function PublicDashboard() {
   const [unstakeAmountUi, setUnstakeAmountUi] = useState<string>("");
   const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
+  const [lastClaimedMind, setLastClaimedMind] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -423,6 +424,7 @@ export function PublicDashboard() {
       setError("No pending MIND to claim");
       return;
     }
+    const claimAmount = claimTargets.reduce((acc, entry) => acc + entry.pending, 0n);
     await withTx("Claim all rigs", async () => {
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const tx = new Transaction();
@@ -446,15 +448,16 @@ export function PublicDashboard() {
       const sig = await program.provider.sendAndConfirm(tx, []);
       return sig;
     });
+    setLastClaimedMind(claimAmount);
   };
 
   const autoClaimOnce = useCallback(async () => {
     if (autoClaimEngaged || busy != null) return;
     if (!anchorWallet || !publicKey || !config) return;
-    const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
-    if (claimTargets.length === 0) return;
-    setAutoClaimEngaged(true);
-    try {
+      const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
+      if (claimTargets.length === 0) return;
+      setAutoClaimEngaged(true);
+      try {
       const program = getProgram(connection, anchorWallet);
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const tx = new Transaction();
@@ -477,6 +480,8 @@ export function PublicDashboard() {
       }
       await program.provider.sendAndConfirm(tx, []);
       await refresh();
+      const autoClaimAmount = claimTargets.reduce((acc, entry) => acc + entry.pending, 0n);
+      setLastClaimedMind(autoClaimAmount);
     } catch (err) {
       console.error("Auto claim failed:", err);
     } finally {
@@ -631,9 +636,9 @@ export function PublicDashboard() {
           )}
           {statValue(
             config && mintDecimals
-              ? `${formatTokenAmount(totalPendingMind, mintDecimals.mind, 4)} MIND`
+              ? `${formatTokenAmount(lastClaimedMind, mintDecimals.mind, 4)} MIND`
               : "-",
-            "Pending MIND"
+            "Ostatnio odebrałeś"
           )}
           {statValue(
             config && mintDecimals
@@ -735,6 +740,10 @@ export function PublicDashboard() {
               <div>
                 <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Positions</div>
                 <div className="mt-2 text-2xl font-semibold">Your rigs</div>
+                <div className="mt-1 text-[11px] text-zinc-500">
+                  Ostatnio odebrałeś{" "}
+                  {mintDecimals ? formatTokenAmount(lastClaimedMind, mintDecimals.mind, 4) : "-"} MIND
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -776,22 +785,17 @@ export function PublicDashboard() {
                       <div className="mt-2 text-xs text-zinc-400">
                         Ends in {remaining == null ? "-" : formatDurationSeconds(remaining)}
                       </div>
-                  <div className="mt-2 text-xs text-cyan-200">
-                    Pending{" "}
-                    {mintDecimals ? formatTokenAmount(pending, mintDecimals.mind, 4) : "-"}{" "}
-                    MIND
-                  </div>
-                  {mintDecimals ? (
-                    <div className="text-[11px] text-zinc-500">
-                      {networkHp > 0n
-                        ? `${formatTokenAmount(
-                            (config?.emissionPerSec ?? 0n) * 3_600n * p.data.hp / networkHp,
-                            mintDecimals.mind,
-                            4
-                          )} MIND/hr`
-                        : "Rate unavailable"}
-                    </div>
-                  ) : null}
+                      {mintDecimals ? (
+                        <div className="mt-2 text-[11px] text-zinc-500">
+                          {networkHp > 0n
+                            ? `${formatTokenAmount(
+                                (config?.emissionPerSec ?? 0n) * 3_600n * p.data.hp / networkHp,
+                                mintDecimals.mind,
+                                4
+                              )} MIND/hr`
+                            : "Rate unavailable"}
+                        </div>
+                      ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button size="sm" onClick={() => void onDeactivate(p.pubkey, p.data.owner)} disabled={busy != null || !expired}>
                           Deactivate

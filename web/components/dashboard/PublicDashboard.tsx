@@ -66,6 +66,7 @@ export function PublicDashboard() {
 
   const [config, setConfig] = useState<DecodedConfig | null>(null);
   const [nowTs, setNowTs] = useState<number | null>(null);
+  const [lastRefreshNowTs, setLastRefreshNowTs] = useState<number | null>(null);
   const [positions, setPositions] = useState<
     Array<{ pubkey: string; data: ReturnType<typeof decodeMinerPositionAccount> }>
   >([]);
@@ -99,6 +100,7 @@ export function PublicDashboard() {
       setConfig(cfg);
       const ts = await fetchClockUnixTs(connection);
       setNowTs(ts);
+      setLastRefreshNowTs(ts);
 
       const [xntMintInfo, mindMintInfo] = await Promise.all([
         getMint(connection, cfg.xntMint, "confirmed"),
@@ -201,6 +203,14 @@ export function PublicDashboard() {
   }, [refresh]);
 
   useEffect(() => {
+    const id = window.setInterval(
+      () => setNowTs((prev) => (prev != null ? prev + 1 : prev)),
+      1_000
+    );
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     const id = window.setInterval(() => void refresh().catch(() => null), 15_000);
     return () => window.clearInterval(id);
   }, [refresh]);
@@ -247,6 +257,18 @@ export function PublicDashboard() {
   }, [positions, config]);
 
   const totalPendingMind = pendingByPosition.reduce((acc, v) => acc + v, 0n);
+
+  const accrualPerSecond = useMemo(() => {
+    if (!config || config.networkHpActive === 0n) return 0n;
+    return (config.emissionPerSec * ACC_SCALE) / config.networkHpActive;
+  }, [config]);
+
+  const elapsedSinceRefresh =
+    nowTs != null && lastRefreshNowTs != null ? Math.max(0, nowTs - lastRefreshNowTs) : 0;
+  const elapsedSinceRefreshBig = BigInt(elapsedSinceRefresh);
+  const extraAccSinceRefresh = accrualPerSecond * elapsedSinceRefreshBig;
+  const livePendingMind =
+    totalPendingMind + (userHp * extraAccSinceRefresh) / ACC_SCALE;
 
   const basePendingXnt = useMemo(() => {
     if (!config || !userStake) return 0n;
@@ -379,6 +401,44 @@ export function PublicDashboard() {
     });
   };
 
+  const onClaimAll = async () => {
+    if (!anchorWallet || !publicKey || !config) return;
+    const program = getProgram(connection, anchorWallet);
+    const claimTargets = positions
+      .map((p, idx) => ({
+        position: p,
+        pending: pendingByPosition[idx] ?? 0n,
+      }))
+      .filter((entry) => entry.pending > 0n);
+    if (claimTargets.length === 0) {
+      setError("No pending MIND to claim");
+      return;
+    }
+    await withTx("Claim all rigs", async () => {
+      const ix = await ensureAta(publicKey, config.mindMint);
+      const tx = new Transaction();
+      if (ix.ix) tx.add(ix.ix);
+      for (const entry of claimTargets) {
+        const instruction = await program.methods
+          .claimMind()
+          .accounts({
+            owner: publicKey,
+            config: deriveConfigPda(),
+            userProfile: deriveUserProfilePda(publicKey),
+            position: new PublicKey(entry.position.pubkey),
+            vaultAuthority: deriveVaultPda(),
+            mindMint: config.mindMint,
+            userMindAta: ix.ata,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .instruction();
+        tx.add(instruction);
+      }
+      const sig = await program.provider.sendAndConfirm(tx, []);
+      return sig;
+    });
+  };
+
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
     const program = getProgram(connection, anchorWallet);
@@ -488,8 +548,11 @@ export function PublicDashboard() {
   };
 
   const buyDisabled = !publicKey || !config || Boolean(busy);
-  const stakeDisabled = !publicKey || !config || !mintDecimals || Boolean(busy) || stakeAmountUi.trim() === "";
-  const unstakeDisabled = !publicKey || !config || !mintDecimals || Boolean(busy) || unstakeAmountUi.trim() === "";
+  const stakeDisabled =
+    !publicKey || !config || !mintDecimals || Boolean(busy) || stakeAmountUi.trim() === "";
+  const unstakeDisabled =
+    !publicKey || !config || !mintDecimals || Boolean(busy) || unstakeAmountUi.trim() === "";
+  const claimAllDisabled = !publicKey || !config || Boolean(busy) || totalPendingMind === 0n;
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -511,6 +574,12 @@ export function PublicDashboard() {
               ? `${formatTokenAmount(totalPendingMind, mintDecimals.mind, 4)} MIND`
               : "-",
             "Accrued MIND"
+          )}
+          {statValue(
+            config && mintDecimals
+              ? `${formatTokenAmount(livePendingMind, mintDecimals.mind, 4)} MIND`
+              : "-",
+            "Live estimate"
           )}
           {statValue(
             config && mintDecimals
@@ -596,17 +665,30 @@ export function PublicDashboard() {
           </Card>
 
           <Card className="border-cyan-400/20 bg-ink/90 p-6">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Positions</div>
-            <div className="mt-2 text-2xl font-semibold">Your rigs</div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Positions</div>
+                <div className="mt-2 text-2xl font-semibold">Your rigs</div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => void onClaimAll()}
+                disabled={claimAllDisabled}
+              >
+                {busy === "Claim all rigs" ? "Claiming..." : "Claim all rigs"}
+              </Button>
+            </div>
             <div className="mt-4 grid gap-3">
               {positions.length === 0 ? (
                 <div className="text-xs text-zinc-500">No positions yet.</div>
               ) : (
                 positions.map((p, idx) => {
-                  const pending = pendingByPosition[idx] ?? 0n;
-                  const remaining = nowTs ? Math.max(0, p.data.endTs - nowTs) : null;
-                  const expired = nowTs != null && nowTs >= p.data.endTs;
-                  return (
+                const pending = pendingByPosition[idx] ?? 0n;
+                const livePending =
+                  pending + (p.data.hp * extraAccSinceRefresh) / ACC_SCALE;
+                const remaining = nowTs ? Math.max(0, p.data.endTs - nowTs) : null;
+                const expired = nowTs != null && nowTs >= p.data.endTs;
+                return (
                     <div key={p.pubkey} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-zinc-200">HP {p.data.hp.toString()}</div>
@@ -618,8 +700,15 @@ export function PublicDashboard() {
                         Ends in {remaining == null ? "-" : formatDurationSeconds(remaining)}
                       </div>
                       <div className="mt-2 text-xs text-cyan-200">
-                        Pending {mintDecimals ? formatTokenAmount(pending, mintDecimals.mind, 4) : "-"} MIND
+                        Pending{" "}
+                        {mintDecimals ? formatTokenAmount(pending, mintDecimals.mind, 4) : "-"}{" "}
+                        MIND
                       </div>
+                      {mintDecimals ? (
+                        <div className="text-[11px] text-zinc-500">
+                          ~{formatTokenAmount(livePending, mintDecimals.mind, 4)} live
+                        </div>
+                      ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button
                           size="sm"

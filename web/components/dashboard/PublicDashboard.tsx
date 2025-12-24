@@ -99,7 +99,6 @@ export function PublicDashboard() {
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [autoClaimEngaged, setAutoClaimEngaged] = useState(false);
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -448,17 +447,16 @@ export function PublicDashboard() {
     });
   };
 
-  const autoClaimOnce = useCallback(async () => {
-    if (autoClaimEngaged || busy != null) return;
+  const onClaimAll = async () => {
+    if (busy != null) return;
     if (!anchorWallet || !publicKey || !config) return;
     const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
     if (claimTargets.length === 0) return;
-    setAutoClaimEngaged(true);
-    try {
-      const program = getProgram(connection, anchorWallet);
+    await withTx("Claim all rigs", async () => {
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const tx = new Transaction();
       if (ix) tx.add(ix);
+      const program = getProgram(connection, anchorWallet);
       for (const entry of claimTargets) {
         const instruction = await program.methods
           .claimMind()
@@ -475,23 +473,9 @@ export function PublicDashboard() {
           .instruction();
         tx.add(instruction);
       }
-      await program.provider.sendAndConfirm(tx, []);
-      await refresh();
-    } catch (err) {
-      console.error("Auto claim failed:", err);
-    } finally {
-      setAutoClaimEngaged(false);
-    }
-  }, [
-    anchorWallet,
-    autoClaimEngaged,
-    busy,
-    connection,
-    config,
-    pendingPositions,
-    publicKey,
-    refresh,
-  ]);
+      return await program.provider.sendAndConfirm(tx, []);
+    });
+  };
 
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
@@ -803,12 +787,12 @@ export function PublicDashboard() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => void autoClaimOnce()}
-                  disabled={claimDisabled || autoClaimEngaged}
+                  onClick={() => void onClaimAll()}
+                  disabled={claimDisabled}
                   className="text-[11px]"
                   title="Collect all unclaimed MIND from your active rigs."
                 >
-                  {autoClaimEngaged ? "Claiming..." : "Start claim ON"}
+                  {busy === "Claim all rigs" ? "Claiming..." : "Start claim ON"}
                 </Button>
               </div>
             </div>

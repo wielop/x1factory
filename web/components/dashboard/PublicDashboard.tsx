@@ -49,13 +49,24 @@ const CONTRACTS = [
   { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 20, hp: 7 },
 ] as const;
 
-function statValue(value: string, label: string) {
-  return (
-    <Card className="p-4">
-      <div className="text-xl font-semibold text-white">{value}</div>
-      <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">{label}</div>
-    </Card>
-  );
+function formatIntegerBig(value: bigint) {
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function formatRoundedToken(amountBase: bigint, decimals: number, digits = 2) {
+  const full = formatTokenAmount(amountBase, decimals, Math.max(decimals, digits));
+  const numeric = Number(full);
+  if (!Number.isFinite(numeric)) {
+    return full;
+  }
+  return numeric.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatFullPrecisionToken(amountBase: bigint, decimals: number) {
+  return formatTokenAmount(amountBase, decimals, decimals);
 }
 
 export function PublicDashboard() {
@@ -86,11 +97,13 @@ export function PublicDashboard() {
   const [unstakeAmountUi, setUnstakeAmountUi] = useState<string>("");
   const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
-  const [lastClaimedMind, setLastClaimedMind] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [autoClaimEngaged, setAutoClaimEngaged] = useState(false);
+  const hashpowerTooltip =
+    "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
+  const [showShareFull, setShowShareFull] = useState(false);
+  const [showEmissionFull, setShowEmissionFull] = useState(false);
+  const [showClaimableFull, setShowClaimableFull] = useState(false);
 
   const contract = CONTRACTS.find((c) => c.key === selectedContract) ?? CONTRACTS[0];
 
@@ -217,21 +230,6 @@ export function PublicDashboard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  useEffect(() => {
-    const handleError = (event: ErrorEvent) => {
-      pushLog(`Error: ${event.message}`);
-    };
-    const handleRejection = (event: PromiseRejectionEvent) => {
-      pushLog(`Rejection: ${formatError(event.reason)}`);
-    };
-    window.addEventListener("error", handleError);
-    window.addEventListener("unhandledrejection", handleRejection);
-    return () => {
-      window.removeEventListener("error", handleError);
-      window.removeEventListener("unhandledrejection", handleRejection);
-    };
-  }, []);
-
   const userHp = useMemo(() => {
     if (userProfile) return userProfile.activeHp;
     if (!nowTs) return 0n;
@@ -247,6 +245,23 @@ export function PublicDashboard() {
 
   const networkHp = config?.networkHpActive ?? 0n;
   const sharePct = networkHp > 0n ? Number((effectiveUserHp * 10_000n) / networkHp) / 100 : 0;
+  const sharePctFull =
+    networkHp > 0n ? Number((effectiveUserHp * 1_000_000n) / networkHp) / 10_000 : 0;
+  const shareTooltip =
+    "You receive ~33% of daily emission while this share holds. Share changes when others join/expire.";
+  const miningStatusText =
+    networkHp > 0n
+      ? "Status: Mining active — rewards accrue continuously"
+      : "Status: Emission paused — no active hashpower";
+  const statusAccentClass = networkHp > 0n ? "text-emerald-300" : "text-amber-300";
+  const soonestContractExpiresIn = useMemo(() => {
+    if (nowTs == null) return null;
+    const activeRemains = positions
+      .filter((p) => !p.data.deactivated && nowTs < p.data.endTs)
+      .map((p) => p.data.endTs - nowTs);
+    if (activeRemains.length === 0) return null;
+    return Math.min(...activeRemains);
+  }, [positions, nowTs]);
 
   const accrualPerSecond = useMemo(() => {
     if (!config || config.networkHpActive === 0n) return 0n;
@@ -346,6 +361,27 @@ export function PublicDashboard() {
       ? config.emissionPerSec * BigInt(secondsPerDayNumber)
       : 0n;
 
+  const claimableRounded =
+    mintDecimals != null ? formatRoundedToken(totalPendingMind, mintDecimals.mind) : "-";
+  const claimableFull =
+    mintDecimals != null ? formatFullPrecisionToken(totalPendingMind, mintDecimals.mind) : "-";
+  const walletRounded =
+    mintDecimals != null ? formatRoundedToken(mindBalance, mintDecimals.mind) : "-";
+  const walletFull =
+    mintDecimals != null ? formatFullPrecisionToken(mindBalance, mintDecimals.mind) : "-";
+  const emissionRounded =
+    mintDecimals != null ? formatRoundedToken(liveMintedToday, mintDecimals.mind) : "-";
+  const emissionFull =
+    mintDecimals != null ? formatFullPrecisionToken(liveMintedToday, mintDecimals.mind) : "-";
+  const emissionTargetRounded =
+    mintDecimals != null && dailyMintTarget > 0n
+      ? formatRoundedToken(dailyMintTarget, mintDecimals.mind, 0)
+      : "-";
+  const rewardPoolBadge =
+    mintDecimals != null ? formatRoundedToken(stakingRewardBalance, mintDecimals.xnt) : "-";
+  const totalStakedBadge =
+    mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
+
   const ensureAta = async (owner: PublicKey, mint: PublicKey) => {
     const ata = getAssociatedTokenAddressSync(mint, owner);
     const info = await connection.getAccountInfo(ata, "confirmed");
@@ -363,10 +399,6 @@ export function PublicDashboard() {
     };
   };
 
-  const pushLog = (message: string) => {
-    setLogs((prev) => [message, ...prev].slice(0, 8));
-  };
-
   const withTx = async (label: string, fn: () => Promise<string>) => {
     setBusy(label);
     setError(null);
@@ -377,7 +409,6 @@ export function PublicDashboard() {
     } catch (e: unknown) {
       console.error(e);
       setError(formatError(e));
-      pushLog(formatError(e));
     } finally {
       setBusy(null);
       await refresh();
@@ -385,12 +416,6 @@ export function PublicDashboard() {
   };
 
   const onBuy = async () => {
-    console.log("[PublicDashboard] onBuy called", {
-      anchorWallet: !!anchorWallet,
-      publicKey: publicKey?.toBase58(),
-      config: !!config,
-      busy,
-    });
     if (!anchorWallet || !publicKey || !config) return;
     const program = getProgram(connection, anchorWallet);
     const nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);
@@ -452,55 +477,7 @@ export function PublicDashboard() {
       const sig = await program.provider.sendAndConfirm(tx, []);
       return sig;
     });
-    setLastClaimedMind(claimAmount);
   };
-
-  const autoClaimOnce = useCallback(async () => {
-    if (autoClaimEngaged || busy != null) return;
-    if (!anchorWallet || !publicKey || !config) return;
-      const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
-      if (claimTargets.length === 0) return;
-      setAutoClaimEngaged(true);
-      try {
-      const program = getProgram(connection, anchorWallet);
-      const { ata, ix } = await ensureAta(publicKey, config.mindMint);
-      const tx = new Transaction();
-      if (ix) tx.add(ix);
-      for (const entry of claimTargets) {
-        const instruction = await program.methods
-          .claimMind()
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            userProfile: deriveUserProfilePda(publicKey),
-            position: new PublicKey(entry.position.pubkey),
-            vaultAuthority: deriveVaultPda(),
-            mindMint: config.mindMint,
-            userMindAta: ata,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .instruction();
-        tx.add(instruction);
-      }
-      await program.provider.sendAndConfirm(tx, []);
-      await refresh();
-      const autoClaimAmount = claimTargets.reduce((acc, entry) => acc + entry.pending, 0n);
-      setLastClaimedMind(autoClaimAmount);
-    } catch (err) {
-      console.error("Auto claim failed:", err);
-    } finally {
-      setAutoClaimEngaged(false);
-    }
-  }, [
-    anchorWallet,
-    autoClaimEngaged,
-    busy,
-    connection,
-    config,
-    pendingPositions,
-    publicKey,
-    refresh,
-  ]);
 
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
@@ -622,80 +599,139 @@ export function PublicDashboard() {
       <TopBar title="Mining V2" subtitle="Pro-rata emission + staking rewards" link={{ href: "/admin", label: "Admin" }} />
 
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-10">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {statValue(`HP ${effectiveUserHp.toString()} (raw ${userHp.toString()})`, "Your HP")}
-          {statValue(`HP ${networkHp.toString()} (raw)`, "Network HP")}
-          {statValue(`${sharePct.toFixed(2)}%`, "Your share")}
-          {statValue(
-            config && mintDecimals
-              ? `${formatTokenAmount(estUserPerDay, mintDecimals.mind, 4)} MIND/day`
-              : "-",
-            "Est. MIND/day"
-          )}
-          {statValue(
-            config && mintDecimals
-              ? `${formatTokenAmount(totalClaimedMind, mintDecimals.mind, 4)} MIND`
-              : "-",
-            "Accrued MIND"
-          )}
-          {statValue(
-            mindBalance != null && mintDecimals
-              ? `${formatTokenAmount(mindBalance, mintDecimals.mind, 4)} MIND`
-              : "-",
-            "Wallet MIND"
-          )}
-          {statValue(
-            config && mintDecimals
-              ? dailyMintTarget > 0n
-                ? `${formatTokenAmount(liveMintedToday, mintDecimals.mind, 4)} / ${formatTokenAmount(
-                    dailyMintTarget,
-                    mintDecimals.mind,
-                    4
-                  )} MIND`
-                : `${formatTokenAmount(liveMintedToday, mintDecimals.mind, 4)} MIND`
-              : "-",
-            "Live minted today"
-          )}
-          {statValue(
-            config && mintDecimals
-              ? `${formatTokenAmount(stakingRewardBalance, mintDecimals.xnt, 4)} XNT`
-              : "-",
-            "Reward pool"
-          )}
-          {statValue(
-            config && mintDecimals
-              ? `${formatTokenAmount(stakingMindBalance, mintDecimals.mind, 4)} MIND`
-              : "-",
-            "Total staked"
-          )}
-          {statValue(
-            epochCountdown != null ? formatDurationSeconds(epochCountdown) : "-",
-            "Epoch ends"
-          )}
-        </div>
+        <div className="space-y-4">
+          <Card className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
+              What is happening right now?
+            </div>
+            <div className={`mt-2 text-sm font-semibold ${statusAccentClass}`}>{miningStatusText}</div>
+          </Card>
 
-        <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-          <Badge variant="muted">Max HP: {config?.maxEffectiveHp.toString() ?? "-"}</Badge>
-          <Badge variant="muted">
-            Emission/day: {config && mintDecimals ? formatTokenAmount(emissionPerDay, mintDecimals.mind, 4) : "-"}
-          </Badge>
-          <Badge variant="muted">
-            Network 24h:{" "}
-            {networkTrend
-              ? `${networkTrend.delta.toString()} (${networkTrend.pct.toFixed(2)}%)`
-              : "0 (warming up)"}
-          </Badge>
-          <Badge variant="muted">Badge bonus: +{effectiveBonusBps / 100}%</Badge>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="p-4">
+              <div className="text-3xl font-semibold text-white">{formatIntegerBig(effectiveUserHp)}</div>
+              <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Your HP</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-3xl font-semibold text-white">{formatIntegerBig(networkHp)}</div>
+              <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Network HP</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Your share</div>
+              <div className="mt-3 flex items-baseline gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowShareFull((prev) => !prev)}
+                  title={`${shareTooltip} Click to toggle precision.`}
+                  className="text-3xl font-semibold text-white transition hover:text-cyan-200 focus:outline-none"
+                >
+                  {showShareFull ? sharePctFull.toFixed(4) : sharePct.toFixed(2)}
+                </button>
+                <span className="text-sm uppercase tracking-[0.2em] text-zinc-500">%</span>
+              </div>
+              <div className="mt-2 text-xs text-zinc-500">{shareTooltip}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Est. MIND/day</div>
+              <div className="mt-3 text-3xl font-semibold text-white">
+                {config && mintDecimals ? formatRoundedToken(estUserPerDay, mintDecimals.mind) : "-"}
+              </div>
+              <div className="text-xs text-zinc-500">Pro-rata based on share</div>
+            </Card>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="lg:col-span-2 border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Claimable MIND</div>
+              <div className="mt-3 flex items-baseline gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowClaimableFull((prev) => !prev)}
+                  title={
+                    mintDecimals
+                      ? `Click for full precision (${claimableFull} MIND)`
+                      : "Connect wallet to see amount"
+                  }
+                  className="text-4xl font-semibold text-emerald-300 transition hover:text-emerald-100 focus:outline-none"
+                >
+                  {mintDecimals ? (showClaimableFull ? claimableFull : claimableRounded) : "-"}
+                </button>
+                <span className="text-lg text-emerald-200">MIND</span>
+              </div>
+              <div className="mt-2 text-xs text-zinc-400">
+                Collect rewards via the Claim rewards button in Your rigs.
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">In wallet</div>
+              <div className="mt-3 flex items-baseline gap-1">
+                <span
+                  className="text-3xl font-semibold text-white"
+                  title={mintDecimals ? `Full precision: ${walletFull} MIND` : undefined}
+                >
+                  {mintDecimals ? walletRounded : "-"}
+                </span>
+                <span className="text-lg text-zinc-400">MIND</span>
+              </div>
+              <div className="mt-2 text-xs text-zinc-500">
+                {mintDecimals ? "Hover or tap to copy full precision" : "Connect wallet to see balances"}
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Today's emission</div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEmissionFull((prev) => !prev)}
+                  title={
+                    mintDecimals
+                      ? `Toggle precision (${emissionFull} MIND so far)`
+                      : "Connect wallet to see live emission"
+                  }
+                  className="text-3xl font-semibold text-white transition hover:text-cyan-200 focus:outline-none"
+                >
+                  {mintDecimals ? (showEmissionFull ? emissionFull : emissionRounded) : "-"}
+                </button>
+                <span className="text-sm text-zinc-500">/ {emissionTargetRounded} MIND</span>
+              </div>
+              <div className="mt-2 text-xs text-zinc-500" title="Resets every 24h">
+                Resets every 24h
+              </div>
+            </Card>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-zinc-400">
+            <Badge variant="muted">Max HP: {config?.maxEffectiveHp.toString() ?? "-"}</Badge>
+            <Badge variant="muted">
+              Emission/day:{" "}
+              {config && mintDecimals
+                ? formatRoundedToken(emissionPerDay, mintDecimals.mind)
+                : "-"}
+            </Badge>
+            <Badge variant="muted">
+              Network 24h:{" "}
+              {networkTrend
+                ? `${networkTrend.delta.toString()} (${networkTrend.pct.toFixed(2)}%)`
+                : "0 (warming up)"}
+            </Badge>
+            <Badge variant="muted">Badge bonus: +{effectiveBonusBps / 100}%</Badge>
+            <Badge variant="muted">Reward pool: {rewardPoolBadge} XNT</Badge>
+            <Badge variant="muted">Total staked: {totalStakedBadge} MIND</Badge>
+          </div>
         </div>
 
         <section className="mt-10 grid gap-6 lg:grid-cols-[2fr_1fr]">
           <Card className="border-cyan-400/20 bg-ink/90 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Contracts</div>
-                <div className="mt-2 text-2xl font-semibold">Buy hashpower</div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Buy hashpower</div>
+                <div className="mt-2 text-2xl font-semibold">Choose a rig</div>
               </div>
-              <Badge variant="muted">HP cap {config?.maxEffectiveHp.toString() ?? "-"}</Badge>
+              <Badge
+                variant="muted"
+                title="Fairness limit — prevents a single wallet from dominating the network."
+              >
+                HP limit: {config?.maxEffectiveHp.toString() ?? "-"}
+              </Badge>
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -719,52 +755,44 @@ export function PublicDashboard() {
               ))}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between text-xs text-zinc-400">
-                <span>Balance</span>
-                <span className="font-mono">
-                  {mintDecimals ? formatTokenAmount(xntBalance, mintDecimals.xnt, 4) : "-"} XNT
-                </span>
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Selected</div>
+                <div className="mt-3 space-y-2 text-sm font-medium text-white">
+                  <div>Hashpower: {contract.hp} HP</div>
+                  <div>Duration: {contract.durationDays} days</div>
+                  <div>Cost: {contract.costXnt} XNT</div>
+                </div>
+                <div
+                  className="mt-3 text-xs text-zinc-500"
+                  title={hashpowerTooltip}
+                >
+                  Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.
+                </div>
+                <div className="mt-4">
+                  <Button size="lg" className="h-12" onClick={() => void onBuy()} disabled={buyDisabled}>
+                    {busy === "Buy contract" ? "Submitting..." : "Activate rig"}
+                  </Button>
+                </div>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <div className="text-sm text-zinc-300">Selected: {contract.label}</div>
-                <Badge variant="success">HP {contract.hp}</Badge>
-                <Badge variant="muted">{contract.durationDays}d</Badge>
-              </div>
-              <div className="mt-4">
-                <Button size="lg" className="h-12" onClick={() => void onBuy()} disabled={buyDisabled}>
-                  {busy === "Buy contract" ? "Submitting..." : "Buy Contract"}
-                </Button>
-              </div>
-            </div>
           </Card>
 
           <Card className="border-cyan-400/20 bg-ink/90 p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Mining Positions</div>
-                <div className="mt-2 text-2xl font-semibold">Your rigs</div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Your rigs</div>
                 <div className="mt-1 text-[11px] text-zinc-500">
-                  Ostatnio odebrałeś{" "}
-                  {mintDecimals ? formatTokenAmount(lastClaimedMind, mintDecimals.mind, 4) : "-"} MIND
+                  Soonest contract expires in{" "}
+                  {soonestContractExpiresIn != null ? formatDurationSeconds(soonestContractExpiresIn) : "-"}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="mt-4 flex items-center gap-2">
                 <Button
                   size="sm"
                   onClick={() => void onClaimAll()}
-                  disabled={claimAllDisabled}
+                  disabled={claimAllDisabled || busy != null}
+                  title="Collect all unclaimed MIND from your active rigs."
                 >
-                  {busy === "Claim all rigs" ? "Claiming..." : "Claim all rigs"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void autoClaimOnce()}
-                  disabled={autoClaimEngaged || busy != null}
-                  className="text-[11px]"
-                >
-                  {autoClaimEngaged ? "Claiming..." : "Start claim ON"}
+                  {busy === "Claim all rigs" ? "Claiming..." : "Claim rewards"}
                 </Button>
               </div>
             </div>
@@ -774,8 +802,6 @@ export function PublicDashboard() {
               ) : (
                 pendingPositions.map((entry) => {
                   const p = entry.position;
-                  const pending = entry.pending;
-                  const livePending = entry.livePending;
                   const remaining = nowTs ? Math.max(0, p.data.endTs - nowTs) : null;
                   const expired = nowTs != null && nowTs >= p.data.endTs;
                   return (
@@ -792,17 +818,21 @@ export function PublicDashboard() {
                       {mintDecimals ? (
                         <div className="mt-2 text-[11px] text-zinc-500">
                           {networkHp > 0n
-                            ? `${formatTokenAmount(
-                                (config?.emissionPerSec ?? 0n) * 3_600n * p.data.hp / networkHp,
-                                mintDecimals.mind,
-                                4
-                              )} MIND/hr`
+                            ? `Current rate: ${formatRoundedToken(
+                                ((config?.emissionPerSec ?? 0n) * 3_600n * p.data.hp) / networkHp,
+                                mintDecimals.mind
+                              )} MIND / h`
                             : "Rate unavailable"}
                         </div>
                       ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => void onDeactivate(p.pubkey, p.data.owner)} disabled={busy != null || !expired}>
-                          Deactivate
+                        <Button
+                          size="sm"
+                          onClick={() => void onDeactivate(p.pubkey, p.data.owner)}
+                          disabled={busy != null || !expired}
+                          title="Stops contributing hashpower. You do not lose rewards already accrued."
+                        >
+                          Stop mining
                         </Button>
                       </div>
                     </div>
@@ -881,16 +911,6 @@ export function PublicDashboard() {
         </section>
 
         {error ? <div className="mt-6 text-sm text-amber-200">{error}</div> : null}
-        {logs.length ? (
-          <div className="mt-6 space-y-1 text-xs text-amber-200">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Logs</div>
-            {logs.map((log, index) => (
-              <div key={`${log}-${index}`} className="rounded-sm bg-amber-500/10 px-2 py-1">
-                {log}
-              </div>
-            ))}
-          </div>
-        ) : null}
         {lastSig ? (
           <div className="mt-4 text-xs text-zinc-400">
             Last tx: <span className="font-mono">{shortPk(lastSig, 8)}</span>

@@ -1,7 +1,7 @@
 "use client";
 
 import "@/lib/polyfillBufferClient";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
@@ -41,7 +41,6 @@ import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk 
 import { formatError } from "@/lib/formatError";
 
 const ACC_SCALE = 1_000_000_000_000_000_000n;
-const AUTO_CLAIM_INTERVAL_MS = 60_000;
 const BPS_DENOMINATOR = 10_000n;
 const BADGE_BONUS_CAP_BPS = 2_000n;
 const CONTRACTS = [
@@ -101,8 +100,6 @@ export function PublicDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [autoClaimEngaged, setAutoClaimEngaged] = useState(false);
-  const [autoClaimEnabled, setAutoClaimEnabled] = useState<boolean>(true);
-  const autoClaimRunningRef = useRef(false);
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -452,12 +449,11 @@ export function PublicDashboard() {
   };
 
   const autoClaimOnce = useCallback(async () => {
-    if (!autoClaimEnabled || autoClaimEngaged || autoClaimRunningRef.current || busy != null) return;
+    if (autoClaimEngaged || busy != null) return;
     if (!anchorWallet || !publicKey || !config) return;
     const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
     if (claimTargets.length === 0) return;
     setAutoClaimEngaged(true);
-    autoClaimRunningRef.current = true;
     try {
       const program = getProgram(connection, anchorWallet);
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
@@ -484,12 +480,10 @@ export function PublicDashboard() {
     } catch (err) {
       console.error("Auto claim failed:", err);
     } finally {
-      autoClaimRunningRef.current = false;
       setAutoClaimEngaged(false);
     }
   }, [
     anchorWallet,
-    autoClaimEnabled,
     autoClaimEngaged,
     busy,
     connection,
@@ -498,19 +492,6 @@ export function PublicDashboard() {
     publicKey,
     refresh,
   ]);
-
-  useEffect(() => {
-    if (!autoClaimEnabled) return;
-    const id = window.setInterval(() => {
-      void autoClaimOnce();
-    }, AUTO_CLAIM_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [autoClaimEnabled, autoClaimOnce]);
-
-  useEffect(() => {
-    if (!autoClaimEnabled) return;
-    void autoClaimOnce();
-  }, [autoClaimEnabled, autoClaimOnce]);
 
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
@@ -821,17 +802,13 @@ export function PublicDashboard() {
               <div className="mt-4 flex items-center gap-2">
                 <Button
                   size="sm"
-                  variant={autoClaimEnabled ? "secondary" : "ghost"}
-                  onClick={() => setAutoClaimEnabled((prev) => !prev)}
-                  disabled={claimDisabled}
+                  variant="secondary"
+                  onClick={() => void autoClaimOnce()}
+                  disabled={claimDisabled || autoClaimEngaged}
                   className="text-[11px]"
                   title="Collect all unclaimed MIND from your active rigs."
                 >
-                  {autoClaimEngaged
-                    ? "Claiming..."
-                    : autoClaimEnabled
-                    ? "Auto claim ON"
-                    : "Start claim ON"}
+                  {autoClaimEngaged ? "Claiming..." : "Start claim ON"}
                 </Button>
               </div>
             </div>

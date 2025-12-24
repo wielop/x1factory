@@ -1,7 +1,7 @@
 "use client";
 
 import "@/lib/polyfillBufferClient";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
@@ -102,6 +102,10 @@ export function PublicDashboard() {
   const [loading, setLoading] = useState<boolean>(false);
   const [autoClaimEnabled, setAutoClaimEnabled] = useState(false);
   const [autoClaimEngaged, setAutoClaimEngaged] = useState(false);
+  const autoClaimEnabledRef = useRef(autoClaimEnabled);
+  const autoClaimEngagedRef = useRef(autoClaimEngaged);
+  const busyRef = useRef<string | null>(null);
+  const runAutoClaimRef = useRef<(() => Promise<void>) | null>(null);
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -499,22 +503,44 @@ export function PublicDashboard() {
     });
   };
 
-  const autoClaimOnce = useCallback(async () => {
-    if (!autoClaimEnabled || autoClaimEngaged || busy != null) return;
+  const runAutoClaim = useCallback(async () => {
+    if (
+      !autoClaimEnabledRef.current ||
+      autoClaimEngagedRef.current ||
+      busyRef.current != null
+    )
+      return;
     setAutoClaimEngaged(true);
     try {
       await onClaimAll();
     } finally {
       setAutoClaimEngaged(false);
     }
-  }, [autoClaimEnabled, autoClaimEngaged, busy, onClaimAll]);
+  }, [onClaimAll]);
+
+  useEffect(() => {
+    runAutoClaimRef.current = runAutoClaim;
+  }, [runAutoClaim]);
+
+  useEffect(() => {
+    autoClaimEnabledRef.current = autoClaimEnabled;
+  }, [autoClaimEnabled]);
+
+  useEffect(() => {
+    autoClaimEngagedRef.current = autoClaimEngaged;
+  }, [autoClaimEngaged]);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
 
   useEffect(() => {
     if (!autoClaimEnabled) return;
-    void autoClaimOnce();
-    const id = window.setInterval(() => void autoClaimOnce(), AUTO_CLAIM_INTERVAL_MS);
+    const run = () => void runAutoClaimRef.current?.();
+    run();
+    const id = window.setInterval(run, AUTO_CLAIM_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [autoClaimEnabled, autoClaimOnce]);
+  }, [autoClaimEnabled]);
 
   const onStake = async () => {
     if (!anchorWallet || !publicKey || !config || !mintDecimals) return;

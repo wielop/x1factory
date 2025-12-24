@@ -100,7 +100,6 @@ export function PublicDashboard() {
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [claimButtonMode, setClaimButtonMode] = useState<"start" | "repeat">("start");
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -484,10 +483,7 @@ export function PublicDashboard() {
   }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);
 
   const handleClaimToggle = useCallback(async () => {
-    const executed = await onClaimAll();
-    if (executed) {
-      setClaimButtonMode((prev) => (prev === "start" ? "repeat" : "start"));
-    }
+    await onClaimAll();
   }, [onClaimAll]);
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
@@ -802,11 +798,7 @@ export function PublicDashboard() {
                   className="text-[11px]"
                   title="Collect all unclaimed MIND from your active rigs."
                 >
-                  {busy === "Claim all rigs"
-                    ? "Claiming..."
-                    : claimButtonMode === "start"
-                    ? "Start claim ON"
-                    : "Repeat"}
+                  {busy === "Claim all rigs" ? "Claiming..." : "Start Claim"}
                 </Button>
               </div>
             </div>

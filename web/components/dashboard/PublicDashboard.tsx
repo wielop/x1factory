@@ -1,7 +1,7 @@
 "use client";
 
 import "@/lib/polyfillBufferClient";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
@@ -100,12 +100,7 @@ export function PublicDashboard() {
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [autoClaimEnabled, setAutoClaimEnabled] = useState(false);
-  const [autoClaimEngaged, setAutoClaimEngaged] = useState(false);
-  const autoClaimEnabledRef = useRef(autoClaimEnabled);
-  const autoClaimEngagedRef = useRef(autoClaimEngaged);
-  const busyRef = useRef<string | null>(null);
-  const runAutoClaimRef = useRef<(() => Promise<void>) | null>(null);
+  const [claimButtonMode, setClaimButtonMode] = useState<"start" | "repeat">("start");
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -458,10 +453,10 @@ export function PublicDashboard() {
   };
 
   const onClaimAll = useCallback(async () => {
-    if (busy != null) return;
-    if (!anchorWallet || !publicKey || !config) return;
+    if (busy != null) return false;
+    if (!anchorWallet || !publicKey || !config) return false;
     const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
-    if (claimTargets.length === 0) return;
+    if (claimTargets.length === 0) return false;
     await withTx("Claim all rigs", async () => {
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const tx = new Transaction();
@@ -485,8 +480,15 @@ export function PublicDashboard() {
       }
       return await program.provider.sendAndConfirm(tx, []);
     });
+    return true;
   }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);
 
+  const handleClaimToggle = useCallback(async () => {
+    const executed = await onClaimAll();
+    if (executed) {
+      setClaimButtonMode((prev) => (prev === "start" ? "repeat" : "start"));
+    }
+  }, [onClaimAll]);
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
     const program = getProgram(connection, anchorWallet);
@@ -502,45 +504,6 @@ export function PublicDashboard() {
       return sig;
     });
   };
-
-  const runAutoClaim = useCallback(async () => {
-    if (
-      !autoClaimEnabledRef.current ||
-      autoClaimEngagedRef.current ||
-      busyRef.current != null
-    )
-      return;
-    setAutoClaimEngaged(true);
-    try {
-      await onClaimAll();
-    } finally {
-      setAutoClaimEngaged(false);
-    }
-  }, [onClaimAll]);
-
-  useEffect(() => {
-    runAutoClaimRef.current = runAutoClaim;
-  }, [runAutoClaim]);
-
-  useEffect(() => {
-    autoClaimEnabledRef.current = autoClaimEnabled;
-  }, [autoClaimEnabled]);
-
-  useEffect(() => {
-    autoClaimEngagedRef.current = autoClaimEngaged;
-  }, [autoClaimEngaged]);
-
-  useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
-
-  useEffect(() => {
-    if (!autoClaimEnabled) return;
-    const run = () => void runAutoClaimRef.current?.();
-    run();
-    const id = window.setInterval(run, AUTO_CLAIM_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [autoClaimEnabled]);
 
   const onStake = async () => {
     if (!anchorWallet || !publicKey || !config || !mintDecimals) return;
@@ -575,7 +538,6 @@ export function PublicDashboard() {
       return sig;
     });
   };
-
   const onUnstake = async () => {
     if (!anchorWallet || !publicKey || !config || !mintDecimals) return;
     let amountBase: bigint;
@@ -832,29 +794,19 @@ export function PublicDashboard() {
                   {soonestContractExpiresIn != null ? formatDurationSeconds(soonestContractExpiresIn) : "-"}
                 </div>
               </div>
-              <div className="mt-4 flex items-center gap-2">
+              <div className="mt-4">
                 <Button
                   size="sm"
-                  onClick={() => void onClaimAll()}
+                  onClick={() => void handleClaimToggle()}
                   disabled={claimDisabled}
-                  title="Collect all unclaimed MIND from your active rigs."
-                  className="text-[11px]"
-                >
-                  {busy === "Claim all rigs" ? "Claiming..." : "Claim now"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={autoClaimEnabled ? "secondary" : "ghost"}
-                  onClick={() => setAutoClaimEnabled((prev) => !prev)}
-                  disabled={autoClaimEngaged}
                   className="text-[11px]"
                   title="Collect all unclaimed MIND from your active rigs."
                 >
-                  {autoClaimEngaged
+                  {busy === "Claim all rigs"
                     ? "Claiming..."
-                    : autoClaimEnabled
-                    ? "Auto claim ON"
-                    : "Start claim ON"}
+                    : claimButtonMode === "start"
+                    ? "Start claim ON"
+                    : "Repeat"}
                 </Button>
               </div>
             </div>

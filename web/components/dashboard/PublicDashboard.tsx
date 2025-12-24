@@ -100,6 +100,7 @@ export function PublicDashboard() {
   const [lastSig, setLastSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [lastClaimAmount, setLastClaimAmount] = useState<bigint | null>(null);
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -384,6 +385,10 @@ export function PublicDashboard() {
     mintDecimals != null ? formatRoundedToken(stakingRewardBalance, mintDecimals.xnt) : "-";
   const totalStakedBadge =
     mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
+  const lastClaimRounded =
+    mintDecimals && lastClaimAmount != null
+      ? formatRoundedToken(lastClaimAmount, mintDecimals.mind)
+      : null;
 
   const ensureAta = async (owner: PublicKey, mint: PublicKey) => {
     const ata = getAssociatedTokenAddressSync(mint, owner);
@@ -483,8 +488,12 @@ export function PublicDashboard() {
   }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);
 
   const handleClaimToggle = useCallback(async () => {
-    await onClaimAll();
-  }, [onClaimAll]);
+    const claimSnapshot = totalPendingMind;
+    const executed = await onClaimAll();
+    if (executed) {
+      setLastClaimAmount(claimSnapshot);
+    }
+  }, [onClaimAll, totalPendingMind]);
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
     const program = getProgram(connection, anchorWallet);
@@ -663,10 +672,15 @@ export function PublicDashboard() {
                 </button>
                 <span className="text-lg text-emerald-200">MIND</span>
               </div>
-              <div className="mt-2 text-xs text-zinc-400">
-                Collect rewards via the Claim rewards button in Your rigs.
+            <div className="mt-2 text-xs text-zinc-400">
+              Collect rewards via the Claim rewards button in Your rigs.
+            </div>
+            {lastClaimRounded ? (
+              <div className="mt-1 text-[11px] text-emerald-200">
+                Last claimed: {lastClaimRounded} MIND
               </div>
-            </Card>
+            ) : null}
+          </Card>
             <Card className="p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">In wallet</div>
               <div className="mt-3 flex items-baseline gap-1">

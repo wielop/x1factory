@@ -809,6 +809,15 @@ export function PublicDashboard() {
               <div className="mt-4 flex items-center gap-2">
                 <Button
                   size="sm"
+                  onClick={() => void onClaimAll()}
+                  disabled={claimDisabled}
+                  title="Collect all unclaimed MIND from your active rigs."
+                  className="text-[11px]"
+                >
+                  {busy === "Claim all rigs" ? "Claiming..." : "Claim now"}
+                </Button>
+                <Button
+                  size="sm"
                   variant={autoClaimEnabled ? "secondary" : "ghost"}
                   onClick={() => setAutoClaimEnabled((prev) => !prev)}
                   disabled={claimDisabled || autoClaimEngaged}

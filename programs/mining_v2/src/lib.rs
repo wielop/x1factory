@@ -436,19 +436,9 @@ pub mod mining_v2 {
         let available = vault_available_lamports(&ctx.accounts.staking_reward_vault)?;
         require!(available >= payout_u64, ErrorCode::InsufficientVaultBalance);
 
-        let signer_seeds: &[&[u8]] = &[
-            STAKING_REWARD_VAULT_SEED,
-            &[ctx.bumps.get("staking_reward_vault").copied().unwrap()],
-        ];
-        system_program::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                SystemTransfer {
-                    from: ctx.accounts.staking_reward_vault.to_account_info(),
-                    to: ctx.accounts.owner.to_account_info(),
-                },
-                &[signer_seeds],
-            ),
+        transfer_lamports(
+            &ctx.accounts.staking_reward_vault.to_account_info(),
+            &ctx.accounts.owner.to_account_info(),
             payout_u64,
         )?;
 
@@ -572,19 +562,9 @@ pub mod mining_v2 {
         let available = vault_available_lamports(&ctx.accounts.treasury_vault)?;
         require!(available >= amount, ErrorCode::InsufficientVaultBalance);
 
-        let signer_seeds: &[&[u8]] = &[
-            TREASURY_VAULT_SEED,
-            &[ctx.bumps.get("treasury_vault").copied().unwrap()],
-        ];
-        system_program::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                SystemTransfer {
-                    from: ctx.accounts.treasury_vault.to_account_info(),
-                    to: ctx.accounts.admin.to_account_info(),
-                },
-                &[signer_seeds],
-            ),
+        transfer_lamports(
+            &ctx.accounts.treasury_vault.to_account_info(),
+            &ctx.accounts.admin.to_account_info(),
             amount,
         )?;
         Ok(())
@@ -1111,6 +1091,18 @@ pub struct EpochRolled {
 fn vault_available_lamports(vault: &Account<NativeVault>) -> Result<u64> {
     let rent = Rent::get()?.minimum_balance(8 + NativeVault::INIT_SPACE);
     Ok(vault.to_account_info().lamports().saturating_sub(rent))
+}
+
+fn transfer_lamports(from: &AccountInfo, to: &AccountInfo, amount: u64) -> Result<()> {
+    let from_balance = **from.try_borrow_lamports()?;
+    let to_balance = **to.try_borrow_lamports()?;
+    **from.try_borrow_mut_lamports()? = from_balance
+        .checked_sub(amount)
+        .ok_or(ErrorCode::InsufficientVaultBalance)?;
+    **to.try_borrow_mut_lamports()? = to_balance
+        .checked_add(amount)
+        .ok_or(ErrorCode::MathOverflow)?;
+    Ok(())
 }
 
 fn contract_terms(contract_type: u8) -> Result<(u64, u64, u64)> {

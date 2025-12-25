@@ -536,6 +536,24 @@ pub mod mining_v2 {
         Ok(())
     }
 
+    pub fn admin_update_xnt_mint(ctx: Context<AdminUpdateXntMint>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let cfg = &mut ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+
+        cfg.xnt_mint = ctx.accounts.xnt_mint.key();
+        cfg.staking_reward_vault = ctx.accounts.staking_reward_vault.key();
+        cfg.treasury_vault = ctx.accounts.treasury_vault.key();
+
+        // Reset staking epoch accounting to align with the new reward vault.
+        cfg.staking_accounted_balance = ctx.accounts.staking_reward_vault.amount;
+        cfg.staking_undistributed_xnt = 0;
+        cfg.staking_reward_rate_xnt_per_sec = 0;
+        cfg.staking_epoch_end_ts = now;
+        cfg.staking_last_update_ts = now;
+        Ok(())
+    }
+
     pub fn admin_withdraw_treasury(
         ctx: Context<AdminWithdrawTreasury>,
         amount: u64,
@@ -905,6 +923,34 @@ pub struct AdminUpdateConfig<'info> {
         bump = config.bumps.config
     )]
     pub config: Box<Account<'info, Config>>,
+}
+
+#[derive(Accounts)]
+pub struct AdminUpdateXntMint<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(seeds = [VAULT_SEED], bump = config.bumps.vault_authority)]
+    /// CHECK: PDA derived from VAULT_SEED/bump used as vault authority.
+    pub vault_authority: UncheckedAccount<'info>,
+    pub xnt_mint: Account<'info, Mint>,
+    #[account(
+        mut,
+        constraint = staking_reward_vault.owner == vault_authority.key(),
+        constraint = staking_reward_vault.mint == xnt_mint.key()
+    )]
+    pub staking_reward_vault: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = treasury_vault.owner == vault_authority.key(),
+        constraint = treasury_vault.mint == xnt_mint.key()
+    )]
+    pub treasury_vault: Account<'info, TokenAccount>,
 }
 
 #[derive(Accounts)]

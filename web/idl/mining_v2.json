@@ -417,6 +417,42 @@
       ]
     },
     {
+      "name": "adminUpdateXntMint",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "xntMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryVault",
+          "isMut": true,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "adminWithdrawTreasury",
       "accounts": [
         {

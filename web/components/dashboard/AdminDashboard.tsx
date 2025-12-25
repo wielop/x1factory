@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  AccountLayout,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
+  createInitializeAccountInstruction,
   createTransferInstruction,
   getAssociatedTokenAddressSync,
   getMint,
@@ -51,6 +53,7 @@ export function AdminDashboard() {
   const [badgeBonusBps, setBadgeBonusBps] = useState<string>("0");
   const [rewardTopUpUi, setRewardTopUpUi] = useState<string>("");
   const [treasuryWithdrawUi, setTreasuryWithdrawUi] = useState<string>("3.8");
+  const [xntMintUi, setXntMintUi] = useState<string>("");
 
   const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export function AdminDashboard() {
         setEmissionPerDayUi(emissionPerDay.toString());
       }
       setMaxEffectiveHpUi(cfg.maxEffectiveHp.toString());
+      setXntMintUi((prev) => (prev ? prev : cfg.xntMint.toBase58()));
     } catch (e: unknown) {
       console.error(e);
       setError(formatError(e));
@@ -279,6 +283,56 @@ export function AdminDashboard() {
     });
   };
 
+  const onUpdateXntMint = async () => {
+    if (!anchorWallet || !config || !publicKey) return;
+    let newMint: PublicKey;
+    try {
+      newMint = new PublicKey(xntMintUi.trim());
+    } catch {
+      setError("Invalid XNT mint address");
+      return;
+    }
+    const rewardVault = Keypair.generate();
+    const treasuryVault = Keypair.generate();
+    const vaultAuthority = deriveVaultPda();
+    const rent = await connection.getMinimumBalanceForRentExemption(AccountLayout.span);
+    const tx = new Transaction();
+    tx.add(
+      SystemProgram.createAccount({
+        fromPubkey: publicKey,
+        newAccountPubkey: rewardVault.publicKey,
+        lamports: rent,
+        space: AccountLayout.span,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccountInstruction(rewardVault.publicKey, newMint, vaultAuthority, TOKEN_PROGRAM_ID),
+      SystemProgram.createAccount({
+        fromPubkey: publicKey,
+        newAccountPubkey: treasuryVault.publicKey,
+        lamports: rent,
+        space: AccountLayout.span,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccountInstruction(treasuryVault.publicKey, newMint, vaultAuthority, TOKEN_PROGRAM_ID)
+    );
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Update XNT mint", async () => {
+      const instruction = await program.methods
+        .adminUpdateXntMint()
+        .accounts({
+          admin: publicKey,
+          config: deriveConfigPda(),
+          vaultAuthority,
+          xntMint: newMint,
+          stakingRewardVault: rewardVault.publicKey,
+          treasuryVault: treasuryVault.publicKey,
+        })
+        .instruction();
+      tx.add(instruction);
+      return await program.provider.sendAndConfirm(tx, [rewardVault, treasuryVault]);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-ink text-white">
       <TopBar title="Mining V2 Admin" subtitle="Protocol controls" link={{ href: "/", label: "Dashboard" }} />
@@ -346,6 +400,18 @@ export function AdminDashboard() {
             <Input value={rewardTopUpUi} onChange={setRewardTopUpUi} />
             <Button className="mt-4" onClick={() => void onFundRewardVault()} disabled={!isAdmin || busy != null}>
               {busy === "Fund reward vault" ? "Submitting..." : "Top up reward vault"}
+            </Button>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Switch XNT mint</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Creates fresh reward and treasury vaults for the new mint.
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">New XNT mint</div>
+            <Input value={xntMintUi} onChange={setXntMintUi} />
+            <Button className="mt-4" onClick={() => void onUpdateXntMint()} disabled={!isAdmin || busy != null}>
+              {busy === "Update XNT mint" ? "Submitting..." : "Update XNT mint"}
             </Button>
           </Card>
 

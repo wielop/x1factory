@@ -566,6 +566,7 @@ export function PublicDashboard() {
           userStake: deriveUserStakePda(publicKey),
           vaultAuthority: deriveVaultPda(),
           stakingMindVault: config.stakingMindVault,
+          mindMint: config.mindMint,
           ownerMindAta: ata,
           tokenProgram: TOKEN_PROGRAM_ID,
         })

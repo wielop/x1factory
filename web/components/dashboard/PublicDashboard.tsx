@@ -1009,6 +1009,13 @@ export function PublicDashboard() {
             <div className="mt-3 text-xs text-zinc-400">
               Claimable: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT
             </div>
+            {!loading && mintDecimals && userStake?.stakedMind ? (
+              userStake.stakedMind > 0n ? (
+                <div className="mt-2 text-[11px] text-zinc-500">
+                  Your staked: {formatRoundedToken(userStake.stakedMind, mintDecimals.mind, 2)} MIND
+                </div>
+              ) : null
+            ) : null}
             <div className="text-[11px] text-zinc-500">
               Rewards accrue continuously. Your rewards depend on your share of the staking pool.
             </div>
@@ -1039,7 +1046,10 @@ export function PublicDashboard() {
                 {busy === "Unstake MIND" ? "Submitting..." : "Unstake"}
               </Button>
               <div className="mt-2 text-[11px] text-zinc-500">
-                3% of unstaked MIND tokens will be burned.
+                3% of unstaked MIND will be burned.
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                This helps stabilize rewards and discourage rapid in-out cycles.
               </div>
             </div>
             <div className="mt-6">
@@ -1050,6 +1060,9 @@ export function PublicDashboard() {
               >
                 {busy === "Claim XNT" ? "Claiming..." : "Claim XNT"}
               </Button>
+              <div className="mt-2 text-[11px] text-zinc-500">
+                Claiming does not remove or unstake your MIND.
+              </div>
             </div>
           </Card>
 

@@ -607,12 +607,24 @@ export function PublicDashboard() {
   }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);
 
   const handleClaimToggle = useCallback(async () => {
-    const claimSnapshot = livePendingMind;
+    if (!config || !publicKey) return;
+    const ata = getAssociatedTokenAddressSync(config.mindMint, publicKey);
+    const before = await connection
+      .getTokenAccountBalance(ata, "confirmed")
+      .then((b) => BigInt(b.value.amount || "0"))
+      .catch(() => 0n);
     const executed = await onClaimAll();
     if (executed) {
-      setLastClaimAmount(claimSnapshot);
+      const after = await connection
+        .getTokenAccountBalance(ata, "confirmed")
+        .then((b) => BigInt(b.value.amount || "0"))
+        .catch(() => 0n);
+      const delta = after > before ? after - before : 0n;
+      if (delta > 0n) {
+        setLastClaimAmount(delta);
+      }
     }
-  }, [onClaimAll, livePendingMind]);
+  }, [config, connection, onClaimAll, publicKey]);
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
     const program = getProgram(connection, anchorWallet);

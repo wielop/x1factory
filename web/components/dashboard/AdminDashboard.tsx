@@ -3,8 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getMint } from "@solana/spl-token";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferInstruction,
+  getAssociatedTokenAddressSync,
+  getMint,
+} from "@solana/spl-token";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,6 +48,7 @@ export function AdminDashboard() {
   const [badgeUser, setBadgeUser] = useState<string>("");
   const [badgeTier, setBadgeTier] = useState<string>("0");
   const [badgeBonusBps, setBadgeBonusBps] = useState<string>("0");
+  const [rewardTopUpUi, setRewardTopUpUi] = useState<string>("");
 
   const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
@@ -185,6 +193,47 @@ export function AdminDashboard() {
     });
   };
 
+  const onFundRewardVault = async () => {
+    if (!anchorWallet || !config || !mintDecimals || !publicKey) return;
+    let amountBase: bigint;
+    try {
+      amountBase = parseUiAmountToBase(rewardTopUpUi, mintDecimals.xnt);
+    } catch (e: unknown) {
+      setError(formatError(e));
+      return;
+    }
+    if (amountBase <= 0n) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Fund reward vault", async () => {
+      const tx = new Transaction();
+      const adminAta = getAssociatedTokenAddressSync(config.xntMint, publicKey);
+      const ataInfo = await connection.getAccountInfo(adminAta, "confirmed");
+      if (!ataInfo) {
+        tx.add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            adminAta,
+            publicKey,
+            config.xntMint,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          )
+        );
+      }
+      tx.add(
+        createTransferInstruction(
+          adminAta,
+          config.stakingRewardVault,
+          publicKey,
+          amountBase,
+          [],
+          TOKEN_PROGRAM_ID
+        )
+      );
+      return await program.provider.sendAndConfirm(tx, []);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-ink text-white">
       <TopBar title="Mining V2 Admin" subtitle="Protocol controls" link={{ href: "/", label: "Dashboard" }} />
@@ -240,6 +289,18 @@ export function AdminDashboard() {
             <Input value={epochSecondsUi} onChange={setEpochSecondsUi} />
             <Button className="mt-4" onClick={() => void onRollEpoch()} disabled={busy != null}>
               {busy === "Roll epoch" ? "Submitting..." : "Roll Epoch"}
+            </Button>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Fund reward vault</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Send XNT from the admin wallet to the staking reward vault.
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">Amount (XNT)</div>
+            <Input value={rewardTopUpUi} onChange={setRewardTopUpUi} />
+            <Button className="mt-4" onClick={() => void onFundRewardVault()} disabled={!isAdmin || busy != null}>
+              {busy === "Fund reward vault" ? "Submitting..." : "Top up reward vault"}
             </Button>
           </Card>
 

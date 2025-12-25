@@ -605,12 +605,12 @@ export function PublicDashboard() {
   }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);
 
   const handleClaimToggle = useCallback(async () => {
-    const claimSnapshot = totalPendingMind;
+    const claimSnapshot = livePendingMind;
     const executed = await onClaimAll();
     if (executed) {
       setLastClaimAmount(claimSnapshot);
     }
-  }, [onClaimAll, totalPendingMind]);
+  }, [onClaimAll, livePendingMind]);
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
     if (!anchorWallet || !config) return;
     const program = getProgram(connection, anchorWallet);

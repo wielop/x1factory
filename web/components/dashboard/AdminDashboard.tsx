@@ -21,7 +21,12 @@ import {
 } from "@/lib/solana";
 import { formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
-import { decodeMinerPositionAccount, MINER_POSITION_LEN } from "@/lib/decoders";
+import {
+  decodeMinerPositionAccount,
+  decodeUserStakeAccount,
+  MINER_POSITION_LEN,
+  USER_STAKE_LEN,
+} from "@/lib/decoders";
 
 const DAY_SECONDS = 86_400n;
 const XNT_DECIMALS = 9;
@@ -43,6 +48,12 @@ export function AdminDashboard() {
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
   const [activeRigTotal, setActiveRigTotal] = useState(0);
   const [activeMinerUpdated, setActiveMinerUpdated] = useState<number | null>(null);
+  const [activeStakers, setActiveStakers] = useState<
+    Array<{ owner: string; staked: bigint; sharePct: number }>
+  >([]);
+  const [activeStakerTotal, setActiveStakerTotal] = useState(0);
+  const [activeStakedTotal, setActiveStakedTotal] = useState<bigint>(0n);
+  const [activeStakerUpdated, setActiveStakerUpdated] = useState<number | null>(null);
 
   const [emissionPerDayUi, setEmissionPerDayUi] = useState<string>("");
   const [maxEffectiveHpUi, setMaxEffectiveHpUi] = useState<string>("");
@@ -116,10 +127,16 @@ export function AdminDashboard() {
       setMaxEffectiveHpUi(cfg.maxEffectiveHp.toString());
       try {
         const programId = getProgramId();
-        const positions = await connection.getProgramAccounts(programId, {
-          commitment: "confirmed",
-          filters: [{ dataSize: MINER_POSITION_LEN }],
-        });
+        const [positions, stakes] = await Promise.all([
+          connection.getProgramAccounts(programId, {
+            commitment: "confirmed",
+            filters: [{ dataSize: MINER_POSITION_LEN }],
+          }),
+          connection.getProgramAccounts(programId, {
+            commitment: "confirmed",
+            filters: [{ dataSize: USER_STAKE_LEN }],
+          }),
+        ]);
         const now = ts ?? Math.floor(Date.now() / 1000);
         const map = new Map<string, { rigs: number; hp: bigint }>();
         let totalRigs = 0;
@@ -140,12 +157,44 @@ export function AdminDashboard() {
         setActiveMinerTotal(map.size);
         setActiveRigTotal(totalRigs);
         setActiveMinerUpdated(now);
+
+        const stakerMap = new Map<string, bigint>();
+        let totalStaked = cfg.stakingTotalStakedMind;
+        if (totalStaked === 0n) {
+          totalStaked = 0n;
+        }
+        for (const entry of stakes) {
+          const decoded = decodeUserStakeAccount(Buffer.from(entry.account.data));
+          if (decoded.stakedMind === 0n) continue;
+          const ownerKey = new PublicKey(decoded.owner).toBase58();
+          stakerMap.set(ownerKey, decoded.stakedMind);
+          if (cfg.stakingTotalStakedMind === 0n) {
+            totalStaked += decoded.stakedMind;
+          }
+        }
+        const stakerList = Array.from(stakerMap.entries())
+          .map(([owner, staked]) => {
+            const sharePct =
+              totalStaked > 0n ? Number((staked * 10_000n) / totalStaked) / 100 : 0;
+            return { owner, staked, sharePct };
+          })
+          .sort((a, b) =>
+            b.staked !== a.staked ? (b.staked > a.staked ? 1 : -1) : b.sharePct - a.sharePct
+          );
+        setActiveStakers(stakerList);
+        setActiveStakerTotal(stakerMap.size);
+        setActiveStakedTotal(totalStaked);
+        setActiveStakerUpdated(now);
       } catch (err) {
         console.warn("Failed to load active miners", err);
         setActiveMiners([]);
         setActiveMinerTotal(0);
         setActiveRigTotal(0);
         setActiveMinerUpdated(null);
+        setActiveStakers([]);
+        setActiveStakerTotal(0);
+        setActiveStakedTotal(0n);
+        setActiveStakerUpdated(null);
       }
     } catch (e: unknown) {
       console.error(e);
@@ -367,6 +416,34 @@ export function AdminDashboard() {
                   <div className="font-mono break-all">{entry.owner}</div>
                   <div className="text-zinc-500">
                     Rigs: {entry.rigs} | HP: {entry.hp.toString()}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        <Card className="mt-4 p-4">
+          <div className="text-sm font-semibold">Active stakers</div>
+          <div className="mt-2 text-xs text-zinc-400">
+            Unique addresses: {activeStakerTotal} | Total staked:{" "}
+            {mintDecimals ? formatTokenAmount(activeStakedTotal, mintDecimals.mind, 4) : "-"} MIND
+            {activeStakerUpdated != null ? ` | Updated ${activeStakerUpdated}` : ""}
+          </div>
+          <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+            {activeStakers.length === 0 ? (
+              <div className="text-xs text-zinc-500">No active stakers found.</div>
+            ) : (
+              activeStakers.map((entry) => (
+                <div
+                  key={entry.owner}
+                  className="flex flex-col gap-1 border-b border-white/5 pb-2 text-xs text-zinc-300"
+                >
+                  <div className="font-mono break-all">{entry.owner}</div>
+                  <div className="text-zinc-500">
+                    Staked:{" "}
+                    {mintDecimals ? formatTokenAmount(entry.staked, mintDecimals.mind, 4) : "-"} MIND
+                    {" | "}Share: {entry.sharePct.toFixed(2)}%
                   </div>
                 </div>
               ))

@@ -70,18 +70,35 @@ export function AdminDashboard() {
         }
       }
       setMintDecimals({ xnt: XNT_DECIMALS, mind: mindMintInfo.decimals });
-      const [rewardBalRaw, treasuryBalRaw] = await Promise.all([
-        useNativeXnt
-          ? connection.getBalance(cfg.stakingRewardVault, "confirmed")
-          : connection.getTokenAccountBalance(cfg.stakingRewardVault, "confirmed"),
-        useNativeXnt
-          ? connection.getBalance(cfg.treasuryVault, "confirmed")
-          : connection.getTokenAccountBalance(cfg.treasuryVault, "confirmed"),
-      ]);
-      const rewardBal =
-        typeof rewardBalRaw === "number" ? BigInt(rewardBalRaw) : BigInt(rewardBalRaw.value.amount || "0");
-      const treasuryBal =
-        typeof treasuryBalRaw === "number" ? BigInt(treasuryBalRaw) : BigInt(treasuryBalRaw.value.amount || "0");
+      let rewardBal: bigint;
+      try {
+        if (useNativeXnt) {
+          rewardBal = BigInt(await connection.getBalance(cfg.stakingRewardVault, "confirmed"));
+        } else {
+          const rewardBalRaw = await connection.getTokenAccountBalance(
+            cfg.stakingRewardVault,
+            "confirmed"
+          );
+          rewardBal = BigInt(rewardBalRaw.value.amount || "0");
+        }
+      } catch {
+        useNativeXnt = true;
+        rewardBal = BigInt(await connection.getBalance(cfg.stakingRewardVault, "confirmed"));
+      }
+      let treasuryBal: bigint;
+      try {
+        if (useNativeXnt) {
+          treasuryBal = BigInt(await connection.getBalance(cfg.treasuryVault, "confirmed"));
+        } else {
+          const treasuryBalRaw = await connection.getTokenAccountBalance(
+            cfg.treasuryVault,
+            "confirmed"
+          );
+          treasuryBal = BigInt(treasuryBalRaw.value.amount || "0");
+        }
+      } catch {
+        treasuryBal = BigInt(await connection.getBalance(cfg.treasuryVault, "confirmed"));
+      }
       setStakingRewardBalance(rewardBal);
       setTreasuryBalance(treasuryBal);
       if (mindMintInfo.decimals >= 0) {

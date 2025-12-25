@@ -145,20 +145,29 @@ export function PublicDashboard() {
           xntDecimals = xntMintInfo.decimals;
         } catch {
           useNativeXnt = true;
+          xntDecimals = XNT_DECIMALS;
         }
       }
       if (isStale()) return;
       setMintDecimals({ xnt: xntDecimals, mind: mindMintInfo.decimals });
 
-      const [rewardBalRaw, mindBal] = await Promise.all([
-        useNativeXnt
-          ? connection.getBalance(cfg.stakingRewardVault, "confirmed")
-          : connection.getTokenAccountBalance(cfg.stakingRewardVault, "confirmed"),
-        connection.getTokenAccountBalance(cfg.stakingMindVault, "confirmed"),
-      ]);
+      let rewardBal: bigint;
+      try {
+        if (useNativeXnt) {
+          rewardBal = BigInt(await connection.getBalance(cfg.stakingRewardVault, "confirmed"));
+        } else {
+          const rewardBalRaw = await connection.getTokenAccountBalance(
+            cfg.stakingRewardVault,
+            "confirmed"
+          );
+          rewardBal = BigInt(rewardBalRaw.value.amount || "0");
+        }
+      } catch {
+        useNativeXnt = true;
+        rewardBal = BigInt(await connection.getBalance(cfg.stakingRewardVault, "confirmed"));
+      }
+      const mindBal = await connection.getTokenAccountBalance(cfg.stakingMindVault, "confirmed");
       if (isStale()) return;
-      const rewardBal =
-        typeof rewardBalRaw === "number" ? BigInt(rewardBalRaw) : BigInt(rewardBalRaw.value.amount || "0");
       setStakingRewardBalance(rewardBal);
       setStakingMindBalance(BigInt(mindBal.value.amount || "0"));
 
@@ -201,18 +210,25 @@ export function PublicDashboard() {
       );
 
       const mindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);
-      const [xntBal, mindBalUser] = await Promise.all([
-        useNativeXnt
-          ? connection.getBalance(publicKey, "confirmed").then((b) => BigInt(b))
-          : connection
-              .getTokenAccountBalance(getAssociatedTokenAddressSync(cfg.xntMint, publicKey), "confirmed")
-              .then((b) => BigInt(b.value.amount || "0"))
-              .catch(() => 0n),
-        connection
-          .getTokenAccountBalance(mindAta, "confirmed")
-          .then((b) => BigInt(b.value.amount || "0"))
-          .catch(() => 0n),
-      ]);
+      let xntBal: bigint;
+      if (useNativeXnt) {
+        xntBal = BigInt(await connection.getBalance(publicKey, "confirmed"));
+      } else {
+        try {
+          const xntRaw = await connection.getTokenAccountBalance(
+            getAssociatedTokenAddressSync(cfg.xntMint, publicKey),
+            "confirmed"
+          );
+          xntBal = BigInt(xntRaw.value.amount || "0");
+        } catch {
+          useNativeXnt = true;
+          xntBal = BigInt(await connection.getBalance(publicKey, "confirmed"));
+        }
+      }
+      const mindBalUser = await connection
+        .getTokenAccountBalance(mindAta, "confirmed")
+        .then((b) => BigInt(b.value.amount || "0"))
+        .catch(() => 0n);
       if (isStale()) return;
       setXntBalance(xntBal);
       setMindBalance(mindBalUser);

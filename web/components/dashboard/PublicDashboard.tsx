@@ -368,42 +368,70 @@ export function PublicDashboard() {
       ? (userStakingPerDayBase * (BPS_DENOMINATOR + BigInt(effectiveBonusBps))) / BPS_DENOMINATOR
       : userStakingPerDayBase;
 
-  const totalEarnedXnt: bigint | null = null;
-  const earnedSoFarBase = totalEarnedXnt ?? finalPendingXnt;
-  const earnedLabel = totalEarnedXnt != null ? "Earned so far:" : "Accrued (unclaimed):";
-  const earnedSubtext =
-    totalEarnedXnt != null ? "since you started staking" : "Claimable via the Claim XNT button.";
+  const accruedXntBase = finalPendingXnt;
   const earnedValue =
-    mintDecimals != null
-      ? `${formatRoundedToken(earnedSoFarBase, mintDecimals.xnt, 2)} XNT`
-      : "-";
+    mintDecimals != null ? `${formatRoundedToken(accruedXntBase, mintDecimals.xnt, 2)} XNT` : "-";
   const currentPaceValue =
     mintDecimals != null
       ? `${formatRoundedToken(currentPaceBase, mintDecimals.xnt, 2)} XNT/day`
       : "-";
 
-  const milestoneTargetXnt = 10n;
+  const milestoneTargets = [1n, 5n, 10n];
   const xntDecimals = mintDecimals?.xnt ?? null;
-  const milestoneTargetBase =
-    xntDecimals != null ? milestoneTargetXnt * 10n ** BigInt(xntDecimals) : null;
+  const milestoneTargetBase = (() => {
+    if (xntDecimals == null) return null;
+    const base = 10n ** BigInt(xntDecimals);
+    if (currentPaceBase <= 0n) {
+      return milestoneTargets[0] * base;
+    }
+    for (const target of milestoneTargets) {
+      const targetBase = target * base;
+      if (targetBase > accruedXntBase) {
+        return targetBase;
+      }
+    }
+    return milestoneTargets[milestoneTargets.length - 1] * base;
+  })();
+
   const milestoneValue =
     milestoneTargetBase != null && xntDecimals != null
       ? `${formatRoundedToken(milestoneTargetBase, xntDecimals, 2)} XNT`
       : "-";
   const milestoneRemainingBase =
-    milestoneTargetBase != null && earnedSoFarBase < milestoneTargetBase
-      ? milestoneTargetBase - earnedSoFarBase
+    milestoneTargetBase != null && accruedXntBase < milestoneTargetBase
+      ? milestoneTargetBase - accruedXntBase
       : 0n;
-  const milestoneDays =
-    milestoneTargetBase != null && currentPaceBase > 0n && earnedSoFarBase < milestoneTargetBase
-      ? Number(milestoneRemainingBase / currentPaceBase)
-      : null;
-  const milestoneProgressPct =
-    milestoneTargetBase != null && milestoneTargetBase > 0n
-      ? Number((earnedSoFarBase * 10_000n) / milestoneTargetBase) / 100
-      : null;
+  const milestoneEtaDisplay = (() => {
+    if (milestoneTargetBase == null || currentPaceBase <= 0n) return null;
+    if (accruedXntBase >= milestoneTargetBase) return "soon";
+    const remaining = Number(milestoneRemainingBase);
+    const pace = Number(currentPaceBase);
+    if (!Number.isFinite(remaining) || !Number.isFinite(pace) || pace <= 0) return null;
+    const eta = Math.round(remaining / pace);
+    if (eta <= 0) return "soon";
+    return String(Math.min(99, eta));
+  })();
+
+  const progressLabel =
+    currentPaceBase > 0n && milestoneTargetBase != null && milestoneTargetBase > 0n
+      ? `Progress: ${
+          Math.min(
+            100,
+            Math.max(
+              0,
+              Number((accruedXntBase * 10_000n) / milestoneTargetBase) / 100
+            )
+          )
+            .toFixed(2)
+        }%`
+      : "Waiting for rewards to start accumulating";
   const milestoneProgress =
-    milestoneProgressPct != null ? Math.min(100, Math.max(0, milestoneProgressPct)) : null;
+    currentPaceBase > 0n && milestoneTargetBase != null && milestoneTargetBase > 0n
+      ? Math.min(
+          100,
+          Math.max(0, Number((accruedXntBase * 10_000n) / milestoneTargetBase) / 100)
+        )
+      : 0;
 
   const userStakeRounded =
     mintDecimals && userStake
@@ -974,9 +1002,9 @@ export function PublicDashboard() {
             <div className="mt-1 text-xs text-zinc-400">Rewards grow continuously — claim anytime.</div>
             <div className="mt-5 space-y-5">
               <div>
-                <div className="text-xs text-zinc-400">{earnedLabel}</div>
+                <div className="text-xs text-zinc-400">Accrued (unclaimed):</div>
                 <div className="mt-1 text-lg font-semibold text-white">{earnedValue}</div>
-                <div className="text-[11px] text-zinc-500">{earnedSubtext}</div>
+                <div className="text-[11px] text-zinc-500">Claim via the Claim XNT button.</div>
               </div>
               <div>
                 <div className="text-xs text-zinc-400">Current pace:</div>
@@ -987,21 +1015,21 @@ export function PublicDashboard() {
                 <div className="text-xs text-zinc-400">Next milestone:</div>
                 <div className="mt-1 text-lg font-semibold text-white">
                   {milestoneValue}
-                  {milestoneDays != null ? ` (≈ ${milestoneDays} days)` : ""}
+                  {milestoneEtaDisplay != null
+                    ? milestoneEtaDisplay === "soon"
+                      ? " (≈ soon)"
+                      : ` (≈ ${milestoneEtaDisplay} days)`
+                    : ""}
                 </div>
-                {milestoneProgress != null ? (
-                  <div className="mt-2">
-                    <div className="relative h-4 w-full overflow-hidden rounded-full bg-white/5">
-                      <div
-                        className="h-full rounded-full bg-emerald-400/70"
-                        style={{ width: `${milestoneProgress}%` }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center text-[10px] text-zinc-200">
-                        {milestoneProgress.toFixed(2)}% to next milestone
-                      </div>
-                    </div>
+                <div className="mt-2">
+                  <div className="relative h-4 w-full overflow-hidden rounded-full bg-white/5">
+                    <div
+                      className="h-full rounded-full bg-emerald-400/70"
+                      style={{ width: `${milestoneProgress}%` }}
+                    />
                   </div>
-                ) : null}
+                  <div className="mt-1 text-[11px] text-zinc-500">{progressLabel}</div>
+                </div>
               </div>
             </div>
             <div className="mt-5 text-xs text-zinc-500">

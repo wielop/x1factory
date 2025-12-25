@@ -903,6 +903,9 @@ export function PublicDashboard() {
               <Button className="mt-3" onClick={() => void onUnstake()} disabled={unstakeDisabled}>
                 {busy === "Unstake MIND" ? "Submitting..." : "Unstake"}
               </Button>
+              <div className="mt-2 text-[11px] text-zinc-500">
+                3% of unstaked MIND tokens will be burned.
+              </div>
             </div>
             <div className="mt-6">
               <Button

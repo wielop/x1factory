@@ -14,6 +14,8 @@ import { useToast } from "@/components/shared/ToastProvider";
 import { getProgram } from "@/lib/anchor";
 import {
   deriveConfigPda,
+  deriveStakingRewardVaultPda,
+  deriveTreasuryVaultPda,
   deriveUserProfilePda,
   fetchClockUnixTs,
   fetchConfig,
@@ -360,6 +362,24 @@ export function AdminDashboard() {
     });
   };
 
+  const onUseNativeVaults = async () => {
+    if (!anchorWallet || !config || !publicKey) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Use native XNT vaults", async () => {
+      const sig = await program.methods
+        .adminUseNativeXnt()
+        .accounts({
+          admin: publicKey,
+          config: deriveConfigPda(),
+          stakingRewardVault: deriveStakingRewardVaultPda(),
+          treasuryVault: deriveTreasuryVaultPda(),
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      return sig;
+    });
+  };
+
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -481,6 +501,16 @@ export function AdminDashboard() {
             <Input value={rewardTopUpUi} onChange={setRewardTopUpUi} />
             <Button className="mt-4" onClick={() => void onFundRewardVault()} disabled={!isAdmin || busy != null}>
               {busy === "Fund reward vault" ? "Submitting..." : "Top up reward vault"}
+            </Button>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Use native XNT vaults</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Syncs the config to the native (lamports) reward + treasury vault PDAs.
+            </div>
+            <Button className="mt-4" onClick={() => void onUseNativeVaults()} disabled={!isAdmin || busy != null}>
+              {busy === "Use native XNT vaults" ? "Submitting..." : "Sync native vaults"}
             </Button>
           </Card>
 

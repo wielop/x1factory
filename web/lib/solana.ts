@@ -5,6 +5,8 @@ export const DEFAULT_PROGRAM_ID = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw";
 
 const CONFIG_SEED = "config";
 const VAULT_SEED = "vault";
+const STAKING_REWARD_VAULT_SEED = "staking_reward_vault";
+const TREASURY_VAULT_SEED = "treasury_vault";
 const POSITION_SEED = "position";
 const PROFILE_SEED = "profile";
 const STAKE_SEED = "stake";
@@ -120,6 +122,12 @@ export const deriveConfigPda = () =>
 
 export const deriveVaultPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from(VAULT_SEED)], getProgramId())[0];
+
+export const deriveStakingRewardVaultPda = () =>
+  PublicKey.findProgramAddressSync([Buffer.from(STAKING_REWARD_VAULT_SEED)], getProgramId())[0];
+
+export const deriveTreasuryVaultPda = () =>
+  PublicKey.findProgramAddressSync([Buffer.from(TREASURY_VAULT_SEED)], getProgramId())[0];
 
 export const derivePositionPda = (owner: PublicKey, positionIndex: bigint | number) => {
   const idx = typeof positionIndex === "bigint" ? positionIndex : BigInt(positionIndex);

@@ -8,16 +8,12 @@ import { HowItWorksPopover } from "@/components/shared/HowItWorksPopover";
 import { TierBadge } from "@/components/xp/TierBadge";
 
 export function TopBar({
-  title,
-  subtitle,
   link,
   tier,
   xpProgress,
   xpNextLabel,
   className,
 }: {
-  title: string;
-  subtitle?: string;
   link?: { href: string; label: string };
   tier?: "Bronze" | "Silver" | "Gold" | "Diamond";
   xpProgress?: number | null;
@@ -27,17 +23,26 @@ export function TopBar({
   return (
     <header className={cn("sticky top-0 z-40 border-b border-cyan-400/10 bg-ink/80 backdrop-blur-xl", className)}>
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-        <div className="flex items-center gap-3">
-          <img
-            src="/logo.svg"
-            alt="Mind Factory logo"
-            className="h-8 w-8 drop-shadow-[0_0_12px_rgba(124,255,164,0.55)]"
-          />
+        {/* Brand block now uses a single shared inline SVG logo + name/tagline link to home. */}
+        <Link href="/" className="flex items-center gap-3">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="h-8 w-8 text-[#9BFFC6] drop-shadow-[0_0_12px_rgba(155,255,198,0.55)]"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.03-1.58c.18-.14.23-.4.11-.61l-1.92-3.32a.48.48 0 0 0-.58-.22l-2.39.96a7.17 7.17 0 0 0-1.7-.98l-.36-2.54A.49.49 0 0 0 14.17 2h-4.34a.49.49 0 0 0-.49.41l-.36 2.54c-.62.24-1.19.56-1.7.98l-2.39-.96a.48.48 0 0 0-.58.22L2.39 8.83c-.12.21-.07.47.11.61l2.03 1.58c-.04.32-.07.64-.07.98s.03.66.07.98l-2.03 1.58a.5.5 0 0 0-.11.61l1.92 3.32c.12.21.37.3.58.22l2.39-.96c.51.42 1.08.74 1.7.98l.36 2.54c.04.23.24.41.49.41h4.34c.25 0 .45-.18.49-.41l.36-2.54c.62-.24 1.19-.56 1.7-.98l2.39.96c.21.08.46-.01.58-.22l1.92-3.32a.5.5 0 0 0-.11-.61l-2.03-1.58ZM12 15.25A3.25 3.25 0 1 1 12 8.75a3.25 3.25 0 0 1 0 6.5Z"
+            />
+          </svg>
           <div>
-            <div className="text-sm font-semibold uppercase tracking-[0.22em] text-zinc-100">{title}</div>
-            {subtitle ? <div className="text-[11px] text-zinc-400">{subtitle}</div> : null}
+            <div className="text-base font-semibold uppercase tracking-[0.22em] text-zinc-100">
+              MIND FACTORY
+            </div>
+            <div className="text-[11px] text-zinc-400">Mine, stake and grow your MIND.</div>
           </div>
-        </div>
+        </Link>
         <div className="flex flex-wrap items-center gap-3">
           <InfoPopover />
           <HowItWorksPopover />

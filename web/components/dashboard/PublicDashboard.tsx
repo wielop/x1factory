@@ -848,7 +848,7 @@ export function PublicDashboard() {
 
   return (
     <div className="min-h-screen bg-ink text-white">
-      <TopBar title="Mind Factory" subtitle="Mine, stake and grow your MIND." />
+      <TopBar />
 
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-10">
         <div className="space-y-4">

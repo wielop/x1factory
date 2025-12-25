@@ -394,11 +394,7 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-ink text-white">
-      <TopBar
-        title="Mind Factory Admin"
-        subtitle="Protocol controls"
-        link={{ href: "/", label: "Dashboard" }}
-      />
+      <TopBar link={{ href: "/", label: "Dashboard" }} />
 
       <main className="mx-auto max-w-5xl px-4 pb-20 pt-10">
         <div className="grid gap-4 sm:grid-cols-2">

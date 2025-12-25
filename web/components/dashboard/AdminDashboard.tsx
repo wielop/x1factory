@@ -56,14 +56,21 @@ export function AdminDashboard() {
       setConfig(cfg);
       const ts = await fetchClockUnixTs(connection);
       setNowTs(ts);
-      const isNativeXnt = cfg.xntMint.equals(SystemProgram.programId);
+      let useNativeXnt = cfg.xntMint.equals(SystemProgram.programId);
       const mindMintInfo = await getMint(connection, cfg.mindMint, "confirmed");
+      if (!useNativeXnt) {
+        try {
+          await getMint(connection, cfg.xntMint, "confirmed");
+        } catch {
+          useNativeXnt = true;
+        }
+      }
       setMintDecimals({ xnt: XNT_DECIMALS, mind: mindMintInfo.decimals });
       const [rewardBalRaw, treasuryBalRaw] = await Promise.all([
-        isNativeXnt
+        useNativeXnt
           ? connection.getBalance(cfg.stakingRewardVault, "confirmed")
           : connection.getTokenAccountBalance(cfg.stakingRewardVault, "confirmed"),
-        isNativeXnt
+        useNativeXnt
           ? connection.getBalance(cfg.treasuryVault, "confirmed")
           : connection.getTokenAccountBalance(cfg.treasuryVault, "confirmed"),
       ]);

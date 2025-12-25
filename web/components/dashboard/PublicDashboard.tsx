@@ -132,16 +132,22 @@ export function PublicDashboard() {
       setNowTs(ts);
       setLastRefreshNowTs(ts);
 
-      const isNativeXnt = cfg.xntMint.equals(SystemProgram.programId);
+      let useNativeXnt = cfg.xntMint.equals(SystemProgram.programId);
       const mindMintInfo = await getMint(connection, cfg.mindMint, "confirmed");
-      const xntDecimals = isNativeXnt
-        ? XNT_DECIMALS
-        : (await getMint(connection, cfg.xntMint, "confirmed")).decimals;
+      let xntDecimals = XNT_DECIMALS;
+      if (!useNativeXnt) {
+        try {
+          const xntMintInfo = await getMint(connection, cfg.xntMint, "confirmed");
+          xntDecimals = xntMintInfo.decimals;
+        } catch {
+          useNativeXnt = true;
+        }
+      }
       if (isStale()) return;
       setMintDecimals({ xnt: xntDecimals, mind: mindMintInfo.decimals });
 
       const [rewardBalRaw, mindBal] = await Promise.all([
-        isNativeXnt
+        useNativeXnt
           ? connection.getBalance(cfg.stakingRewardVault, "confirmed")
           : connection.getTokenAccountBalance(cfg.stakingRewardVault, "confirmed"),
         connection.getTokenAccountBalance(cfg.stakingMindVault, "confirmed"),
@@ -192,7 +198,7 @@ export function PublicDashboard() {
 
       const mindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);
       const [xntBal, mindBalUser] = await Promise.all([
-        isNativeXnt
+        useNativeXnt
           ? connection.getBalance(publicKey, "confirmed").then((b) => BigInt(b))
           : connection
               .getTokenAccountBalance(getAssociatedTokenAddressSync(cfg.xntMint, publicKey), "confirmed")

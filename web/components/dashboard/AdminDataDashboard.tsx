@@ -23,6 +23,9 @@ type AdminState = {
   health: { economic: EconomicHealth; technical: TechnicalHealth };
 };
 
+const STAKING_SECONDS_PER_YEAR = 31_536_000;
+const XNT_DECIMALS = 9;
+
 const formatNumber = (value: number, digits = 0) =>
   Number.isFinite(value)
     ? value.toLocaleString("en-US", {
@@ -32,6 +35,9 @@ const formatNumber = (value: number, digits = 0) =>
     : "-";
 
 const formatToken = (value: number, digits = 2) => formatNumber(value, digits);
+
+const formatPercent = (value: number | null, digits = 2) =>
+  value != null && Number.isFinite(value) ? `${formatNumber(value, digits)}%` : "-";
 
 const formatTimestamp = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "-";
@@ -99,6 +105,7 @@ export function AdminDataDashboard() {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [config, setConfig] = useState<Awaited<ReturnType<typeof fetchConfig>> | null>(null);
   const [state, setState] = useState<AdminState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [window, setWindow] = useState<FlowStats["window"]>("24h");
@@ -122,14 +129,17 @@ export function AdminDataDashboard() {
     const load = async () => {
       if (!publicKey) {
         setIsAdmin(false);
+        setConfig(null);
         return;
       }
       try {
         const cfg = await fetchConfig(connection);
         if (!active) return;
+        setConfig(cfg);
         setIsAdmin(cfg?.admin.equals(publicKey) ?? false);
       } catch {
         if (!active) return;
+        setConfig(null);
         setIsAdmin(false);
       }
     };
@@ -149,6 +159,22 @@ export function AdminDataDashboard() {
     () => state?.flows.find((item) => item.window === window) ?? null,
     [state, window]
   );
+  const stakingAprPct = useMemo(() => {
+    if (!config || !state) return null;
+    if (config.stakingRewardRateXntPerSec === 0n) return 0;
+    const totalStaked = state.snapshot.staking.totalStakedMind;
+    if (totalStaked <= 0) return 0;
+    const rewardPerSec = Number(config.stakingRewardRateXntPerSec) / 10 ** XNT_DECIMALS;
+    if (!Number.isFinite(rewardPerSec) || !Number.isFinite(totalStaked) || totalStaked <= 0) return null;
+    const apr = (rewardPerSec * STAKING_SECONDS_PER_YEAR) / totalStaked;
+    return apr * 100;
+  }, [config, state]);
+  const stakingApyPct = useMemo(() => {
+    if (stakingAprPct == null) return null;
+    const aprRate = stakingAprPct / 100;
+    const apyRate = Math.pow(1 + aprRate / 365, 365) - 1;
+    return apyRate * 100;
+  }, [stakingAprPct]);
 
   const onResolve = async (id: string) => {
     try {
@@ -214,6 +240,8 @@ export function AdminDataDashboard() {
                   <div>
                     Reward pool: {formatToken(state.snapshot.staking.rewardPoolXnt)} XNT
                   </div>
+                  <div>APR: {formatPercent(stakingAprPct)}</div>
+                  <div>APY: {formatPercent(stakingApyPct)}</div>
                   <div>Epoch ends: {formatTimestamp(state.snapshot.staking.epochEndsAt)}</div>
                 </div>
               </Card>

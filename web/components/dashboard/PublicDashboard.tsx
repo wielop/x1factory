@@ -46,6 +46,7 @@ const ACC_SCALE = 1_000_000_000_000_000_000n;
 const AUTO_CLAIM_INTERVAL_MS = 15_000;
 const BPS_DENOMINATOR = 10_000n;
 const BADGE_BONUS_CAP_BPS = 2_000n;
+const STAKING_SECONDS_PER_YEAR = 31_536_000;
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
 const CONTRACTS = [
@@ -68,6 +69,14 @@ function formatRoundedToken(amountBase: bigint, decimals: number, digits = 2) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function formatPercent(value: number | null, digits = 2) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return `${value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`;
 }
 
 function formatFullPrecisionToken(amountBase: bigint, decimals: number) {
@@ -450,6 +459,21 @@ export function PublicDashboard() {
     if (!config || !userStake || config.stakingTotalStakedMind === 0n) return null;
     return Number((userStake.stakedMind * 10_000n) / config.stakingTotalStakedMind) / 100;
   }, [config, userStake]);
+  const stakingAprPct = useMemo(() => {
+    if (!config || !mintDecimals) return null;
+    if (config.stakingRewardRateXntPerSec === 0n || config.stakingTotalStakedMind === 0n) return 0;
+    const rewardPerSec = Number(config.stakingRewardRateXntPerSec) / 10 ** mintDecimals.xnt;
+    const totalStaked = Number(config.stakingTotalStakedMind) / 10 ** mintDecimals.mind;
+    if (!Number.isFinite(rewardPerSec) || !Number.isFinite(totalStaked) || totalStaked <= 0) return null;
+    const apr = (rewardPerSec * STAKING_SECONDS_PER_YEAR) / totalStaked;
+    return apr * 100;
+  }, [config, mintDecimals]);
+  const stakingApyPct = useMemo(() => {
+    if (stakingAprPct == null) return null;
+    const aprRate = stakingAprPct / 100;
+    const apyRate = Math.pow(1 + aprRate / 365, 365) - 1;
+    return apyRate * 100;
+  }, [stakingAprPct]);
   const totalClaimedMind = mindBalance + (userStake?.stakedMind ?? 0n);
   const secondsPerDayNumber = config ? Number(config.secondsPerDay) : 86_400;
   const secondsIntoDay =
@@ -592,6 +616,8 @@ export function PublicDashboard() {
     mintDecimals != null ? formatRoundedToken(stakingRewardBalance, mintDecimals.xnt) : "-";
   const totalStakedBadge =
     mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
+  const stakingAprDisplay = formatPercent(stakingAprPct);
+  const stakingApyDisplay = formatPercent(stakingApyPct);
   const lastClaimRounded =
     mintDecimals && lastClaimAmount != null
       ? formatRoundedToken(lastClaimAmount, mintDecimals.mind)
@@ -1161,6 +1187,12 @@ export function PublicDashboard() {
             <div className="mt-2 text-2xl font-semibold">Stake MIND → Earn XNT</div>
             <div className="mt-1 text-xs text-zinc-400">
               Rewards are funded from mining purchases (30% of revenue).
+            </div>
+            <div
+              className="mt-3 text-xs text-zinc-400"
+              title="Based on current XNT reward rate and total staked MIND."
+            >
+              APR: {stakingAprDisplay} | APY: {stakingApyDisplay}
             </div>
             <div className="mt-3 text-xs text-zinc-400">
               Claimable: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT

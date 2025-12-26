@@ -127,6 +127,16 @@ export function PublicDashboard() {
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
   const [showEmissionFull, setShowEmissionFull] = useState(false);
+
+  const setMindAmountFromPercent = useCallback(
+    (amountBase: bigint, setter: (value: string) => void, pct: number) => {
+      if (!mintDecimals) return;
+      const clampedPct = Math.max(0, Math.min(100, pct));
+      const portion = (amountBase * BigInt(clampedPct)) / 100n;
+      setter(formatTokenAmount(portion, mintDecimals.mind, 6));
+    },
+    [mintDecimals]
+  );
   const [showClaimableFull, setShowClaimableFull] = useState(false);
 
   const contract = CONTRACTS.find((c) => c.key === selectedContract) ?? CONTRACTS[0];
@@ -630,6 +640,8 @@ export function PublicDashboard() {
       : null;
   const showLastClaim = lastClaimAmount != null && lastClaimAmount > 0n;
   const showClaimableAmount = mintDecimals != null && !claimableIsTiny && totalPendingMind > 0n;
+  const hasMindBalance = mindBalance > 0n;
+  const hasStakedMind = userStake?.stakedMind ? userStake.stakedMind > 0n : false;
 
   const ensureAta = async (owner: PublicKey, mint: PublicKey) => {
     const ata = getAssociatedTokenAddressSync(mint, owner);
@@ -1213,6 +1225,40 @@ export function PublicDashboard() {
                 onChange={setStakeAmountUi}
                 placeholder="Amount to stake (MIND)"
               />
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 25)}
+                  disabled={!hasMindBalance}
+                >
+                  25%
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 50)}
+                  disabled={!hasMindBalance}
+                >
+                  50%
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 75)}
+                  disabled={!hasMindBalance}
+                >
+                  75%
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 100)}
+                  disabled={!hasMindBalance}
+                >
+                  MAX
+                </Button>
+              </div>
               <Button
                 className="mt-3"
                 onClick={() => void onStake()}
@@ -1230,6 +1276,48 @@ export function PublicDashboard() {
                 onChange={setUnstakeAmountUi}
                 placeholder="Unstake amount (MIND)"
               />
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 25)
+                  }
+                  disabled={!hasStakedMind}
+                >
+                  25%
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 50)
+                  }
+                  disabled={!hasStakedMind}
+                >
+                  50%
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 75)
+                  }
+                  disabled={!hasStakedMind}
+                >
+                  75%
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 100)
+                  }
+                  disabled={!hasStakedMind}
+                >
+                  MAX
+                </Button>
+              </div>
               <Button className="mt-3" onClick={() => void onUnstake()} disabled={unstakeDisabled}>
                 {busy === "Unstake MIND" ? "Submitting..." : "Unstake"}
               </Button>

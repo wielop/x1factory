@@ -48,7 +48,7 @@ export function AdminDashboard() {
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
   const [treasuryBalance, setTreasuryBalance] = useState<bigint>(0n);
   const [activeMiners, setActiveMiners] = useState<
-    Array<{ owner: string; rigs: number; hp: bigint }>
+    Array<{ owner: string; rigs: number; hp: bigint; sharePct: number }>
   >([]);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
   const [activeRigTotal, setActiveRigTotal] = useState(0);
@@ -156,6 +156,7 @@ export function AdminDashboard() {
         const now = ts ?? Math.floor(Date.now() / 1000);
         const map = new Map<string, { rigs: number; hp: bigint }>();
         let totalRigs = 0;
+        let totalHp = 0n;
         for (const entry of positions) {
           const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
           if (decoded.deactivated || decoded.endTs <= now) continue;
@@ -165,9 +166,14 @@ export function AdminDashboard() {
           current.hp += decoded.hp;
           map.set(ownerKey, current);
           totalRigs += 1;
+          totalHp += decoded.hp;
         }
+        const networkHp = cfg.networkHpActive > 0n ? cfg.networkHpActive : totalHp;
         const list = Array.from(map.entries())
-          .map(([owner, value]) => ({ owner, rigs: value.rigs, hp: value.hp }))
+          .map(([owner, value]) => {
+            const sharePct = networkHp > 0n ? Number((value.hp * 10_000n) / networkHp) / 100 : 0;
+            return { owner, rigs: value.rigs, hp: value.hp, sharePct };
+          })
           .sort((a, b) => (b.rigs !== a.rigs ? b.rigs - a.rigs : Number(b.hp - a.hp)));
         setActiveMiners(list);
         setActiveMinerTotal(map.size);
@@ -511,7 +517,7 @@ export function AdminDashboard() {
                 >
                   <div className="font-mono break-all">{entry.owner}</div>
                   <div className="text-zinc-500">
-                    Rigs: {entry.rigs} | HP: {entry.hp.toString()}
+                    Rigs: {entry.rigs} | HP: {entry.hp.toString()} | Share: {entry.sharePct.toFixed(2)}%
                   </div>
                 </div>
               ))

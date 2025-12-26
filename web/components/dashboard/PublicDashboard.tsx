@@ -642,6 +642,8 @@ export function PublicDashboard() {
   const showClaimableAmount = mintDecimals != null && !claimableIsTiny && totalPendingMind > 0n;
   const hasMindBalance = mindBalance > 0n;
   const hasStakedMind = userStake?.stakedMind ? userStake.stakedMind > 0n : false;
+  const quickAmountButtonClass =
+    "h-7 px-2 text-[10px] border border-black/70 bg-black/30 text-zinc-200 hover:bg-black/50";
 
   const ensureAta = async (owner: PublicKey, mint: PublicKey) => {
     const ata = getAssociatedTokenAddressSync(mint, owner);
@@ -1231,6 +1233,7 @@ export function PublicDashboard() {
                   variant="ghost"
                   onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 25)}
                   disabled={!hasMindBalance}
+                  className={quickAmountButtonClass}
                 >
                   25%
                 </Button>
@@ -1239,6 +1242,7 @@ export function PublicDashboard() {
                   variant="ghost"
                   onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 50)}
                   disabled={!hasMindBalance}
+                  className={quickAmountButtonClass}
                 >
                   50%
                 </Button>
@@ -1247,6 +1251,7 @@ export function PublicDashboard() {
                   variant="ghost"
                   onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 75)}
                   disabled={!hasMindBalance}
+                  className={quickAmountButtonClass}
                 >
                   75%
                 </Button>
@@ -1255,6 +1260,7 @@ export function PublicDashboard() {
                   variant="ghost"
                   onClick={() => setMindAmountFromPercent(mindBalance, setStakeAmountUi, 100)}
                   disabled={!hasMindBalance}
+                  className={quickAmountButtonClass}
                 >
                   MAX
                 </Button>
@@ -1284,6 +1290,7 @@ export function PublicDashboard() {
                     setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 25)
                   }
                   disabled={!hasStakedMind}
+                  className={quickAmountButtonClass}
                 >
                   25%
                 </Button>
@@ -1294,6 +1301,7 @@ export function PublicDashboard() {
                     setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 50)
                   }
                   disabled={!hasStakedMind}
+                  className={quickAmountButtonClass}
                 >
                   50%
                 </Button>
@@ -1304,6 +1312,7 @@ export function PublicDashboard() {
                     setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 75)
                   }
                   disabled={!hasStakedMind}
+                  className={quickAmountButtonClass}
                 >
                   75%
                 </Button>
@@ -1314,6 +1323,7 @@ export function PublicDashboard() {
                     setMindAmountFromPercent(userStake?.stakedMind ?? 0n, setUnstakeAmountUi, 100)
                   }
                   disabled={!hasStakedMind}
+                  className={quickAmountButtonClass}
                 >
                   MAX
                 </Button>

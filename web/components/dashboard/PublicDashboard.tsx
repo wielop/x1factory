@@ -549,6 +549,7 @@ export function PublicDashboard() {
   }, [effectiveUserHpHundredths, cappedBaseUserHp]);
 
   const networkHp = config?.networkHpActive ?? 0n;
+  const networkHpHundredths = useMemo(() => networkHp * 100n, [networkHp]);
   const sharePct =
     networkHp > 0n
       ? Number((effectiveUserHpHundredths * 10_000n) / (networkHp * 100n)) / 100
@@ -1201,7 +1202,9 @@ export function PublicDashboard() {
               </div>
             </Card>
             <Card className="p-4">
-              <div className="text-3xl font-semibold text-white">{formatIntegerBig(networkHp)}</div>
+              <div className="text-3xl font-semibold text-white">
+                {formatFixed2(networkHpHundredths)} HP
+              </div>
               <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Network HP</div>
             </Card>
             <Card className="p-4">

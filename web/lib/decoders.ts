@@ -15,6 +15,8 @@ export type DecodedUserMiningProfile = {
   xp: bigint;
   badgeTier: number;
   badgeBonusBps: number;
+  level: number;
+  lastXpUpdateTs: number;
 };
 
 export type DecodedUserStake = {
@@ -35,7 +37,8 @@ function readU128LE(data: Buffer, offset: number): bigint {
 }
 
 export const MINER_POSITION_LEN = 8 + 32 + 8 + 8 + 8 + 16 + 16 + 1 + 1;
-export const USER_PROFILE_LEN = 8 + 32 + 8 + 8 + 8 + 1 + 2 + 1;
+export const USER_PROFILE_LEN_V1 = 8 + 32 + 8 + 8 + 8 + 1 + 2 + 1;
+export const USER_PROFILE_LEN_V2 = USER_PROFILE_LEN_V1 + 1 + 8;
 export const USER_STAKE_LEN = 8 + 32 + 8 + 16 + 8 + 1;
 
 export function decodeMinerPositionAccount(data: Buffer): DecodedMinerPosition {
@@ -58,7 +61,7 @@ export function decodeMinerPositionAccount(data: Buffer): DecodedMinerPosition {
 }
 
 export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningProfile {
-  assertMinLen(data, USER_PROFILE_LEN, "UserMiningProfile");
+  assertMinLen(data, USER_PROFILE_LEN_V1, "UserMiningProfile");
   let offset = 8;
   const owner = data.subarray(offset, offset + 32);
   offset += 32;
@@ -71,7 +74,25 @@ export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningP
   const badgeTier = data.readUInt8(offset);
   offset += 1;
   const badgeBonusBps = data.readUInt16LE(offset);
-  return { owner, nextPositionIndex, activeHp, xp, badgeTier, badgeBonusBps };
+  offset += 2;
+  offset += 1;
+  let level = 1;
+  let lastXpUpdateTs = 0;
+  if (data.length >= USER_PROFILE_LEN_V2) {
+    level = data.readUInt8(offset);
+    offset += 1;
+    lastXpUpdateTs = Number(data.readBigInt64LE(offset));
+  }
+  return {
+    owner,
+    nextPositionIndex,
+    activeHp,
+    xp,
+    badgeTier,
+    badgeBonusBps,
+    level,
+    lastXpUpdateTs,
+  };
 }
 
 export function decodeUserStakeAccount(data: Buffer): DecodedUserStake {

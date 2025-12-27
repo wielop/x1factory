@@ -46,6 +46,9 @@ const ACC_SCALE = 1_000_000_000_000_000_000n;
 const AUTO_CLAIM_INTERVAL_MS = 15_000;
 const BPS_DENOMINATOR = 10_000n;
 const BADGE_BONUS_CAP_BPS = 2_000n;
+const LEVEL_CAP = 6;
+const LEVEL_THRESHOLDS = [0n, 500n, 2_000n, 5_000n, 10_000n, 16_000n] as const;
+const LEVEL_BONUS_BPS = [0, 160, 340, 550, 780, 1000] as const;
 const STAKING_SECONDS_PER_YEAR = 31_536_000;
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
@@ -358,7 +361,23 @@ export function PublicDashboard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const userHp = useMemo(() => {
+  const userLevel = Math.max(userProfile?.level ?? 1, 1);
+  const userXp = userProfile?.xp ?? 0n;
+  const levelIdx = Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1;
+  const levelBonusBps = LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
+  const nextLevelXp = userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
+  const levelBonusPct = (levelBonusBps / 100).toFixed(1);
+  const levelBonusBpsBig = BigInt(levelBonusBps);
+  const levelProgressPct =
+    nextLevelXp != null && nextLevelXp > 0n
+      ? Math.min(100, Math.max(0, Number((userXp * 10_000n) / nextLevelXp) / 100))
+      : 100;
+  const hpTooltip =
+    levelBonusBps > 0
+      ? `Your HP includes a ${levelBonusPct}% level bonus. Leveling only increases your share of rewards, not the global MIND emission.`
+      : "Your HP is currently based only on your active rigs. Leveling will add a small bonus on top of this value.";
+
+  const baseUserHp = useMemo(() => {
     if (userProfile) return userProfile.activeHp;
     if (!nowTs) return 0n;
     return positions
@@ -366,10 +385,15 @@ export function PublicDashboard() {
       .reduce((acc, p) => acc + p.data.hp, 0n);
   }, [positions, userProfile, nowTs]);
 
+  const cappedBaseUserHp = useMemo(() => {
+    if (!config) return baseUserHp;
+    return baseUserHp > config.maxEffectiveHp ? config.maxEffectiveHp : baseUserHp;
+  }, [config, baseUserHp]);
+
   const effectiveUserHp = useMemo(() => {
-    if (!config) return userHp;
-    return userHp > config.maxEffectiveHp ? config.maxEffectiveHp : userHp;
-  }, [config, userHp]);
+    if (cappedBaseUserHp === 0n) return 0n;
+    return (cappedBaseUserHp * (BPS_DENOMINATOR + levelBonusBpsBig)) / BPS_DENOMINATOR;
+  }, [cappedBaseUserHp, levelBonusBpsBig]);
 
   const networkHp = config?.networkHpActive ?? 0n;
   const sharePct = networkHp > 0n ? Number((effectiveUserHp * 10_000n) / networkHp) / 100 : 0;
@@ -404,21 +428,25 @@ export function PublicDashboard() {
   const extraAccSinceRefresh = accrualPerSecond * elapsedSinceRefreshBig;
 
   const pendingPositions = useMemo(() => {
+    const bonusMultiplier = BPS_DENOMINATOR + levelBonusBpsBig;
     return positions.map((p) => {
       if (!config) {
         return { position: p, pending: 0n, livePending: 0n };
       }
+      const hpEffective = p.data.deactivated
+        ? p.data.hp
+        : (p.data.hp * bonusMultiplier) / BPS_DENOMINATOR;
       const acc = p.data.deactivated ? p.data.finalAccMindPerHp : config.accMindPerHp;
-      const earned = (p.data.hp * acc) / ACC_SCALE;
+      const earned = (hpEffective * acc) / ACC_SCALE;
       const pending = earned > p.data.rewardDebt ? earned - p.data.rewardDebt : 0n;
-      const livePending = pending + (p.data.hp * extraAccSinceRefresh) / ACC_SCALE;
+      const livePending = pending + (hpEffective * extraAccSinceRefresh) / ACC_SCALE;
       return { position: p, pending, livePending };
     });
-  }, [positions, config, extraAccSinceRefresh]);
+  }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig]);
 
   const totalPendingMind = pendingPositions.reduce((acc, entry) => acc + entry.pending, 0n);
   const livePendingMind =
-    totalPendingMind + (userHp * extraAccSinceRefresh) / ACC_SCALE;
+    totalPendingMind + (effectiveUserHp * extraAccSinceRefresh) / ACC_SCALE;
 
   const stakingAccNow = useMemo(() => {
     if (!config || nowTs == null) return config?.stakingAccXntPerMind ?? 0n;
@@ -935,10 +963,19 @@ export function PublicDashboard() {
             <div className={`mt-2 text-sm font-semibold ${statusAccentClass}`}>{miningStatusText}</div>
           </Card>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Card className="p-4">
               <div className="text-3xl font-semibold text-white">{formatIntegerBig(effectiveUserHp)}</div>
-              <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Your HP</div>
+              <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                <span>Your HP</span>
+                <span
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/10 text-[9px] text-zinc-400"
+                  title={hpTooltip}
+                  aria-label="HP info"
+                >
+                  i
+                </span>
+              </div>
             </Card>
             <Card className="p-4">
               <div className="text-3xl font-semibold text-white">{formatIntegerBig(networkHp)}</div>
@@ -958,6 +995,31 @@ export function PublicDashboard() {
                 <span className="text-sm uppercase tracking-[0.2em] text-zinc-500">%</span>
               </div>
               <div className="mt-2 text-xs text-zinc-500">{shareTooltip}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Player Level</div>
+              <div className="mt-3 text-3xl font-semibold text-white">Level {userLevel}</div>
+              <div className="mt-2 text-xs text-zinc-500">
+                XP: {formatIntegerBig(userXp)}
+                {nextLevelXp != null ? ` / ${formatIntegerBig(nextLevelXp)}` : " (max level)"}
+              </div>
+              <div className="mt-1 text-xs text-zinc-500">Bonus: +{levelBonusPct}% HP</div>
+              <div className="mt-3">
+                <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className="h-full rounded-full bg-emerald-400/70"
+                    style={{ width: `${levelProgressPct}%` }}
+                  />
+                  {nextLevelXp == null ? (
+                    <div className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-emerald-100">
+                      Max level
+                    </div>
+                  ) : null}
+                </div>
+                {nextLevelXp != null ? (
+                  <div className="mt-1 text-[10px] text-zinc-500">Progress to next level</div>
+                ) : null}
+              </div>
             </Card>
             <Card className="p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Est. MIND/day</div>

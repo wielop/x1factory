@@ -119,6 +119,10 @@ describe("mining_v2", () => {
     [Buffer.from("config")],
     program.programId
   );
+  const [levelConfigPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("level_config")],
+    program.programId
+  );
   const [vaultAuthority] = PublicKey.findProgramAddressSync(
     [Buffer.from("vault")],
     program.programId
@@ -138,6 +142,8 @@ describe("mining_v2", () => {
   let stakingRewardVault: PublicKey;
   let treasuryVault: PublicKey;
   let stakingMindVault: PublicKey;
+  let mindBurnVault: PublicKey;
+  let mindTreasuryVault: PublicKey;
   let adminXntAta: PublicKey;
 
   const userMindAta = (owner: PublicKey) =>
@@ -158,6 +164,23 @@ describe("mining_v2", () => {
       throw new Error("Clock sysvar unavailable");
     }
     return Number(info.data.readBigInt64LE(32));
+  };
+
+  const warpForwardSeconds = async (seconds: number) => {
+    const start = await getClusterTime();
+    const startSlot = await provider.connection.getSlot();
+    const slotMs = 400;
+    const advanceSlots = Math.max(1, Math.ceil((seconds * 1000) / slotMs));
+    await (provider.connection as any)._rpcRequest("warpSlot", [startSlot + advanceSlots]);
+    let now = await getClusterTime();
+    if (now < start + seconds) {
+      const remaining = start + seconds - now;
+      const extraSlots = Math.ceil((remaining * 1000) / slotMs);
+      const slot = await provider.connection.getSlot();
+      await (provider.connection as any)._rpcRequest("warpSlot", [slot + extraSlots]);
+      now = await getClusterTime();
+    }
+    return now;
   };
 
   const getTokenAmount = async (address: PublicKey) => {
@@ -213,6 +236,20 @@ describe("mining_v2", () => {
       vaultAuthority,
       Keypair.generate()
     );
+    mindBurnVault = await createAccount(
+      provider.connection,
+      admin,
+      mindMint,
+      admin.publicKey,
+      Keypair.generate()
+    );
+    mindTreasuryVault = await createAccount(
+      provider.connection,
+      admin,
+      mindMint,
+      admin.publicKey,
+      Keypair.generate()
+    );
 
     adminXntAta = await createAssociatedTokenAccountIdempotent(
       provider.connection,
@@ -257,6 +294,20 @@ describe("mining_v2", () => {
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([admin])
+      .rpc();
+
+    await program.methods
+      .initLevelConfig()
+      .accounts({
+        admin: admin.publicKey,
+        config: configPda,
+        levelConfig: levelConfigPda,
+        mindMint,
+        mindBurnVault,
+        mindTreasuryVault,
+        systemProgram: SystemProgram.programId,
       })
       .signers([admin])
       .rpc();
@@ -327,6 +378,7 @@ describe("mining_v2", () => {
         mindMint,
         userMindAta: userMindAta(userA.publicKey),
         tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .signers([userA])
       .rpc();
@@ -345,6 +397,7 @@ describe("mining_v2", () => {
         mindMint,
         userMindAta: userMindAta(userB.publicKey),
         tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .signers([userB])
       .rpc();
@@ -556,6 +609,7 @@ describe("mining_v2", () => {
           mindMint,
           userMindAta: userMindAta(owner.publicKey),
           tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([owner])
         .rpc();
@@ -687,6 +741,7 @@ describe("mining_v2", () => {
           mindMint,
           userMindAta: userMindAta(user.publicKey),
           tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([user])
         .rpc();
@@ -825,5 +880,414 @@ describe("mining_v2", () => {
       const capThird = baseThird.muln(12).divn(10).add(new BN(1_000_000));
       expect(payout2.lte(capThird)).to.be.true;
     }
+  });
+
+  it("updates XP with time and base HP", async () => {
+    const user = Keypair.generate();
+    await airdrop(user.publicKey, 2);
+    const userXnt = await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      xntMint,
+      user.publicKey
+    );
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      user.publicKey
+    );
+    await mintTo(provider.connection, admin, xntMint, userXnt, admin, 50_000_000_000);
+
+    await program.methods
+      .buyContract(1, new BN(0))
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        vaultAuthority,
+        xntMint,
+        stakingRewardVault,
+        treasuryVault,
+        ownerXntAta: userXntAta(user.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    const profileBefore = await program.account.userMiningProfile.fetch(
+      profilePda(user.publicKey)
+    );
+    const lastTs = profileBefore.lastXpUpdateTs.toNumber();
+
+    await warpForwardSeconds(36000);
+
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(user.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    const profileAfter = await program.account.userMiningProfile.fetch(
+      profilePda(user.publicKey)
+    );
+    const delta = profileAfter.lastXpUpdateTs.toNumber() - lastTs;
+    const expectedXp = Math.floor((5 * delta) / 36000);
+    expect(profileAfter.xp.toNumber()).to.eq(expectedXp);
+  });
+
+  it("rejects level up without enough XP", async () => {
+    const user = Keypair.generate();
+    await airdrop(user.publicKey, 2);
+    const userXnt = await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      xntMint,
+      user.publicKey
+    );
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      user.publicKey
+    );
+    await mintTo(provider.connection, admin, xntMint, userXnt, admin, 50_000_000_000);
+
+    await program.methods
+      .buyContract(0, new BN(0))
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        vaultAuthority,
+        xntMint,
+        stakingRewardVault,
+        treasuryVault,
+        ownerXntAta: userXntAta(user.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    try {
+      await program.methods
+        .levelUp()
+        .accounts({
+          owner: user.publicKey,
+          config: configPda,
+          levelConfig: levelConfigPda,
+          userProfile: profilePda(user.publicKey),
+          ownerMindAta: userMindAta(user.publicKey),
+          burnMindVault: mindBurnVault,
+          treasuryMindVault: mindTreasuryVault,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .remainingAccounts([
+          {
+            pubkey: positionPda(user.publicKey, 0),
+            isSigner: false,
+            isWritable: true,
+          },
+        ])
+        .signers([user])
+        .rpc();
+      expect.fail("Expected level up to fail without XP");
+    } catch (err) {
+      expect(`${err}`).to.include("Insufficient XP");
+    }
+  });
+
+  it("rejects level up without enough MIND", async () => {
+    const user = Keypair.generate();
+    await airdrop(user.publicKey, 2);
+    const userXnt = await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      xntMint,
+      user.publicKey
+    );
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      user.publicKey
+    );
+    await mintTo(provider.connection, admin, xntMint, userXnt, admin, 50_000_000_000);
+
+    await program.methods
+      .buyContract(1, new BN(0))
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        vaultAuthority,
+        xntMint,
+        stakingRewardVault,
+        treasuryVault,
+        ownerXntAta: userXntAta(user.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    await warpForwardSeconds(3_600_000);
+
+    try {
+      await program.methods
+        .levelUp()
+        .accounts({
+          owner: user.publicKey,
+          config: configPda,
+          levelConfig: levelConfigPda,
+          userProfile: profilePda(user.publicKey),
+          ownerMindAta: userMindAta(user.publicKey),
+          burnMindVault: mindBurnVault,
+          treasuryMindVault: mindTreasuryVault,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .remainingAccounts([
+          {
+            pubkey: positionPda(user.publicKey, 0),
+            isSigner: false,
+            isWritable: true,
+          },
+        ])
+        .signers([user])
+        .rpc();
+      expect.fail("Expected level up to fail without MIND");
+    } catch (err) {
+      expect(`${err}`).to.include("Insufficient MIND");
+    }
+  });
+
+  it("levels up with enough XP + MIND and caps bonus at 10%", async () => {
+    const levelUser = Keypair.generate();
+    const baseUser = Keypair.generate();
+    const fundingUser = Keypair.generate();
+    const users = [levelUser, baseUser, fundingUser];
+
+    for (const user of users) {
+      await airdrop(user.publicKey, 2);
+      const userXnt = await createAssociatedTokenAccountIdempotent(
+        provider.connection,
+        admin,
+        xntMint,
+        user.publicKey
+      );
+      await createAssociatedTokenAccountIdempotent(
+        provider.connection,
+        admin,
+        mindMint,
+        user.publicKey
+      );
+      await mintTo(provider.connection, admin, xntMint, userXnt, admin, 200_000_000_000);
+    }
+
+    for (let i = 0; i < 10; i += 1) {
+      await program.methods
+        .buyContract(1, new BN(i))
+        .accounts({
+          owner: levelUser.publicKey,
+          config: configPda,
+          userProfile: profilePda(levelUser.publicKey),
+          position: positionPda(levelUser.publicKey, i),
+          vaultAuthority,
+          xntMint,
+          stakingRewardVault,
+          treasuryVault,
+          ownerXntAta: userXntAta(levelUser.publicKey),
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([levelUser])
+        .rpc();
+    }
+
+    await program.methods
+      .buyContract(1, new BN(0))
+      .accounts({
+        owner: fundingUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(fundingUser.publicKey),
+        position: positionPda(fundingUser.publicKey, 0),
+        vaultAuthority,
+        xntMint,
+        stakingRewardVault,
+        treasuryVault,
+        ownerXntAta: userXntAta(fundingUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([fundingUser])
+      .rpc();
+
+    await warpForwardSeconds(11_600_000);
+
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: fundingUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(fundingUser.publicKey),
+        position: positionPda(fundingUser.publicKey, 0),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(fundingUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([fundingUser])
+      .rpc();
+
+    await transfer(
+      provider.connection,
+      fundingUser,
+      userMindAta(fundingUser.publicKey),
+      userMindAta(levelUser.publicKey),
+      fundingUser,
+      8_000_000_000_000
+    );
+
+    const remaining = Array.from({ length: 10 }).map((_, idx) => ({
+      pubkey: positionPda(levelUser.publicKey, idx),
+      isSigner: false,
+      isWritable: true,
+    }));
+
+    for (let i = 0; i < 5; i += 1) {
+      await program.methods
+        .levelUp()
+        .accounts({
+          owner: levelUser.publicKey,
+          config: configPda,
+          levelConfig: levelConfigPda,
+          userProfile: profilePda(levelUser.publicKey),
+          ownerMindAta: userMindAta(levelUser.publicKey),
+          burnMindVault: mindBurnVault,
+          treasuryMindVault: mindTreasuryVault,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .remainingAccounts(remaining)
+        .signers([levelUser])
+        .rpc();
+    }
+
+    const leveledProfile = await program.account.userMiningProfile.fetch(
+      profilePda(levelUser.publicKey)
+    );
+    expect(leveledProfile.level).to.eq(6);
+
+    for (let i = 0; i < 10; i += 1) {
+      await program.methods
+        .deactivatePosition()
+        .accounts({
+          config: configPda,
+          position: positionPda(levelUser.publicKey, i),
+          userProfile: profilePda(levelUser.publicKey),
+        })
+        .rpc();
+    }
+
+    const levelIdx = leveledProfile.nextPositionIndex.toNumber();
+    await program.methods
+      .buyContract(1, new BN(levelIdx))
+      .accounts({
+        owner: levelUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(levelUser.publicKey),
+        position: positionPda(levelUser.publicKey, levelIdx),
+        vaultAuthority,
+        xntMint,
+        stakingRewardVault,
+        treasuryVault,
+        ownerXntAta: userXntAta(levelUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([levelUser])
+      .rpc();
+
+    await program.methods
+      .buyContract(1, new BN(0))
+      .accounts({
+        owner: baseUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(baseUser.publicKey),
+        position: positionPda(baseUser.publicKey, 0),
+        vaultAuthority,
+        xntMint,
+        stakingRewardVault,
+        treasuryVault,
+        ownerXntAta: userXntAta(baseUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([baseUser])
+      .rpc();
+
+    await warpForwardSeconds(50);
+
+    const beforeBase = await getTokenAmount(userMindAta(baseUser.publicKey));
+    const beforeLevel = await getTokenAmount(userMindAta(levelUser.publicKey));
+
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: baseUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(baseUser.publicKey),
+        position: positionPda(baseUser.publicKey, 0),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(baseUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([baseUser])
+      .rpc();
+
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: levelUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(levelUser.publicKey),
+        position: positionPda(levelUser.publicKey, levelIdx),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(levelUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([levelUser])
+      .rpc();
+
+    const afterBase = await getTokenAmount(userMindAta(baseUser.publicKey));
+    const afterLevel = await getTokenAmount(userMindAta(levelUser.publicKey));
+    const mintedBase = afterBase.sub(beforeBase);
+    const mintedLevel = afterLevel.sub(beforeLevel);
+    expect(mintedLevel.gt(mintedBase)).to.be.true;
+
+    const cap = mintedBase.muln(11).add(new BN(1_000_000));
+    expect(mintedLevel.muln(10).lte(cap)).to.be.true;
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { cn } from "@/components/ui/cn";
 import { InfoPopover } from "@/components/shared/InfoPopover";
@@ -20,6 +21,9 @@ export function TopBar({
   xpNextLabel?: string | null;
   className?: string;
 }) {
+  const pathname = usePathname();
+  const isProgression = pathname === "/progression";
+
   return (
     <header className={cn("sticky top-0 z-40 border-b border-cyan-400/10 bg-ink/80 backdrop-blur-xl", className)}>
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4">
@@ -46,6 +50,18 @@ export function TopBar({
         <div className="flex flex-wrap items-center gap-3">
           <InfoPopover />
           <HowItWorksPopover />
+          <Link
+            href="/progression"
+            aria-current={isProgression ? "page" : undefined}
+            className={cn(
+              "inline-flex h-9 items-center justify-center rounded-full border px-3 text-[10px] font-semibold uppercase tracking-[0.2em] transition",
+              isProgression
+                ? "border-cyan-300/60 bg-ink/90 text-white"
+                : "border-cyan-400/20 bg-ink/70 text-zinc-300 hover:border-cyan-300/40 hover:bg-ink/90"
+            )}
+          >
+            Progression
+          </Link>
           <Link
             href="https://t.me/+ME_vsXeLLcMyMmE0"
             target="_blank"

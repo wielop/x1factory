@@ -71,6 +71,47 @@
       ]
     },
     {
+      "name": "initLevelConfig",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "levelConfig",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindBurnVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindTreasuryVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "buyContract",
       "accounts": [
         {
@@ -162,6 +203,11 @@
           "name": "tokenProgram",
           "isMut": false,
           "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
         }
       ],
       "args": []
@@ -182,6 +228,57 @@
         {
           "name": "userProfile",
           "isMut": true,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "levelUp",
+      "accounts": [
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "levelConfig",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "burnMindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryMindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
           "isSigner": false
         }
       ],
@@ -583,6 +680,34 @@
       }
     },
     {
+      "name": "LevelConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindMint",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindBurnVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindTreasuryVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "UserMiningProfile",
       "type": {
         "kind": "struct",
@@ -614,6 +739,14 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "level",
+            "type": "u8"
+          },
+          {
+            "name": "lastXpUpdateTs",
+            "type": "i64"
           }
         ]
       }
@@ -907,6 +1040,51 @@
       "code": 6010,
       "name": "InvalidContractType",
       "msg": "Invalid contract type"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidMint",
+      "msg": "Invalid mint"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidUserProfileOwner",
+      "msg": "Invalid user profile owner"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidUserProfileDiscriminator",
+      "msg": "Invalid user profile discriminator"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidUserProfileSize",
+      "msg": "Invalid user profile size"
+    },
+    {
+      "code": 6015,
+      "name": "MaxLevelReached",
+      "msg": "Max level reached"
+    },
+    {
+      "code": 6016,
+      "name": "InsufficientXp",
+      "msg": "Insufficient XP"
+    },
+    {
+      "code": 6017,
+      "name": "InsufficientLevelUpFunds",
+      "msg": "Insufficient MIND for level up"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidLevel",
+      "msg": "Invalid level"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidLevelUpPositions",
+      "msg": "Invalid level up positions"
     }
   ]
 }

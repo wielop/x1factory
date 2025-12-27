@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::Discriminator;
 use anchor_lang::system_program::{self, Transfer as SystemTransfer};
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 use solana_program::program_option::COption;
@@ -12,14 +13,18 @@ const TREASURY_VAULT_SEED: &[u8] = b"treasury_vault";
 const POSITION_SEED: &[u8] = b"position";
 const PROFILE_SEED: &[u8] = b"profile";
 const STAKE_SEED: &[u8] = b"stake";
+const LEVEL_CONFIG_SEED: &[u8] = b"level_config";
 
 const BPS_DENOMINATOR: u128 = 10_000;
 const ACC_SCALE: u128 = 1_000_000_000_000_000_000;
 const SECONDS_PER_DAY_DEFAULT: u64 = 86_400;
 const STAKING_SHARE_BPS: u128 = 3_000; // 30%
 const BADGE_BONUS_CAP_BPS: u16 = 2_000; // 20%
+const LEVEL_BONUS_CAP_BPS: u16 = 1_000; // 10%
 const UNSTAKE_BURN_BPS: u128 = 300; // 3%
 const XNT_BASE: u64 = 1_000_000_000;
+const MIND_DECIMALS: u64 = 1_000_000_000;
+const XP_SECONDS_PER_POINT_DENOMINATOR: u64 = 36_000;
 
 #[program]
 pub mod mining_v2 {
@@ -81,6 +86,24 @@ pub mod mining_v2 {
         Ok(())
     }
 
+    pub fn init_level_config(ctx: Context<InitLevelConfig>) -> Result<()> {
+        let cfg = &ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        require_keys_eq!(
+            cfg.mind_mint,
+            ctx.accounts.mind_mint.key(),
+            ErrorCode::InvalidMint
+        );
+
+        let level_cfg = &mut ctx.accounts.level_config;
+        level_cfg.admin = cfg.admin;
+        level_cfg.mind_mint = cfg.mind_mint;
+        level_cfg.mind_burn_vault = ctx.accounts.mind_burn_vault.key();
+        level_cfg.mind_treasury_vault = ctx.accounts.mind_treasury_vault.key();
+        level_cfg.bump = *ctx.bumps.get("level_config").unwrap();
+        Ok(())
+    }
+
     pub fn buy_contract(
         ctx: Context<BuyContract>,
         contract_type: u8,
@@ -90,22 +113,23 @@ pub mod mining_v2 {
         let cfg = &mut ctx.accounts.config;
         update_mining_global(cfg, now)?;
 
-        if ctx.accounts.user_profile.owner == Pubkey::default() {
-            ctx.accounts.user_profile.owner = ctx.accounts.owner.key();
-            ctx.accounts.user_profile.next_position_index = 0;
-            ctx.accounts.user_profile.active_hp = 0;
-            ctx.accounts.user_profile.xp = 0;
-            ctx.accounts.user_profile.badge_tier = 0;
-            ctx.accounts.user_profile.badge_bonus_bps = 0;
-            ctx.accounts.user_profile.bump = *ctx.bumps.get("user_profile").unwrap();
-        }
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let mut profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.owner.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.owner.key(),
+            bump,
+            now,
+        )?;
         require_keys_eq!(
-            ctx.accounts.user_profile.owner,
+            profile.owner,
             ctx.accounts.owner.key(),
             ErrorCode::Unauthorized
         );
+        update_user_xp(&mut profile, now)?;
         require!(
-            position_index == ctx.accounts.user_profile.next_position_index,
+            position_index == profile.next_position_index,
             ErrorCode::InvalidPositionIndex
         );
 
@@ -115,9 +139,7 @@ pub mod mining_v2 {
             .checked_mul(seconds_per_day as i64)
             .ok_or(ErrorCode::MathOverflow)?;
 
-        let new_active_hp = ctx
-            .accounts
-            .user_profile
+        let new_active_hp = profile
             .active_hp
             .checked_add(hp)
             .ok_or(ErrorCode::MathOverflow)?;
@@ -126,7 +148,8 @@ pub mod mining_v2 {
             ErrorCode::MaxEffectiveHpExceeded
         );
 
-        let reward_debt = earned_per_hp(hp, cfg.acc_mind_per_hp)?;
+        let hp_effective = effective_hp(hp, profile.level)?;
+        let reward_debt = earned_per_hp(hp_effective, cfg.acc_mind_per_hp)?;
         let position = &mut ctx.accounts.position;
         position.owner = ctx.accounts.owner.key();
         position.hp = hp;
@@ -139,10 +162,11 @@ pub mod mining_v2 {
         position.deactivated = false;
         position.bump = *ctx.bumps.get("position").unwrap();
 
-        ctx.accounts.user_profile.active_hp = new_active_hp;
+        profile.active_hp = new_active_hp;
+        let hp_effective_u64 = u64::try_from(hp_effective).map_err(|_| ErrorCode::MathOverflow)?;
         cfg.network_hp_active = cfg
             .network_hp_active
-            .checked_add(hp)
+            .checked_add(hp_effective_u64)
             .ok_or(ErrorCode::MathOverflow)?;
 
         let staking_share = (cost_base as u128)
@@ -185,12 +209,12 @@ pub mod mining_v2 {
                 .ok_or(ErrorCode::MathOverflow)?;
         }
 
-        ctx.accounts.user_profile.next_position_index = ctx
-            .accounts
-            .user_profile
+        profile.next_position_index = profile
             .next_position_index
             .checked_add(1)
             .ok_or(ErrorCode::MathOverflow)?;
+
+        save_user_profile(&ctx.accounts.user_profile, &profile)?;
 
         emit!(ContractPurchased {
             owner: position.owner,
@@ -205,15 +229,30 @@ pub mod mining_v2 {
         let now = Clock::get()?.unix_timestamp;
         let cfg = &mut ctx.accounts.config;
         let position = &mut ctx.accounts.position;
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let mut profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.owner.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.owner.key(),
+            bump,
+            now,
+        )?;
 
         require_keys_eq!(
             position.owner,
             ctx.accounts.owner.key(),
             ErrorCode::Unauthorized
         );
+        require_keys_eq!(
+            profile.owner,
+            ctx.accounts.owner.key(),
+            ErrorCode::Unauthorized
+        );
+        update_user_xp(&mut profile, now)?;
 
         if !position.deactivated && now >= position.end_ts {
-            finalize_position(cfg, position, &mut ctx.accounts.user_profile, now)?;
+            finalize_position(cfg, position, &mut profile, now)?;
         } else {
             update_mining_global(cfg, now)?;
         }
@@ -223,7 +262,12 @@ pub mod mining_v2 {
         } else {
             cfg.acc_mind_per_hp
         };
-        let pending = pending_mind(position.hp, acc_used, position.reward_debt)?;
+        let hp_effective = if position.deactivated {
+            position.hp as u128
+        } else {
+            effective_hp(position.hp, profile.level)?
+        };
+        let pending = pending_mind(hp_effective, acc_used, position.reward_debt)?;
         require!(pending > 0, ErrorCode::NothingToClaim);
         let reward = u64::try_from(pending).map_err(|_| ErrorCode::MathOverflow)?;
 
@@ -241,7 +285,8 @@ pub mod mining_v2 {
             reward,
         )?;
 
-        position.reward_debt = earned_per_hp(position.hp, acc_used)?;
+        position.reward_debt = earned_per_hp(hp_effective, acc_used)?;
+        save_user_profile(&ctx.accounts.user_profile, &profile)?;
 
         emit!(MindClaimed {
             owner: position.owner,
@@ -260,7 +305,119 @@ pub mod mining_v2 {
             return Ok(());
         }
 
-        finalize_position(cfg, position, &mut ctx.accounts.user_profile, now)?;
+        let mut profile = load_user_profile_any(&ctx.accounts.user_profile)?;
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        init_profile_defaults(&mut profile, position.owner, bump, now);
+        if ctx.accounts.user_profile.data_len() >= 8 + UserMiningProfile::INIT_SPACE {
+            update_user_xp(&mut profile, now)?;
+        }
+        finalize_position(cfg, position, &mut profile, now)?;
+        save_user_profile(&ctx.accounts.user_profile, &profile)?;
+        Ok(())
+    }
+
+    pub fn level_up(ctx: Context<LevelUp>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let cfg = &mut ctx.accounts.config;
+        update_mining_global(cfg, now)?;
+
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let mut profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.owner.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.owner.key(),
+            bump,
+            now,
+        )?;
+        require_keys_eq!(
+            profile.owner,
+            ctx.accounts.owner.key(),
+            ErrorCode::Unauthorized
+        );
+
+        update_user_xp(&mut profile, now)?;
+
+        require!(profile.level < 6, ErrorCode::MaxLevelReached);
+        let next_level = profile
+            .level
+            .checked_add(1)
+            .ok_or(ErrorCode::MathOverflow)?;
+        let threshold = level_threshold(next_level);
+        require!(profile.xp >= threshold, ErrorCode::InsufficientXp);
+
+        let cost = level_up_cost(profile.level);
+        require!(cost > 0, ErrorCode::InvalidLevel);
+        require!(
+            ctx.accounts.owner_mind_ata.amount >= cost,
+            ErrorCode::InsufficientLevelUpFunds
+        );
+
+        let mut summed_hp: u64 = 0;
+        let acc = cfg.acc_mind_per_hp;
+        for info in ctx.remaining_accounts.iter() {
+            require!(info.is_writable, ErrorCode::InvalidLevelUpPositions);
+            let mut position: Account<MinerPosition> = Account::try_from(info)?;
+            require_keys_eq!(position.owner, profile.owner, ErrorCode::Unauthorized);
+            require!(!position.deactivated, ErrorCode::InvalidLevelUpPositions);
+            let hp_effective = effective_hp(position.hp, profile.level)?;
+            position.reward_debt = earned_per_hp(hp_effective, acc)?;
+            position.exit(&crate::ID)?;
+            summed_hp = summed_hp
+                .checked_add(position.hp)
+                .ok_or(ErrorCode::MathOverflow)?;
+        }
+        require!(
+            summed_hp == profile.active_hp,
+            ErrorCode::InvalidLevelUpPositions
+        );
+
+        let burn_amount = cost.checked_div(2).ok_or(ErrorCode::MathOverflow)?;
+        let treasury_amount = cost
+            .checked_sub(burn_amount)
+            .ok_or(ErrorCode::MathOverflow)?;
+        if burn_amount > 0 {
+            token::transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.owner_mind_ata.to_account_info(),
+                        to: ctx.accounts.burn_mind_vault.to_account_info(),
+                        authority: ctx.accounts.owner.to_account_info(),
+                    },
+                ),
+                burn_amount,
+            )?;
+        }
+        if treasury_amount > 0 {
+            token::transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.owner_mind_ata.to_account_info(),
+                        to: ctx.accounts.treasury_mind_vault.to_account_info(),
+                        authority: ctx.accounts.owner.to_account_info(),
+                    },
+                ),
+                treasury_amount,
+            )?;
+        }
+
+        if profile.active_hp > 0 {
+            let old_effective = effective_hp(profile.active_hp, profile.level)?;
+            let new_effective = effective_hp(profile.active_hp, next_level)?;
+            let delta = new_effective
+                .checked_sub(old_effective)
+                .ok_or(ErrorCode::MathOverflow)?;
+            let delta_u64 = u64::try_from(delta).map_err(|_| ErrorCode::MathOverflow)?;
+            cfg.network_hp_active = cfg
+                .network_hp_active
+                .checked_add(delta_u64)
+                .ok_or(ErrorCode::MathOverflow)?;
+        }
+
+        profile.level = next_level;
+        save_user_profile(&ctx.accounts.user_profile, &profile)?;
         Ok(())
     }
 
@@ -270,17 +427,17 @@ pub mod mining_v2 {
         let cfg = &mut ctx.accounts.config;
         update_staking_global(cfg, now)?;
 
-        if ctx.accounts.user_profile.owner == Pubkey::default() {
-            ctx.accounts.user_profile.owner = ctx.accounts.owner.key();
-            ctx.accounts.user_profile.next_position_index = 0;
-            ctx.accounts.user_profile.active_hp = 0;
-            ctx.accounts.user_profile.xp = 0;
-            ctx.accounts.user_profile.badge_tier = 0;
-            ctx.accounts.user_profile.badge_bonus_bps = 0;
-            ctx.accounts.user_profile.bump = *ctx.bumps.get("user_profile").unwrap();
-        }
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.owner.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.owner.key(),
+            bump,
+            now,
+        )?;
         require_keys_eq!(
-            ctx.accounts.user_profile.owner,
+            profile.owner,
             ctx.accounts.owner.key(),
             ErrorCode::Unauthorized
         );
@@ -415,17 +572,28 @@ pub mod mining_v2 {
         let cfg = &mut ctx.accounts.config;
         update_staking_global(cfg, now)?;
 
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.owner.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.owner.key(),
+            bump,
+            now,
+        )?;
+        require_keys_eq!(
+            profile.owner,
+            ctx.accounts.owner.key(),
+            ErrorCode::Unauthorized
+        );
+
         let pending_base = pending_stake(cfg, &ctx.accounts.user_stake)?;
         let base_total = pending_base
             .checked_add(ctx.accounts.user_stake.reward_owed as u128)
             .ok_or(ErrorCode::MathOverflow)?;
         require!(base_total > 0, ErrorCode::NothingToClaim);
 
-        let bonus_bps = ctx
-            .accounts
-            .user_profile
-            .badge_bonus_bps
-            .min(BADGE_BONUS_CAP_BPS) as u128;
+        let bonus_bps = profile.badge_bonus_bps.min(BADGE_BONUS_CAP_BPS) as u128;
         let payout = base_total
             .checked_mul(BPS_DENOMINATOR + bonus_bps)
             .ok_or(ErrorCode::MathOverflow)?
@@ -577,14 +745,16 @@ pub mod mining_v2 {
     ) -> Result<()> {
         let cfg = &ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
-        let profile = &mut ctx.accounts.user_profile;
-        if profile.owner == Pubkey::default() {
-            profile.owner = ctx.accounts.user.key();
-            profile.next_position_index = 0;
-            profile.active_hp = 0;
-            profile.xp = 0;
-            profile.bump = *ctx.bumps.get("user_profile").unwrap();
-        }
+        let now = Clock::get()?.unix_timestamp;
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let mut profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.admin.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.user.key(),
+            bump,
+            now,
+        )?;
         require_keys_eq!(
             profile.owner,
             ctx.accounts.user.key(),
@@ -592,6 +762,7 @@ pub mod mining_v2 {
         );
         profile.badge_tier = badge_tier;
         profile.badge_bonus_bps = badge_bonus_bps.min(BADGE_BONUS_CAP_BPS);
+        save_user_profile(&ctx.accounts.user_profile, &profile)?;
         Ok(())
     }
 }
@@ -651,6 +822,38 @@ pub struct InitConfigParams {
 }
 
 #[derive(Accounts)]
+pub struct InitLevelConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        space = 8 + LevelConfig::INIT_SPACE,
+        seeds = [LEVEL_CONFIG_SEED],
+        bump
+    )]
+    pub level_config: Box<Account<'info, LevelConfig>>,
+    #[account(
+        constraint = mind_mint.key() == config.mind_mint
+    )]
+    pub mind_mint: Account<'info, Mint>,
+    #[account(
+        constraint = mind_burn_vault.mint == mind_mint.key()
+    )]
+    pub mind_burn_vault: Account<'info, TokenAccount>,
+    #[account(
+        constraint = mind_treasury_vault.mint == mind_mint.key()
+    )]
+    pub mind_treasury_vault: Account<'info, TokenAccount>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(contract_type: u8, position_index: u64)]
 pub struct BuyContract<'info> {
     #[account(mut)]
@@ -662,13 +865,11 @@ pub struct BuyContract<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
-        init_if_needed,
-        payer = owner,
-        space = 8 + UserMiningProfile::INIT_SPACE,
+        mut,
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
-    pub user_profile: Box<Account<'info, UserMiningProfile>>,
+    pub user_profile: UncheckedAccount<'info>,
     #[account(
         init,
         payer = owner,
@@ -707,9 +908,9 @@ pub struct ClaimMind<'info> {
     #[account(
         mut,
         seeds = [PROFILE_SEED, owner.key().as_ref()],
-        bump = user_profile.bump
+        bump
     )]
-    pub user_profile: Box<Account<'info, UserMiningProfile>>,
+    pub user_profile: UncheckedAccount<'info>,
     #[account(mut, constraint = position.owner == owner.key())]
     pub position: Box<Account<'info, MinerPosition>>,
     #[account(seeds = [VAULT_SEED], bump = config.bumps.vault_authority)]
@@ -727,6 +928,7 @@ pub struct ClaimMind<'info> {
     )]
     pub user_mind_ata: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -742,9 +944,54 @@ pub struct DeactivatePosition<'info> {
     #[account(
         mut,
         seeds = [PROFILE_SEED, position.owner.as_ref()],
-        bump = user_profile.bump
+        bump
     )]
-    pub user_profile: Box<Account<'info, UserMiningProfile>>,
+    pub user_profile: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct LevelUp<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        seeds = [LEVEL_CONFIG_SEED],
+        bump = level_config.bump,
+        constraint = level_config.admin == config.admin,
+        constraint = level_config.mind_mint == config.mind_mint
+    )]
+    pub level_config: Box<Account<'info, LevelConfig>>,
+    #[account(
+        mut,
+        seeds = [PROFILE_SEED, owner.key().as_ref()],
+        bump
+    )]
+    pub user_profile: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        constraint = owner_mind_ata.owner == owner.key(),
+        constraint = owner_mind_ata.mint == config.mind_mint
+    )]
+    pub owner_mind_ata: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = burn_mind_vault.key() == level_config.mind_burn_vault,
+        constraint = burn_mind_vault.mint == config.mind_mint
+    )]
+    pub burn_mind_vault: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        constraint = treasury_mind_vault.key() == level_config.mind_treasury_vault,
+        constraint = treasury_mind_vault.mint == config.mind_mint
+    )]
+    pub treasury_mind_vault: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -758,13 +1005,11 @@ pub struct StakeMind<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
-        init_if_needed,
-        payer = owner,
-        space = 8 + UserMiningProfile::INIT_SPACE,
+        mut,
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
-    pub user_profile: Box<Account<'info, UserMiningProfile>>,
+    pub user_profile: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
         payer = owner,
@@ -845,13 +1090,11 @@ pub struct ClaimXnt<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
-        init_if_needed,
-        payer = owner,
-        space = 8 + UserMiningProfile::INIT_SPACE,
+        mut,
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
-    pub user_profile: Box<Account<'info, UserMiningProfile>>,
+    pub user_profile: UncheckedAccount<'info>,
     #[account(
         mut,
         seeds = [STAKE_SEED, owner.key().as_ref()],
@@ -960,19 +1203,28 @@ pub struct AdminSetBadge<'info> {
     /// CHECK: used only for PDA derivation
     pub user: UncheckedAccount<'info>,
     #[account(
-        init_if_needed,
-        payer = admin,
-        space = 8 + UserMiningProfile::INIT_SPACE,
+        mut,
         seeds = [PROFILE_SEED, user.key().as_ref()],
         bump
     )]
-    pub user_profile: Box<Account<'info, UserMiningProfile>>,
+    pub user_profile: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[account]
 #[derive(InitSpace)]
 pub struct NativeVault {
+    pub bump: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+pub struct UserMiningProfileV1 {
+    pub owner: Pubkey,
+    pub next_position_index: u64,
+    pub active_hp: u64,
+    pub xp: u64,
+    pub badge_tier: u8,
+    pub badge_bonus_bps: u16,
     pub bump: u8,
 }
 
@@ -1009,6 +1261,16 @@ pub struct ConfigBumps {
 
 #[account]
 #[derive(InitSpace)]
+pub struct LevelConfig {
+    pub admin: Pubkey,
+    pub mind_mint: Pubkey,
+    pub mind_burn_vault: Pubkey,
+    pub mind_treasury_vault: Pubkey,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
 pub struct UserMiningProfile {
     pub owner: Pubkey,
     pub next_position_index: u64,
@@ -1017,6 +1279,8 @@ pub struct UserMiningProfile {
     pub badge_tier: u8,
     pub badge_bonus_bps: u16,
     pub bump: u8,
+    pub level: u8,
+    pub last_xp_update_ts: i64,
 }
 
 #[account]
@@ -1088,6 +1352,232 @@ pub struct EpochRolled {
     pub epoch_end_ts: i64,
 }
 
+fn level_bonus_bps(level: u8) -> u16 {
+    match level {
+        0 | 1 => 0,
+        2 => 160,
+        3 => 340,
+        4 => 550,
+        5 => 780,
+        _ => LEVEL_BONUS_CAP_BPS,
+    }
+}
+
+fn level_threshold(level: u8) -> u64 {
+    match level {
+        1 => 0,
+        2 => 500,
+        3 => 2_000,
+        4 => 5_000,
+        5 => 10_000,
+        _ => 16_000,
+    }
+}
+
+fn level_up_cost(level: u8) -> u64 {
+    match level {
+        1 => 150_u64 * MIND_DECIMALS,
+        2 => 350_u64 * MIND_DECIMALS,
+        3 => 900_u64 * MIND_DECIMALS,
+        4 => 2_000_u64 * MIND_DECIMALS,
+        5 => 4_000_u64 * MIND_DECIMALS,
+        _ => 0,
+    }
+}
+
+fn effective_hp(base_hp: u64, level: u8) -> Result<u128> {
+    let bonus_bps = level_bonus_bps(level) as u128;
+    let base = base_hp as u128;
+    base.checked_mul(BPS_DENOMINATOR + bonus_bps)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_div(BPS_DENOMINATOR)
+        .ok_or(ErrorCode::MathOverflow.into())
+}
+
+fn update_user_xp(profile: &mut UserMiningProfile, now: i64) -> Result<()> {
+    if profile.level == 0 {
+        profile.xp = 0;
+        profile.level = 1;
+        profile.last_xp_update_ts = now;
+        return Ok(());
+    }
+    let delta = now
+        .checked_sub(profile.last_xp_update_ts)
+        .ok_or(ErrorCode::MathOverflow)?;
+    if delta <= 0 {
+        return Ok(());
+    }
+    let base_hp = profile.active_hp as u128;
+    let delta_u128 = delta as u128;
+    let gained = base_hp
+        .checked_mul(delta_u128)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_div(XP_SECONDS_PER_POINT_DENOMINATOR as u128)
+        .ok_or(ErrorCode::MathOverflow)?;
+    let gained_u64 = u64::try_from(gained).map_err(|_| ErrorCode::MathOverflow)?;
+    profile.xp = profile
+        .xp
+        .checked_add(gained_u64)
+        .ok_or(ErrorCode::MathOverflow)?;
+    profile.last_xp_update_ts = now;
+    Ok(())
+}
+
+fn init_profile_defaults(
+    profile: &mut UserMiningProfile,
+    owner: Pubkey,
+    bump: u8,
+    now: i64,
+) {
+    if profile.owner == Pubkey::default() {
+        profile.owner = owner;
+        profile.next_position_index = 0;
+        profile.active_hp = 0;
+        profile.xp = 0;
+        profile.badge_tier = 0;
+        profile.badge_bonus_bps = 0;
+        profile.bump = bump;
+        profile.level = 1;
+        profile.last_xp_update_ts = now;
+        return;
+    }
+    if profile.level == 0 {
+        profile.xp = 0;
+        profile.level = 1;
+        profile.last_xp_update_ts = now;
+    }
+}
+
+fn load_user_profile_any(info: &AccountInfo) -> Result<UserMiningProfile> {
+    require!(
+        info.owner == &crate::ID,
+        ErrorCode::InvalidUserProfileOwner
+    );
+    let data = info.try_borrow_data()?;
+    require!(data.len() >= 8, ErrorCode::InvalidUserProfileSize);
+    require!(
+        data[..8] == UserMiningProfile::DISCRIMINATOR,
+        ErrorCode::InvalidUserProfileDiscriminator
+    );
+    if data.len() >= 8 + UserMiningProfile::INIT_SPACE {
+        let mut slice: &[u8] = &data;
+        return UserMiningProfile::try_deserialize(&mut slice);
+    }
+    if data.len() == 8 + UserMiningProfileV1::INIT_SPACE {
+        let mut slice: &[u8] = &data[8..];
+        let legacy = UserMiningProfileV1::deserialize(&mut slice)
+            .map_err(|_| ErrorCode::InvalidUserProfileSize)?;
+        return Ok(UserMiningProfile {
+            owner: legacy.owner,
+            next_position_index: legacy.next_position_index,
+            active_hp: legacy.active_hp,
+            xp: legacy.xp,
+            badge_tier: legacy.badge_tier,
+            badge_bonus_bps: legacy.badge_bonus_bps,
+            bump: legacy.bump,
+            level: 0,
+            last_xp_update_ts: 0,
+        });
+    }
+    Err(ErrorCode::InvalidUserProfileSize.into())
+}
+
+fn save_user_profile(info: &AccountInfo, profile: &UserMiningProfile) -> Result<()> {
+    let mut data = info.try_borrow_mut_data()?;
+    let len = data.len();
+    if len >= 8 + UserMiningProfile::INIT_SPACE {
+        let mut cursor: &mut [u8] = &mut data;
+        profile.try_serialize(&mut cursor)?;
+        return Ok(());
+    }
+    if len == 8 + UserMiningProfileV1::INIT_SPACE {
+        let legacy = UserMiningProfileV1 {
+            owner: profile.owner,
+            next_position_index: profile.next_position_index,
+            active_hp: profile.active_hp,
+            xp: profile.xp,
+            badge_tier: profile.badge_tier,
+            badge_bonus_bps: profile.badge_bonus_bps,
+            bump: profile.bump,
+        };
+        data[..8].copy_from_slice(&UserMiningProfile::DISCRIMINATOR);
+        let mut cursor: &mut [u8] = &mut data[8..];
+        legacy
+            .serialize(&mut cursor)
+            .map_err(|_| ErrorCode::InvalidUserProfileSize.into())
+    } else {
+        Err(ErrorCode::InvalidUserProfileSize.into())
+    }
+}
+
+fn ensure_user_profile_v2<'info>(
+    info: &AccountInfo<'info>,
+    payer: &AccountInfo<'info>,
+    system_program: &Program<'info, System>,
+    owner: Pubkey,
+    bump: u8,
+    now: i64,
+) -> Result<UserMiningProfile> {
+    let new_size = 8 + UserMiningProfile::INIT_SPACE;
+    if info.owner == &system_program::ID && info.data_len() == 0 {
+        let lamports = Rent::get()?.minimum_balance(new_size);
+        let create_ix = solana_program::system_instruction::create_account(
+            payer.key,
+            info.key,
+            lamports,
+            new_size as u64,
+            &crate::ID,
+        );
+        let seeds: &[&[u8]] = &[PROFILE_SEED, owner.as_ref(), &[bump]];
+        solana_program::program::invoke_signed(
+            &create_ix,
+            &[payer.clone(), info.clone(), system_program.to_account_info()],
+            &[seeds],
+        )?;
+        let mut profile = UserMiningProfile {
+            owner,
+            next_position_index: 0,
+            active_hp: 0,
+            xp: 0,
+            badge_tier: 0,
+            badge_bonus_bps: 0,
+            bump,
+            level: 1,
+            last_xp_update_ts: now,
+        };
+        save_user_profile(info, &profile)?;
+        return Ok(profile);
+    }
+    require!(
+        info.owner == &crate::ID,
+        ErrorCode::InvalidUserProfileOwner
+    );
+    if info.data_len() < new_size {
+        let needed = Rent::get()?.minimum_balance(new_size);
+        let current = info.lamports();
+        if needed > current {
+            let diff = needed
+                .checked_sub(current)
+                .ok_or(ErrorCode::MathOverflow)?;
+            system_program::transfer(
+                CpiContext::new(
+                    system_program.to_account_info(),
+                    SystemTransfer {
+                        from: payer.clone(),
+                        to: info.clone(),
+                    },
+                ),
+                diff,
+            )?;
+        }
+        info.realloc(new_size, true)?;
+    }
+    let mut profile = load_user_profile_any(info)?;
+    init_profile_defaults(&mut profile, owner, bump, now);
+    save_user_profile(info, &profile)?;
+    Ok(profile)
+}
+
 fn vault_available_lamports(vault: &Account<NativeVault>) -> Result<u64> {
     let rent = Rent::get()?.minimum_balance(8 + NativeVault::INIT_SPACE);
     Ok(vault.to_account_info().lamports().saturating_sub(rent))
@@ -1115,9 +1605,8 @@ fn contract_terms(contract_type: u8) -> Result<(u64, u64, u64)> {
     }
 }
 
-fn earned_per_hp(hp: u64, acc_mind_per_hp: u128) -> Result<u128> {
-    (hp as u128)
-        .checked_mul(acc_mind_per_hp)
+fn earned_per_hp(hp: u128, acc_mind_per_hp: u128) -> Result<u128> {
+    hp.checked_mul(acc_mind_per_hp)
         .ok_or(ErrorCode::MathOverflow)?
         .checked_div(ACC_SCALE)
         .ok_or(ErrorCode::MathOverflow.into())
@@ -1153,28 +1642,32 @@ fn update_mining_global(cfg: &mut Account<Config>, now: i64) -> Result<()> {
 fn finalize_position(
     cfg: &mut Account<Config>,
     position: &mut Account<MinerPosition>,
-    user_profile: &mut Account<UserMiningProfile>,
+    user_profile: &mut UserMiningProfile,
     now: i64,
 ) -> Result<()> {
     if !position.deactivated && cfg.last_update_ts < position.end_ts {
         update_mining_global(cfg, position.end_ts)?;
     }
+    let base_hp = position.hp;
+    let hp_effective = effective_hp(base_hp, user_profile.level)?;
+    let hp_effective_u64 = u64::try_from(hp_effective).map_err(|_| ErrorCode::MathOverflow)?;
     position.final_acc_mind_per_hp = cfg.acc_mind_per_hp;
     position.deactivated = true;
     cfg.network_hp_active = cfg
         .network_hp_active
-        .checked_sub(position.hp)
+        .checked_sub(hp_effective_u64)
         .ok_or(ErrorCode::MathOverflow)?;
     user_profile.active_hp = user_profile
         .active_hp
-        .checked_sub(position.hp)
+        .checked_sub(base_hp)
         .ok_or(ErrorCode::MathOverflow)?;
+    position.hp = hp_effective_u64;
     update_mining_global(cfg, now)?;
     Ok(())
 }
 
-fn pending_mind(hp: u64, acc_mind_per_hp: u128, reward_debt: u128) -> Result<u128> {
-    let earned = earned_per_hp(hp, acc_mind_per_hp)?;
+fn pending_mind(hp_effective: u128, acc_mind_per_hp: u128, reward_debt: u128) -> Result<u128> {
+    let earned = earned_per_hp(hp_effective, acc_mind_per_hp)?;
     Ok(earned.saturating_sub(reward_debt))
 }
 
@@ -1259,4 +1752,22 @@ pub enum ErrorCode {
     InsufficientVaultBalance,
     #[msg("Invalid contract type")]
     InvalidContractType,
+    #[msg("Invalid mint")]
+    InvalidMint,
+    #[msg("Invalid user profile owner")]
+    InvalidUserProfileOwner,
+    #[msg("Invalid user profile discriminator")]
+    InvalidUserProfileDiscriminator,
+    #[msg("Invalid user profile size")]
+    InvalidUserProfileSize,
+    #[msg("Max level reached")]
+    MaxLevelReached,
+    #[msg("Insufficient XP")]
+    InsufficientXp,
+    #[msg("Insufficient MIND for level up")]
+    InsufficientLevelUpFunds,
+    #[msg("Invalid level")]
+    InvalidLevel,
+    #[msg("Invalid level up positions")]
+    InvalidLevelUpPositions,
 }

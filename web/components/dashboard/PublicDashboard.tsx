@@ -450,7 +450,7 @@ export function PublicDashboard() {
   const bonusLine = `HP bonus: +${levelBonusPct}%`;
   const progressionDescription =
     "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs.";
-  const progressLabel = `Progress: ${levelProgressPct.toFixed(1)}%`;
+  const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(1)}%`;
 
   const baseUserHp = useMemo(() => {
     if (userProfile) return userProfile.activeHp;
@@ -1564,7 +1564,7 @@ export function PublicDashboard() {
             xpLine={xpLine}
             bonusLine={bonusLine}
             description={progressionDescription}
-            progressLabel={progressLabel}
+            progressLabel={levelProgressLabel}
             progressPct={levelProgressPct}
             maxLevel={maxLevel}
             buttonLabel={levelUpButtonLabel}

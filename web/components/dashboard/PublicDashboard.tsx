@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TopBar } from "@/components/shared/TopBar";
+import { AccountProgressionPanel } from "@/components/dashboard/AccountProgressionPanel";
 import { useToast } from "@/components/shared/ToastProvider";
 import { Dialog } from "@/components/ui/dialog";
 import { getProgram } from "@/lib/anchor";
@@ -417,8 +418,6 @@ export function PublicDashboard() {
       ? `Your HP includes a ${levelBonusPct}% level bonus. Leveling only increases your share of rewards, not the global MIND emission.`
       : "Your HP is currently based only on your active rigs. Leveling will add a small bonus on top of this value.";
   const levelUpCostTokens = userLevel < LEVEL_CAP ? LEVEL_UP_COSTS[userLevel - 1] ?? null : null;
-  const levelUpCostLabel =
-    levelUpCostTokens != null ? `Cost: ${levelUpCostTokens} MIND` : null;
   const levelUpCostBase =
     levelUpCostTokens != null && mintDecimals != null
       ? BigInt(levelUpCostTokens) * 10n ** BigInt(mintDecimals.mind)
@@ -431,20 +430,27 @@ export function PublicDashboard() {
     xpDisplay >= nextLevelXp &&
     hasMindForLevelUp &&
     userLevel < LEVEL_CAP;
-  const levelUpHint = (() => {
-    if (!userProfile || userLevel >= LEVEL_CAP) return null;
-    if (nextLevelXp == null) return null;
-    if (xpRemainingTenths > 0n) {
-      const costLabel = levelUpCostTokens != null ? `${levelUpCostTokens} MIND` : null;
-      return `Need ${formatFixed1(xpRemainingTenths)} XP${costLabel ? ` · ${costLabel}` : ""}`;
-    }
-    if (!hasMindForLevelUp && levelUpCostBase != null && mintDecimals != null) {
-      const missingMind = levelUpCostBase > mindBalance ? levelUpCostBase - mindBalance : 0n;
-      return `Need ${formatRoundedToken(missingMind, mintDecimals.mind, 2)} MIND`;
-    }
-    return null;
-  })();
-  const levelUpDisabled = !canLevelUp || busy != null;
+  const missingXpLabel = formatFixed1(xpRemainingTenths);
+  const missingMindBase =
+    levelUpCostBase != null && levelUpCostBase > mindBalance ? levelUpCostBase - mindBalance : 0n;
+  const missingMindLabel =
+    mintDecimals != null
+      ? formatRoundedToken(missingMindBase, mintDecimals.mind, 2)
+      : missingMindBase.toString();
+  const maxLevel = userLevel >= LEVEL_CAP || nextLevelXp == null;
+  const levelUpDisabled = !canLevelUp || busy != null || maxLevel;
+  const levelUpButtonLabel = maxLevel
+    ? "Max level reached"
+    : canLevelUp
+    ? "Level up"
+    : `Need ${missingXpLabel} XP and ${missingMindLabel} MIND`;
+  const xpLine = nextLevelXp != null
+    ? `XP: ${formatFixed1(xpDisplayTenths)} / ${formatIntegerBig(nextLevelXp)}`
+    : `XP: ${formatFixed1(xpDisplayTenths)} (max level)`;
+  const bonusLine = `HP bonus: +${levelBonusPct}%`;
+  const progressionDescription =
+    "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs.";
+  const progressLabel = `Progress: ${levelProgressPct.toFixed(1)}%`;
 
   const baseUserHp = useMemo(() => {
     if (userProfile) return userProfile.activeHp;
@@ -1019,7 +1025,7 @@ export function PublicDashboard() {
     if (busy != null) return;
     if (!anchorWallet || !publicKey || !config || !userProfile) return;
     if (!canLevelUp) {
-      setError(levelUpHint ?? "Not enough XP for the next level yet.");
+      setError("Not enough XP or MIND to level up yet.");
       return;
     }
     const activePositions = positions.filter((entry) => !entry.data.deactivated);
@@ -1083,7 +1089,7 @@ export function PublicDashboard() {
             <div className={`mt-2 text-sm font-semibold ${statusAccentClass}`}>{miningStatusText}</div>
           </Card>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="p-4">
               <div className="text-3xl font-semibold text-white">{formatIntegerBig(effectiveUserHp)}</div>
               <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-400">
@@ -1115,47 +1121,6 @@ export function PublicDashboard() {
                 <span className="text-sm uppercase tracking-[0.2em] text-zinc-500">%</span>
               </div>
               <div className="mt-2 text-xs text-zinc-500">{shareTooltip}</div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Player Level</div>
-              <div className="mt-3 text-3xl font-semibold text-white">Level {userLevel}</div>
-              <div className="mt-2 text-xs text-zinc-500">
-                XP: {formatFixed1(xpDisplayTenths)}
-                {nextLevelXp != null ? ` / ${formatIntegerBig(nextLevelXp)}` : " (max level)"}
-              </div>
-              {lastXpUpdateTs <= 0 && userProfile?.activeHp ? (
-                <div className="mt-1 text-[10px] text-zinc-500">
-                  XP starts after your next interaction (claim, buy, renew).
-                </div>
-              ) : null}
-              <div className="mt-1 text-xs text-zinc-500">Bonus: +{levelBonusPct}% HP</div>
-              {levelUpCostLabel ? (
-                <div className="mt-1 text-xs text-zinc-500">{levelUpCostLabel}</div>
-              ) : null}
-              <div className="mt-3">
-                <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/5">
-                  <div
-                    className="h-full rounded-full bg-emerald-400/70"
-                    style={{ width: `${levelProgressPct}%` }}
-                  />
-                  {nextLevelXp == null ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-emerald-100">
-                      Max level
-                    </div>
-                  ) : null}
-                </div>
-                {nextLevelXp != null ? (
-                  <div className="mt-1 text-[10px] text-zinc-500">Progress to next level</div>
-                ) : null}
-              </div>
-              <div className="mt-3">
-                <Button size="sm" onClick={() => void onLevelUp()} disabled={levelUpDisabled}>
-                  Level up
-                </Button>
-                {levelUpHint ? (
-                  <div className="mt-1 text-[10px] text-zinc-500">{levelUpHint}</div>
-                ) : null}
-              </div>
             </Card>
             <Card className="p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Est. MIND/day</div>
@@ -1591,6 +1556,21 @@ export function PublicDashboard() {
               Your stake: {stakeSummary} · Your share: {stakeShareRounded}
             </div>
           </Card>
+        </section>
+
+        <section className="mt-6">
+          <AccountProgressionPanel
+            level={userLevel}
+            xpLine={xpLine}
+            bonusLine={bonusLine}
+            description={progressionDescription}
+            progressLabel={progressLabel}
+            progressPct={levelProgressPct}
+            maxLevel={maxLevel}
+            buttonLabel={levelUpButtonLabel}
+            buttonDisabled={levelUpDisabled}
+            onLevelUp={onLevelUp}
+          />
         </section>
 
         {error ? <div className="mt-6 text-sm text-amber-200">{error}</div> : null}

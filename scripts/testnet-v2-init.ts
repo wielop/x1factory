@@ -1,5 +1,13 @@
 import * as anchor from "@coral-xyz/anchor";
-import { TOKEN_PROGRAM_ID, createAccount, createMint } from "@solana/spl-token";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAccount,
+  createAssociatedTokenAccountIdempotent,
+  createMint,
+  getAccount,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import dotenv from "dotenv";
 import {
@@ -19,6 +27,7 @@ const toBaseUnits = (value: bigint, decimals: number) =>
   value * 10n ** BigInt(decimals);
 
 const XNT_DECIMALS = 9;
+const INCINERATOR = new PublicKey("1nc1nerator11111111111111111111111111111111");
 
 const parseBigInt = (value: string | undefined, fallback: bigint) => {
   if (!value) {
@@ -125,24 +134,56 @@ const main = async () => {
   if (!levelConfigInfo) {
     const burnVaultEnv = process.env.MIND_BURN_VAULT;
     const treasuryVaultEnv = process.env.MIND_TREASURY_VAULT;
-    const mindBurnVault = burnVaultEnv
-      ? new PublicKey(burnVaultEnv)
-      : await createAccount(
-          connection,
-          wallet.payer,
-          cfg.mindMint,
-          wallet.publicKey,
-          Keypair.generate()
+    const adminTreasuryAta = getAssociatedTokenAddressSync(
+      cfg.mindMint,
+      wallet.publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    if (treasuryVaultEnv) {
+      const treasuryPk = new PublicKey(treasuryVaultEnv);
+      if (!treasuryPk.equals(adminTreasuryAta)) {
+        throw new Error(
+          `MIND_TREASURY_VAULT must be admin ATA (${adminTreasuryAta.toBase58()}).`
         );
-    const mindTreasuryVault = treasuryVaultEnv
-      ? new PublicKey(treasuryVaultEnv)
-      : await createAccount(
-          connection,
-          wallet.payer,
-          cfg.mindMint,
-          wallet.publicKey,
-          Keypair.generate()
-        );
+      }
+    }
+    const mindTreasuryVault = await createAssociatedTokenAccountIdempotent(
+      connection,
+      wallet.payer,
+      cfg.mindMint,
+      wallet.publicKey,
+      undefined,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    let mindBurnVault: PublicKey;
+    if (burnVaultEnv) {
+      const burnPk = new PublicKey(burnVaultEnv);
+      const burnAccount = await getAccount(
+        connection,
+        burnPk,
+        "confirmed",
+        TOKEN_PROGRAM_ID
+      );
+      if (!burnAccount.mint.equals(cfg.mindMint)) {
+        throw new Error("MIND_BURN_VAULT mint does not match config mind mint.");
+      }
+      if (!burnAccount.owner.equals(INCINERATOR)) {
+        throw new Error("MIND_BURN_VAULT owner must be the incinerator address.");
+      }
+      mindBurnVault = burnPk;
+    } else {
+      mindBurnVault = await createAccount(
+        connection,
+        wallet.payer,
+        cfg.mindMint,
+        INCINERATOR,
+        Keypair.generate()
+      );
+    }
 
     await program.methods
       .initLevelConfig()
@@ -156,6 +197,19 @@ const main = async () => {
         systemProgram: SystemProgram.programId,
       })
       .rpc();
+  } else {
+    const treasuryAta = getAssociatedTokenAddressSync(
+      cfg.mindMint,
+      wallet.publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    if (!treasuryAta.equals(new PublicKey(process.env.MIND_TREASURY_VAULT || treasuryAta))) {
+      console.warn(
+        "Level config already exists. Treasury vault is not the admin ATA; update manually if needed."
+      );
+    }
   }
 
   const seedStaking = parseBigInt(

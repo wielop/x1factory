@@ -548,17 +548,14 @@ export function PublicDashboard() {
   }, [effectiveUserHpHundredths, cappedBaseUserHp]);
 
   const networkHp = config?.networkHpActive ?? 0n;
-  const networkHpDisplayHundredths = useMemo(
-    () => networkHp * 100n + bonusHpHundredths,
-    [networkHp, bonusHpHundredths]
-  );
+  const networkHpHundredths = useMemo(() => networkHp * 100n, [networkHp]);
   const sharePct =
-    networkHpDisplayHundredths > 0n
-      ? Number((effectiveUserHpHundredths * 10_000n) / networkHpDisplayHundredths) / 100
+    networkHpHundredths > 0n
+      ? Number((effectiveUserHpHundredths * 10_000n) / networkHpHundredths) / 100
       : 0;
   const sharePctFull =
-    networkHpDisplayHundredths > 0n
-      ? Number((effectiveUserHpHundredths * 1_000_000n) / networkHpDisplayHundredths) / 10_000
+    networkHpHundredths > 0n
+      ? Number((effectiveUserHpHundredths * 1_000_000n) / networkHpHundredths) / 10_000
       : 0;
   const shareTooltip =
     "You receive rewards continuously based on your current share. Your share may change when others join or expire.";
@@ -644,8 +641,8 @@ export function PublicDashboard() {
 
   const emissionPerDay = config ? config.emissionPerSec * 86_400n : 0n;
   const estUserPerDay =
-    config && networkHpDisplayHundredths > 0n
-      ? (emissionPerDay * effectiveUserHpHundredths) / networkHpDisplayHundredths
+    config && networkHpHundredths > 0n
+      ? (emissionPerDay * effectiveUserHpHundredths) / networkHpHundredths
       : 0n;
 
   const epochCountdown = useMemo(() => {
@@ -1205,7 +1202,7 @@ export function PublicDashboard() {
             </Card>
             <Card className="p-4">
               <div className="text-3xl font-semibold text-white">
-                {formatFixed2(networkHpDisplayHundredths)} HP
+                {formatFixed2(networkHpHundredths)} HP
               </div>
               <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Network HP</div>
             </Card>

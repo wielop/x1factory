@@ -4,12 +4,12 @@ import { Card } from "@/components/ui/card";
 import { TopBar } from "@/components/shared/TopBar";
 
 const LEVEL_ROWS = [
-  { level: "Level 1", xp: "0 XP", bonus: "0.0%" },
-  { level: "Level 2", xp: "1 XP", bonus: "+1.6%" },
-  { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%" },
-  { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%" },
-  { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%" },
-  { level: "Level 6", xp: "16,000 XP", bonus: "+10.0% (cap)" },
+  { level: "Level 1", xp: "0 XP", bonus: "0.0%", cost: "-" },
+  { level: "Level 2", xp: "1 XP", bonus: "+1.6%", cost: "150 MIND" },
+  { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%", cost: "350 MIND" },
+  { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%", cost: "900 MIND" },
+  { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%", cost: "2,000 MIND" },
+  { level: "Level 6", xp: "16,000 XP", bonus: "+10.0% (cap)", cost: "4,000 MIND" },
 ] as const;
 
 export function Progression() {
@@ -32,19 +32,21 @@ export function Progression() {
           <Card className="border-cyan-400/20 bg-ink/90 p-6">
             <div className="text-sm font-semibold text-white">Level overview</div>
             <div className="mt-4 grid gap-2 text-xs text-zinc-300">
-              <div className="grid grid-cols-3 gap-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              <div className="grid grid-cols-4 gap-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                 <div>Level</div>
                 <div>XP required</div>
                 <div>HP bonus</div>
+                <div>Level up cost</div>
               </div>
               {LEVEL_ROWS.map((row) => (
                 <div
                   key={row.level}
-                  className="grid grid-cols-3 gap-3 rounded-xl border border-white/5 bg-white/5 px-3 py-2"
+                  className="grid grid-cols-4 gap-3 rounded-xl border border-white/5 bg-white/5 px-3 py-2"
                 >
                   <div className="text-zinc-100">{row.level}</div>
                   <div className="text-zinc-300">{row.xp}</div>
                   <div className="text-emerald-200">{row.bonus}</div>
+                  <div className="text-zinc-300">{row.cost}</div>
                 </div>
               ))}
             </div>

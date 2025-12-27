@@ -1366,7 +1366,7 @@ fn level_bonus_bps(level: u8) -> u16 {
 fn level_threshold(level: u8) -> u64 {
     match level {
         1 => 0,
-        2 => 500,
+        2 => 1,
         3 => 2_000,
         4 => 5_000,
         5 => 10_000,

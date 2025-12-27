@@ -5,7 +5,7 @@ import { TopBar } from "@/components/shared/TopBar";
 
 const LEVEL_ROWS = [
   { level: "Level 1", xp: "0 XP", bonus: "0.0%" },
-  { level: "Level 2", xp: "500 XP", bonus: "+1.6%" },
+  { level: "Level 2", xp: "1 XP", bonus: "+1.6%" },
   { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%" },
   { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%" },
   { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%" },

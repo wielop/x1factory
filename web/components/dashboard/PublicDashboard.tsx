@@ -137,6 +137,10 @@ export function PublicDashboard() {
   } | null>(null);
   const refreshIdRef = useRef(0);
   const xpEstimateStartRef = useRef<number | null>(null);
+  const xpEstimateKey =
+    publicKey && typeof window !== "undefined"
+      ? `mining_v2_xp_estimate_${publicKey.toBase58()}`
+      : null;
   const hashpowerTooltip =
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
@@ -380,12 +384,43 @@ export function PublicDashboard() {
     if (!nowTs || !userProfile) return;
     if (lastXpUpdateTs > 0) {
       xpEstimateStartRef.current = null;
+      if (xpEstimateKey) {
+        window.localStorage.removeItem(xpEstimateKey);
+      }
       return;
     }
-    if (userProfile.activeHp > 0 && xpEstimateStartRef.current == null) {
-      xpEstimateStartRef.current = nowTs;
+    if (userProfile.activeHp <= 0n) {
+      xpEstimateStartRef.current = null;
+      if (xpEstimateKey) {
+        window.localStorage.removeItem(xpEstimateKey);
+      }
+      return;
     }
-  }, [lastXpUpdateTs, nowTs, userProfile]);
+    if (xpEstimateKey) {
+      const raw = window.localStorage.getItem(xpEstimateKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as { ts: number; hp: string };
+          const storedHp = BigInt(parsed.hp);
+          if (storedHp === userProfile.activeHp) {
+            xpEstimateStartRef.current = parsed.ts;
+            return;
+          }
+        } catch {
+          window.localStorage.removeItem(xpEstimateKey);
+        }
+      }
+    }
+    if (xpEstimateStartRef.current == null) {
+      xpEstimateStartRef.current = nowTs;
+      if (xpEstimateKey) {
+        window.localStorage.setItem(
+          xpEstimateKey,
+          JSON.stringify({ ts: nowTs, hp: userProfile.activeHp.toString() })
+        );
+      }
+    }
+  }, [lastXpUpdateTs, nowTs, userProfile, xpEstimateKey]);
   const levelIdx = Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1;
   const levelBonusBps = LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
   const nextLevelXp = userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;

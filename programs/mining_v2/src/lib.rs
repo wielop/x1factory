@@ -774,6 +774,7 @@ pub struct InitConfig<'info> {
     pub payer: Signer<'info>,
     pub admin: Signer<'info>,
     /// CHECK: PDA derived from VAULT_SEED/bump used as vault authority.
+    /// CHECK: PDA derived from VAULT_SEED/bump used as vault authority.
     #[account(seeds = [VAULT_SEED], bump)]
     pub vault_authority: UncheckedAccount<'info>,
     #[account(
@@ -787,7 +788,7 @@ pub struct InitConfig<'info> {
     #[account(
         constraint = mind_mint.mint_authority == COption::Some(vault_authority.key())
     )]
-    pub mind_mint: Account<'info, Mint>,
+    pub mind_mint: Box<Account<'info, Mint>>,
     #[account(
         init,
         payer = payer,
@@ -795,7 +796,7 @@ pub struct InitConfig<'info> {
         seeds = [STAKING_REWARD_VAULT_SEED],
         bump
     )]
-    pub staking_reward_vault: Account<'info, NativeVault>,
+    pub staking_reward_vault: Box<Account<'info, NativeVault>>,
     #[account(
         init,
         payer = payer,
@@ -803,12 +804,12 @@ pub struct InitConfig<'info> {
         seeds = [TREASURY_VAULT_SEED],
         bump
     )]
-    pub treasury_vault: Account<'info, NativeVault>,
+    pub treasury_vault: Box<Account<'info, NativeVault>>,
     #[account(
         constraint = staking_mind_vault.owner == vault_authority.key(),
         constraint = staking_mind_vault.mint == mind_mint.key()
     )]
-    pub staking_mind_vault: Account<'info, TokenAccount>,
+    pub staking_mind_vault: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -869,6 +870,7 @@ pub struct BuyContract<'info> {
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
     #[account(
         init,
@@ -910,6 +912,7 @@ pub struct ClaimMind<'info> {
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
     #[account(mut, constraint = position.owner == owner.key())]
     pub position: Box<Account<'info, MinerPosition>>,
@@ -946,6 +949,7 @@ pub struct DeactivatePosition<'info> {
         seeds = [PROFILE_SEED, position.owner.as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
 }
 
@@ -971,6 +975,7 @@ pub struct LevelUp<'info> {
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -1009,6 +1014,7 @@ pub struct StakeMind<'info> {
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
@@ -1094,6 +1100,7 @@ pub struct ClaimXnt<'info> {
         seeds = [PROFILE_SEED, owner.key().as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -1207,6 +1214,7 @@ pub struct AdminSetBadge<'info> {
         seeds = [PROFILE_SEED, user.key().as_ref()],
         bump
     )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
     pub user_profile: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }

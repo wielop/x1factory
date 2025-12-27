@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 export function AccountProgressionPanel({
   level,
   xpLine,
+  rateLine,
   bonusLine,
   description,
   progressLabel,
@@ -17,6 +18,7 @@ export function AccountProgressionPanel({
 }: {
   level: number;
   xpLine: string;
+  rateLine?: string | null;
   bonusLine: string;
   description: string;
   progressLabel: string;
@@ -33,6 +35,7 @@ export function AccountProgressionPanel({
         <div>
           <div className="text-3xl font-semibold text-white">Level {level}</div>
           <div className="mt-2 text-sm text-zinc-300">{xpLine}</div>
+          {rateLine ? <div className="mt-1 text-sm text-zinc-300">{rateLine}</div> : null}
           <div className="mt-1 text-sm text-zinc-300">{bonusLine}</div>
           <div className="mt-3 text-xs text-zinc-500">{description}</div>
         </div>

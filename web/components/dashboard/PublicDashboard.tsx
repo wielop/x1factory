@@ -66,10 +66,10 @@ function formatIntegerBig(value: bigint) {
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-function formatFixed1(valueTenths: bigint) {
-  const whole = valueTenths / 10n;
-  const frac = valueTenths % 10n;
-  return `${formatIntegerBig(whole)}.${frac.toString()}`;
+function formatFixed2(valueHundredths: bigint) {
+  const whole = valueHundredths / 100n;
+  const frac = valueHundredths % 100n;
+  return `${formatIntegerBig(whole)}.${frac.toString().padStart(2, "0")}`;
 }
 
 function formatRoundedToken(amountBase: bigint, decimals: number, digits = 2) {
@@ -372,6 +372,10 @@ export function PublicDashboard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
+  const userLevel = Math.max(userProfile?.level ?? 1, 1);
+  const userXp = userProfile?.xp ?? 0n;
+  const lastXpUpdateTs = userProfile?.lastXpUpdateTs ?? 0;
+
   useEffect(() => {
     if (!nowTs || !userProfile) return;
     if (lastXpUpdateTs > 0) {
@@ -382,10 +386,6 @@ export function PublicDashboard() {
       xpEstimateStartRef.current = nowTs;
     }
   }, [lastXpUpdateTs, nowTs, userProfile]);
-
-  const userLevel = Math.max(userProfile?.level ?? 1, 1);
-  const userXp = userProfile?.xp ?? 0n;
-  const lastXpUpdateTs = userProfile?.lastXpUpdateTs ?? 0;
   const levelIdx = Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1;
   const levelBonusBps = LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
   const nextLevelXp = userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
@@ -393,28 +393,28 @@ export function PublicDashboard() {
   const levelBonusBpsBig = BigInt(levelBonusBps);
   const xpEstimate = useMemo(() => {
     if (!nowTs || !userProfile) {
-      return { whole: userXp, tenths: userXp * 10n };
+      return { whole: userXp, hundredths: userXp * 100n };
     }
     const baseline =
       lastXpUpdateTs > 0 ? lastXpUpdateTs : xpEstimateStartRef.current ?? null;
     if (!baseline) {
-      return { whole: userXp, tenths: userXp * 10n };
+      return { whole: userXp, hundredths: userXp * 100n };
     }
     const deltaSeconds = Math.max(0, nowTs - baseline);
     if (deltaSeconds <= 0) {
-      return { whole: userXp, tenths: userXp * 10n };
+      return { whole: userXp, hundredths: userXp * 100n };
     }
     const baseHp = userProfile.activeHp;
-    const gainTenths = (baseHp * BigInt(deltaSeconds) * 10n) / 36_000n;
-    const tenths = userXp * 10n + gainTenths;
-    return { whole: tenths / 10n, tenths };
+    const gainHundredths = (baseHp * BigInt(deltaSeconds) * 100n) / 36_000n;
+    const hundredths = userXp * 100n + gainHundredths;
+    return { whole: hundredths / 100n, hundredths };
   }, [nowTs, userProfile, userXp, lastXpUpdateTs]);
   const xpDisplay = xpEstimate.whole;
-  const xpDisplayTenths = xpEstimate.tenths;
-  const xpRemainingTenths =
+  const xpDisplayHundredths = xpEstimate.hundredths;
+  const xpRemainingHundredths =
     nextLevelXp != null && nextLevelXp > 0n
-      ? nextLevelXp * 10n > xpDisplayTenths
-        ? nextLevelXp * 10n - xpDisplayTenths
+      ? nextLevelXp * 100n > xpDisplayHundredths
+        ? nextLevelXp * 100n - xpDisplayHundredths
         : 0n
       : 0n;
   const levelProgressPct =
@@ -423,7 +423,7 @@ export function PublicDashboard() {
           100,
           Math.max(
             0,
-            Number((xpDisplayTenths * 10_000n) / (nextLevelXp * 10n)) / 100
+            Number((xpDisplayHundredths * 10_000n) / (nextLevelXp * 100n)) / 100
           )
         )
       : 100;
@@ -444,7 +444,7 @@ export function PublicDashboard() {
     xpDisplay >= nextLevelXp &&
     hasMindForLevelUp &&
     userLevel < LEVEL_CAP;
-  const missingXpLabel = formatFixed1(xpRemainingTenths);
+  const missingXpLabel = formatFixed2(xpRemainingHundredths);
   const requiredMindLabel = levelUpCostTokens != null ? `${levelUpCostTokens}` : "0";
   const missingMindBase =
     levelUpCostBase != null && levelUpCostBase > mindBalance ? levelUpCostBase - mindBalance : 0n;
@@ -458,12 +458,18 @@ export function PublicDashboard() {
     ? "Max level reached"
     : canLevelUp
     ? "Level up"
-    : xpRemainingTenths > 0n
+    : xpRemainingHundredths > 0n
     ? `Need ${missingXpLabel} XP and ${requiredMindLabel} MIND`
     : `Need ${missingMindLabel} MIND`;
   const xpLine = nextLevelXp != null
-    ? `XP: ${formatFixed1(xpDisplayTenths)} / ${formatIntegerBig(nextLevelXp)}`
-    : `XP: ${formatFixed1(xpDisplayTenths)} (max level)`;
+    ? `XP: ${formatFixed2(xpDisplayHundredths)} / ${formatIntegerBig(nextLevelXp)}`
+    : `XP: ${formatFixed2(xpDisplayHundredths)} (max level)`;
+  const xpPerHourHundredths =
+    userProfile?.activeHp != null ? userProfile.activeHp * 10n : 0n;
+  const xpRateLine =
+    userProfile?.activeHp != null && userProfile.activeHp > 0n
+      ? `≈ ${formatFixed2(xpPerHourHundredths)} XP/hour`
+      : null;
   const bonusLine = `HP bonus: +${levelBonusPct}%`;
   const progressionDescription =
     "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs.";
@@ -471,7 +477,7 @@ export function PublicDashboard() {
     lastXpUpdateTs <= 0 && userProfile?.activeHp
       ? "XP is estimated until your next on-chain interaction (claim, buy, renew)."
       : null;
-  const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(1)}%`;
+  const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(2)}%`;
 
   const baseUserHp = useMemo(() => {
     if (userProfile) return userProfile.activeHp;
@@ -1583,6 +1589,7 @@ export function PublicDashboard() {
           <AccountProgressionPanel
             level={userLevel}
             xpLine={xpLine}
+            rateLine={xpRateLine}
             bonusLine={bonusLine}
             description={xpEstimateNote ? `${progressionDescription} ${xpEstimateNote}` : progressionDescription}
             progressLabel={levelProgressLabel}

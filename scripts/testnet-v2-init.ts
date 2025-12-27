@@ -12,6 +12,7 @@ import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
 import dotenv from "dotenv";
 import {
   deriveConfigPda,
+  deriveHpScaleConfigPda,
   deriveLevelConfigPda,
   deriveStakingRewardVaultPda,
   deriveTreasuryVaultPda,
@@ -210,6 +211,24 @@ const main = async () => {
         "Level config already exists. Treasury vault is not the admin ATA; update manually if needed."
       );
     }
+  }
+
+  const hpScaleConfigPda = deriveHpScaleConfigPda();
+  const hpScaleInfo = await connection.getAccountInfo(hpScaleConfigPda, "confirmed");
+  let hpScaleEnabled = false;
+  if (hpScaleInfo && hpScaleInfo.data.length >= 9) {
+    hpScaleEnabled = hpScaleInfo.data[8] !== 0;
+  }
+  if (!hpScaleEnabled) {
+    await program.methods
+      .adminEnableHpScaling()
+      .accounts({
+        admin: wallet.publicKey,
+        config: configPda,
+        hpScaleConfig: hpScaleConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
   }
 
   const seedStaking = parseBigInt(

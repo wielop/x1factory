@@ -479,6 +479,32 @@
       ]
     },
     {
+      "name": "adminEnableHpScaling",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "hpScaleConfig",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "adminUseNativeXnt",
       "accounts": [
         {
@@ -704,6 +730,22 @@
           {
             "name": "mindTreasuryVault",
             "type": "publicKey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HpScaleConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "enabled",
+            "type": "bool"
           },
           {
             "name": "bump",
@@ -1119,16 +1161,18 @@
     },
     {
       "code": 6018,
+      "name": "HpScaleAlreadyEnabled",
+      "msg": "HP scaling already enabled"
+    },
+    {
+      "code": 6019,
       "name": "InvalidLevel",
       "msg": "Invalid level"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "InvalidLevelUpPositions",
       "msg": "Invalid level up positions"
     }
-  ],
-  "metadata": {
-    "address": "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
-  }
+  ]
 }

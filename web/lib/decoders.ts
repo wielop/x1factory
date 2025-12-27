@@ -26,6 +26,9 @@ export type DecodedUserStake = {
   rewardOwed: bigint;
 };
 
+const HP_SCALE = 100n;
+const HP_SCALED_MARKER = 1n << 63n;
+
 function assertMinLen(data: Buffer, min: number, label: string) {
   if (data.length < min) throw new Error(`${label} too small: ${data.length} bytes`);
 }
@@ -46,7 +49,7 @@ export function decodeMinerPositionAccount(data: Buffer): DecodedMinerPosition {
   let offset = 8;
   const owner = data.subarray(offset, offset + 32);
   offset += 32;
-  const hp = data.readBigUInt64LE(offset);
+  let hp = data.readBigUInt64LE(offset);
   offset += 8;
   const startTs = Number(data.readBigInt64LE(offset));
   offset += 8;
@@ -57,6 +60,13 @@ export function decodeMinerPositionAccount(data: Buffer): DecodedMinerPosition {
   const finalAccMindPerHp = readU128LE(data, offset);
   offset += 16;
   const deactivated = data.readUInt8(offset) !== 0;
+  if (deactivated) {
+    if (hp & HP_SCALED_MARKER) {
+      hp = hp & ~HP_SCALED_MARKER;
+    } else {
+      hp = hp * HP_SCALE;
+    }
+  }
   return { owner, hp, startTs, endTs, rewardDebt, finalAccMindPerHp, deactivated };
 }
 

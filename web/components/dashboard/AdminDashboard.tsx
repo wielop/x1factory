@@ -35,6 +35,13 @@ import {
 const DAY_SECONDS = 86_400n;
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
+const HP_SCALE = 100n;
+
+function formatHp(value: bigint) {
+  const whole = value / HP_SCALE;
+  const frac = value % HP_SCALE;
+  return `${whole.toString()}.${frac.toString().padStart(2, "0")}`;
+}
 
 export function AdminDashboard() {
   const { connection } = useConnection();
@@ -168,10 +175,14 @@ export function AdminDashboard() {
           totalRigs += 1;
           totalHp += decoded.hp;
         }
-        const networkHp = cfg.networkHpActive > 0n ? cfg.networkHpActive : totalHp;
+        const networkHp =
+          cfg.networkHpActive > 0n ? cfg.networkHpActive : totalHp * HP_SCALE;
         const list = Array.from(map.entries())
           .map(([owner, value]) => {
-            const sharePct = networkHp > 0n ? Number((value.hp * 10_000n) / networkHp) / 100 : 0;
+            const sharePct =
+              networkHp > 0n
+                ? Number((value.hp * HP_SCALE * 10_000n) / networkHp) / 100
+                : 0;
             return { owner, rigs: value.rigs, hp: value.hp, sharePct };
           })
           .sort((a, b) => (b.rigs !== a.rigs ? b.rigs - a.rigs : Number(b.hp - a.hp)));
@@ -473,7 +484,7 @@ export function AdminDashboard() {
               Admin: {config ? shortPk(config.admin.toBase58(), 6) : "-"}
             </div>
             <div className="mt-2 text-xs text-zinc-400">
-              Network HP: {config?.networkHpActive.toString() ?? "-"}
+              Network HP: {config ? formatHp(config.networkHpActive) : "-"}
             </div>
             <div className="mt-2 text-xs text-zinc-400">
               Emission/sec: {config?.emissionPerSec.toString() ?? "-"} base

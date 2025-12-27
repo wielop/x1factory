@@ -56,6 +56,7 @@ const LEVEL_UP_COSTS = [150, 350, 900, 2_000, 4_000] as const;
 const STAKING_SECONDS_PER_YEAR = 31_536_000;
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
+const HP_SCALE = 100n;
 const CONTRACTS = [
   { key: 0, label: "Starter Rig", durationDays: 7, costXnt: 1, hp: 1 },
   { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 10, hp: 5 },
@@ -526,29 +527,25 @@ export function PublicDashboard() {
     return baseUserHp > config.maxEffectiveHp ? config.maxEffectiveHp : baseUserHp;
   }, [config, baseUserHp]);
 
-  const effectiveUserHp = useMemo(() => {
-    if (cappedBaseUserHp === 0n) return 0n;
-    return (cappedBaseUserHp * (BPS_DENOMINATOR + levelBonusBpsBig)) / BPS_DENOMINATOR;
-  }, [cappedBaseUserHp, levelBonusBpsBig]);
   const effectiveUserHpHundredths = useMemo(() => {
     if (cappedBaseUserHp === 0n) return 0n;
     return (
       cappedBaseUserHp *
       (BPS_DENOMINATOR + levelBonusBpsBig) *
-      100n /
+      HP_SCALE /
       BPS_DENOMINATOR
     );
   }, [cappedBaseUserHp, levelBonusBpsBig]);
   const bonusHpHundredths = useMemo(() => {
     if (effectiveUserHpHundredths === 0n) return 0n;
-    const baseHundredths = cappedBaseUserHp * 100n;
+    const baseHundredths = cappedBaseUserHp * HP_SCALE;
     return effectiveUserHpHundredths > baseHundredths
       ? effectiveUserHpHundredths - baseHundredths
       : 0n;
   }, [effectiveUserHpHundredths, cappedBaseUserHp]);
 
   const networkHp = config?.networkHpActive ?? 0n;
-  const networkHpHundredths = useMemo(() => networkHp * 100n, [networkHp]);
+  const networkHpHundredths = useMemo(() => networkHp, [networkHp]);
   const sharePct =
     networkHpHundredths > 0n
       ? Number((effectiveUserHpHundredths * 10_000n) / networkHpHundredths) / 100
@@ -593,7 +590,7 @@ export function PublicDashboard() {
       }
       const hpEffective = p.data.deactivated
         ? p.data.hp
-        : (p.data.hp * bonusMultiplier) / BPS_DENOMINATOR;
+        : (p.data.hp * bonusMultiplier * HP_SCALE) / BPS_DENOMINATOR;
       const acc = p.data.deactivated ? p.data.finalAccMindPerHp : config.accMindPerHp;
       const earned = (hpEffective * acc) / ACC_SCALE;
       const pending = earned > p.data.rewardDebt ? earned - p.data.rewardDebt : 0n;
@@ -604,7 +601,7 @@ export function PublicDashboard() {
 
   const totalPendingMind = pendingPositions.reduce((acc, entry) => acc + entry.pending, 0n);
   const livePendingMind =
-    totalPendingMind + (effectiveUserHp * extraAccSinceRefresh) / ACC_SCALE;
+    totalPendingMind + (effectiveUserHpHundredths * extraAccSinceRefresh) / ACC_SCALE;
 
   const stakingAccNow = useMemo(() => {
     if (!config || nowTs == null) return config?.stakingAccXntPerMind ?? 0n;
@@ -1418,10 +1415,17 @@ export function PublicDashboard() {
                   const p = entry.position;
                   const remaining = nowTs ? Math.max(0, p.data.endTs - nowTs) : null;
                   const expired = nowTs != null && nowTs >= p.data.endTs;
+                  const bonusMultiplier = BPS_DENOMINATOR + levelBonusBpsBig;
+                  const positionHpEffective = p.data.deactivated
+                    ? p.data.hp
+                    : (p.data.hp * bonusMultiplier * HP_SCALE) / BPS_DENOMINATOR;
+                  const positionHpLabel = p.data.deactivated
+                    ? formatFixed2(p.data.hp)
+                    : p.data.hp.toString();
                   return (
                     <div key={p.pubkey} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                       <div className="flex items-center justify-between">
-                        <div className="text-sm text-zinc-200">HP {p.data.hp.toString()}</div>
+                        <div className="text-sm text-zinc-200">HP {positionHpLabel}</div>
                         <Badge variant={expired ? "danger" : "success"}>
                           {expired ? "expired" : "active"}
                         </Badge>
@@ -1431,9 +1435,10 @@ export function PublicDashboard() {
                       </div>
                       {mintDecimals ? (
                         <div className="mt-2 text-[11px] text-zinc-500">
-                          {networkHp > 0n
+                          {networkHpHundredths > 0n
                             ? `Current rate: ${formatRoundedToken(
-                                ((config?.emissionPerSec ?? 0n) * 3_600n * p.data.hp) / networkHp,
+                                ((config?.emissionPerSec ?? 0n) * 3_600n * positionHpEffective) /
+                                  networkHpHundredths,
                                 mintDecimals.mind
                               )} MIND / h`
                             : "Rate unavailable"}

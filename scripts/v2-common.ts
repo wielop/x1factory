@@ -138,6 +138,9 @@ export const deriveConfigPda = () =>
 export const deriveLevelConfigPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from("level_config")], PROGRAM_ID)[0];
 
+export const deriveHpScaleConfigPda = () =>
+  PublicKey.findProgramAddressSync([Buffer.from("hp_scale")], PROGRAM_ID)[0];
+
 export const deriveVaultPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from("vault")], PROGRAM_ID)[0];
 

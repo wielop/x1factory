@@ -14,9 +14,13 @@ const POSITION_SEED: &[u8] = b"position";
 const PROFILE_SEED: &[u8] = b"profile";
 const STAKE_SEED: &[u8] = b"stake";
 const LEVEL_CONFIG_SEED: &[u8] = b"level_config";
+const HP_SCALE_SEED: &[u8] = b"hp_scale";
 
 const BPS_DENOMINATOR: u128 = 10_000;
 const ACC_SCALE: u128 = 1_000_000_000_000_000_000;
+const HP_SCALE: u128 = 100;
+const HP_SCALE_U64: u64 = 100;
+const HP_SCALED_MARKER: u64 = 1 << 63;
 const SECONDS_PER_DAY_DEFAULT: u64 = 86_400;
 const STAKING_SHARE_BPS: u128 = 3_000; // 30%
 const BADGE_BONUS_CAP_BPS: u16 = 2_000; // 20%
@@ -257,16 +261,7 @@ pub mod mining_v2 {
             update_mining_global(cfg, now)?;
         }
 
-        let acc_used = if position.deactivated {
-            position.final_acc_mind_per_hp
-        } else {
-            cfg.acc_mind_per_hp
-        };
-        let hp_effective = if position.deactivated {
-            position.hp as u128
-        } else {
-            effective_hp(position.hp, profile.level)?
-        };
+        let (hp_effective, acc_used) = effective_hp_for_claim(position, profile.level, cfg)?;
         let pending = pending_mind(hp_effective, acc_used, position.reward_debt)?;
         require!(pending > 0, ErrorCode::NothingToClaim);
         let reward = u64::try_from(pending).map_err(|_| ErrorCode::MathOverflow)?;
@@ -695,6 +690,30 @@ pub mod mining_v2 {
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
         cfg.emission_per_sec = emission_per_sec;
         cfg.max_effective_hp = max_effective_hp;
+        Ok(())
+    }
+
+    pub fn admin_enable_hp_scaling(ctx: Context<AdminEnableHpScaling>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let cfg = &mut ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        if ctx.accounts.hp_scale_config.enabled {
+            return Err(ErrorCode::HpScaleAlreadyEnabled.into());
+        }
+
+        update_mining_global(cfg, now)?;
+
+        cfg.network_hp_active = cfg
+            .network_hp_active
+            .checked_mul(HP_SCALE_U64)
+            .ok_or(ErrorCode::MathOverflow)?;
+        cfg.acc_mind_per_hp = cfg
+            .acc_mind_per_hp
+            .checked_div(HP_SCALE)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        ctx.accounts.hp_scale_config.enabled = true;
+        ctx.accounts.hp_scale_config.bump = *ctx.bumps.get("hp_scale_config").unwrap();
         Ok(())
     }
 
@@ -1154,6 +1173,27 @@ pub struct AdminUpdateConfig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AdminEnableHpScaling<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        space = 8 + HpScaleConfig::INIT_SPACE,
+        seeds = [HP_SCALE_SEED],
+        bump
+    )]
+    pub hp_scale_config: Box<Account<'info, HpScaleConfig>>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct AdminUseNativeXnt<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -1284,6 +1324,13 @@ pub struct LevelConfig {
 
 #[account]
 #[derive(InitSpace)]
+pub struct HpScaleConfig {
+    pub enabled: bool,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
 pub struct UserMiningProfile {
     pub owner: Pubkey,
     pub next_position_index: u64,
@@ -1403,8 +1450,30 @@ fn effective_hp(base_hp: u64, level: u8) -> Result<u128> {
     let base = base_hp as u128;
     base.checked_mul(BPS_DENOMINATOR + bonus_bps)
         .ok_or(ErrorCode::MathOverflow)?
+        .checked_mul(HP_SCALE)
+        .ok_or(ErrorCode::MathOverflow)?
         .checked_div(BPS_DENOMINATOR)
         .ok_or(ErrorCode::MathOverflow.into())
+}
+
+fn effective_hp_for_claim(
+    position: &MinerPosition,
+    profile_level: u8,
+    cfg: &Config,
+) -> Result<(u128, u128)> {
+    if position.deactivated {
+        if position.hp & HP_SCALED_MARKER != 0 {
+            let hp_scaled = (position.hp & !HP_SCALED_MARKER) as u128;
+            return Ok((hp_scaled, position.final_acc_mind_per_hp));
+        }
+        let hp = position.hp as u128;
+        let acc = position.final_acc_mind_per_hp;
+        let hp_scaled = hp.checked_mul(HP_SCALE).ok_or(ErrorCode::MathOverflow)?;
+        let acc_scaled = acc.checked_div(HP_SCALE).ok_or(ErrorCode::MathOverflow)?;
+        return Ok((hp_scaled, acc_scaled));
+    }
+    let hp_effective = effective_hp(position.hp, profile_level)?;
+    Ok((hp_effective, cfg.acc_mind_per_hp))
 }
 
 fn update_user_xp(profile: &mut UserMiningProfile, now: i64) -> Result<()> {
@@ -1674,7 +1743,10 @@ fn finalize_position(
         .active_hp
         .checked_sub(base_hp)
         .ok_or(ErrorCode::MathOverflow)?;
-    position.hp = hp_effective_u64;
+    if hp_effective_u64 >= HP_SCALED_MARKER {
+        return Err(ErrorCode::MathOverflow.into());
+    }
+    position.hp = hp_effective_u64 | HP_SCALED_MARKER;
     update_mining_global(cfg, now)?;
     Ok(())
 }
@@ -1779,6 +1851,8 @@ pub enum ErrorCode {
     InsufficientXp,
     #[msg("Insufficient MIND for level up")]
     InsufficientLevelUpFunds,
+    #[msg("HP scaling already enabled")]
+    HpScaleAlreadyEnabled,
     #[msg("Invalid level")]
     InvalidLevel,
     #[msg("Invalid level up positions")]

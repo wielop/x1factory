@@ -15,6 +15,7 @@ import { scoreEconomicHealth, scoreTechnicalHealth } from "@/lib/healthScoring";
 
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
+const HP_SCALE = 100n;
 const BUFFER_DAYS = 3;
 const WINDOW_15M = 15 * 60 * 1000;
 const WINDOW_10M = 10 * 60 * 1000;
@@ -52,7 +53,7 @@ export async function GET() {
   const snapshot: ProtocolSnapshot = {
     timestamp: new Date().toISOString(),
     mining: {
-      networkHp: Number(cfg.networkHpActive),
+      networkHp: Number(cfg.networkHpActive) / Number(HP_SCALE),
       maxHp: Number(cfg.maxEffectiveHp),
       dailyEmissionMind: toUi(dailyEmissionBase, mindMintInfo.decimals),
       totalMindMined,
@@ -160,7 +161,7 @@ export async function GET() {
   let topOwner: { owner: string; share: number } | null = null;
   if (totalHp > 0n) {
     for (const [owner, hp] of hpByOwner.entries()) {
-      const share = Number((hp * 10_000n) / totalHp) / 100;
+      const share = Number((hp * HP_SCALE * 10_000n) / totalHp) / 100;
       if (!topOwner || share > topOwner.share) {
         topOwner = { owner, share };
       }

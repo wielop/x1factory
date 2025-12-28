@@ -693,6 +693,18 @@ pub mod mining_v2 {
         Ok(())
     }
 
+    pub fn admin_set_network_hp_active(
+        ctx: Context<AdminSetNetworkHpActive>,
+        network_hp_active: u64,
+    ) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let cfg = &mut ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        update_mining_global(cfg, now)?;
+        cfg.network_hp_active = network_hp_active;
+        Ok(())
+    }
+
     pub fn admin_enable_hp_scaling(ctx: Context<AdminEnableHpScaling>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let cfg = &mut ctx.accounts.config;
@@ -1162,6 +1174,18 @@ pub struct RollEpoch<'info> {
 
 #[derive(Accounts)]
 pub struct AdminUpdateConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+}
+
+#[derive(Accounts)]
+pub struct AdminSetNetworkHpActive<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
     #[account(

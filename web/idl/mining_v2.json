@@ -479,6 +479,27 @@
       ]
     },
     {
+      "name": "adminSetNetworkHpActive",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "networkHpActive",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "adminEnableHpScaling",
       "accounts": [
         {

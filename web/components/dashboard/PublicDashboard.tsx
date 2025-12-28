@@ -1407,7 +1407,7 @@ export function PublicDashboard() {
                 </Button>
               </div>
             </div>
-            <div className="mt-4 grid max-h-[440px] gap-3 overflow-y-auto pr-2">
+            <div className="mt-4 grid max-h-[320px] gap-3 overflow-y-auto pr-2 sm:max-h-[440px]">
               {positions.length === 0 ? (
                 <div className="text-xs text-zinc-500">No positions yet.</div>
               ) : (

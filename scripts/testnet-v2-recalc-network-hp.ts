@@ -70,15 +70,20 @@ const main = async () => {
   profilesV1.forEach(loadProfile);
   profilesV2.forEach(loadProfile);
 
-  let totalEffectiveHp = 0n;
+  const ownerBaseHp = new Map<string, bigint>();
   for (const entry of positions) {
     const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
     if (decoded.deactivated) continue;
     const owner = new PublicKey(decoded.owner).toBase58();
+    ownerBaseHp.set(owner, (ownerBaseHp.get(owner) ?? 0n) + decoded.hp);
+  }
+
+  let totalEffectiveHp = 0n;
+  for (const [owner, baseHp] of ownerBaseHp) {
     const level = levels.get(owner) ?? 1;
     const bonusBps = levelBonusBps(level);
     const effective =
-      decoded.hp * (BPS_DENOMINATOR + bonusBps) * HP_SCALE / BPS_DENOMINATOR;
+      baseHp * (BPS_DENOMINATOR + bonusBps) * HP_SCALE / BPS_DENOMINATOR;
     totalEffectiveHp += effective;
   }
 

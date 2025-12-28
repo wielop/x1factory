@@ -523,15 +523,20 @@ export function AdminDashboard() {
       profilesV1.forEach(loadProfile);
       profilesV2.forEach(loadProfile);
 
-      let totalEffectiveHp = 0n;
+      const ownerBaseHp = new Map<string, bigint>();
       for (const entry of positions) {
         const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
         if (decoded.deactivated || decoded.endTs <= now) continue;
         const ownerKey = new PublicKey(decoded.owner).toBase58();
+        ownerBaseHp.set(ownerKey, (ownerBaseHp.get(ownerKey) ?? 0n) + decoded.hp);
+      }
+
+      let totalEffectiveHp = 0n;
+      for (const [ownerKey, baseHp] of ownerBaseHp) {
         const level = levels.get(ownerKey) ?? 1;
         const bonus = levelBonusBps(level);
         const effective =
-          decoded.hp * (BPS_DENOMINATOR + bonus) * HP_SCALE / BPS_DENOMINATOR;
+          baseHp * (BPS_DENOMINATOR + bonus) * HP_SCALE / BPS_DENOMINATOR;
         totalEffectiveHp += effective;
       }
 

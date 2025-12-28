@@ -41,7 +41,7 @@ class BNLayout extends LayoutCls<BN> {
   decode(b: Buffer, offset = 0) {
     const num = new BN(this.blob.decode(b, offset), 10, "le");
     if (this.signed) {
-      return num.fromTwos(this.span * 8).clone();
+      return num.fromTwos(this.span * 8);
     }
     return num;
   }
@@ -50,7 +50,8 @@ class BNLayout extends LayoutCls<BN> {
     if (this.signed) {
       src = src.toTwos(this.span * 8);
     }
-    return this.blob.encode(src.toArrayLike(Buffer, "le", this.span), b, offset);
+    const bytes = (src as any).toArrayLike(Buffer, "le", this.span) as Buffer;
+    return this.blob.encode(bytes, b, offset);
   }
 }
 
@@ -161,7 +162,7 @@ const futureEpoch = <T>(layout: LayoutCls<T>, property?: string) => new FutureEp
 
 const feeFields = [u64("denominator"), u64("numerator")];
 
-const StakePoolLayout = struct<StakePoolLayoutDecoded>([
+const StakePoolLayout = struct([
   u8("version"),
   u8("accountType"),
   publicKey("manager"),
@@ -194,7 +195,7 @@ const StakePoolLayout = struct<StakePoolLayoutDecoded>([
   u64("lastEpochPoolTokenSupply"),
   u64("lastEpochTotalLamports"),
   option(u64(), "maxValidatorStake"),
-]);
+]) as LayoutCls<StakePoolLayoutDecoded>;
 
 export async function fetchRipperStakePool(
   connection: Connection
@@ -241,7 +242,7 @@ export function createRipperDepositSolInstruction(params: {
   const data = Buffer.alloc(9);
   data[0] = 14;
   const lamportsBn = new BN(params.lamports.toString());
-  lamportsBn.toArrayLike(Buffer, "le", 8).copy(data, 1);
+  (lamportsBn as any).toArrayLike(Buffer, "le", 8).copy(data, 1);
   const keys = [
     { pubkey: params.stakePool, isSigner: false, isWritable: true },
     { pubkey: params.withdrawAuthority, isSigner: false, isWritable: false },

@@ -4,7 +4,7 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram, Transaction, type AccountMeta } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, type AccountMeta } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
@@ -44,10 +44,19 @@ import {
 import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
+import {
+  RIPPER_POOL_ADDRESS,
+  calcPoolTokensForDeposit,
+  createRipperDepositSolInstruction,
+  fetchRipperStakePool,
+  findRipperWithdrawAuthority,
+  type RipperStakePool,
+} from "@/lib/ripperPool";
 
 const ACC_SCALE = 1_000_000_000_000_000_000n;
 const AUTO_CLAIM_INTERVAL_MS = 15_000;
 const BPS_DENOMINATOR = 10_000n;
+const RIPPER_FEE_BPS = 20n;
 const BADGE_BONUS_CAP_BPS = 2_000n;
 const LEVEL_CAP = 6;
 const LEVEL_THRESHOLDS = [0n, 1n, 2_000n, 5_000n, 10_000n, 16_000n] as const;
@@ -114,6 +123,8 @@ export function PublicDashboard() {
   >(null);
   const [userStake, setUserStake] = useState<DecodedUserStake | null>(null);
   const [mintDecimals, setMintDecimals] = useState<{ xnt: number; mind: number } | null>(null);
+  const [ripperPool, setRipperPool] = useState<RipperStakePool | null>(null);
+  const [ripperMintDecimals, setRipperMintDecimals] = useState<number | null>(null);
   const [xntBalance, setXntBalance] = useState<bigint>(0n);
   const [mindBalance, setMindBalance] = useState<bigint>(0n);
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
@@ -146,6 +157,7 @@ export function PublicDashboard() {
     "Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.";
   const [showShareFull, setShowShareFull] = useState(false);
   const [showEmissionFull, setShowEmissionFull] = useState(false);
+  const [claimRipperPct, setClaimRipperPct] = useState(0);
 
   const setMindAmountFromPercent = useCallback(
     (amountBase: bigint, setter: (value: string) => void, pct: number) => {
@@ -192,6 +204,23 @@ export function PublicDashboard() {
       }
       if (isStale()) return;
       setMintDecimals({ xnt: xntDecimals, mind: mindMintInfo.decimals });
+      try {
+        const pool = await fetchRipperStakePool(connection);
+        if (isStale()) return;
+        setRipperPool(pool);
+        if (pool) {
+          const poolMintInfo = await getMint(connection, pool.poolMint, "confirmed");
+          if (isStale()) return;
+          setRipperMintDecimals(poolMintInfo.decimals);
+        } else {
+          setRipperMintDecimals(null);
+        }
+      } catch (err) {
+        console.warn("Failed to load Ripper pool", err);
+        if (isStale()) return;
+        setRipperPool(null);
+        setRipperMintDecimals(null);
+      }
 
       let rewardBal: bigint;
       try {
@@ -631,6 +660,13 @@ export function PublicDashboard() {
     basePendingXnt > 0n
       ? (basePendingXnt * (BPS_DENOMINATOR + BigInt(effectiveBonusBps))) / BPS_DENOMINATOR
       : 0n;
+  const claimRipperPctClamped = Math.max(0, Math.min(100, claimRipperPct));
+  const claimRipperAmount = (finalPendingXnt * BigInt(claimRipperPctClamped)) / 100n;
+  const claimRipperFee = (claimRipperAmount * RIPPER_FEE_BPS) / BPS_DENOMINATOR;
+  const claimRipperNet = claimRipperAmount > claimRipperFee ? claimRipperAmount - claimRipperFee : 0n;
+  const claimWalletAmount = finalPendingXnt - claimRipperAmount;
+  const claimRipperEstimate =
+    ripperPool && claimRipperNet > 0n ? calcPoolTokensForDeposit(ripperPool, claimRipperNet) : 0n;
 
   const emissionPerDay = config ? config.emissionPerSec * 86_400n : 0n;
   const estUserPerDay =
@@ -697,6 +733,14 @@ export function PublicDashboard() {
     mintDecimals != null
       ? `${formatRoundedToken(currentPaceBase, mintDecimals.xnt, 2)} XNT/day`
       : "-";
+  const claimWalletLabel =
+    mintDecimals != null ? formatRoundedToken(claimWalletAmount, mintDecimals.xnt, 4) : "-";
+  const claimRipperNetLabel =
+    mintDecimals != null ? formatRoundedToken(claimRipperNet, mintDecimals.xnt, 4) : "-";
+  const claimRipperFeeLabel =
+    mintDecimals != null ? formatRoundedToken(claimRipperFee, mintDecimals.xnt, 4) : "-";
+  const claimRipperEstimateLabel =
+    ripperMintDecimals != null ? formatRoundedToken(claimRipperEstimate, ripperMintDecimals, 4) : "-";
 
   const milestoneTargets = [1n, 5n, 10n];
   const xntDecimals = mintDecimals?.xnt ?? null;
@@ -853,6 +897,8 @@ export function PublicDashboard() {
         return "unstake_mind";
       case "Claim XNT":
         return "claim_xnt";
+      case "Claim + stake rXNT":
+        return "claim_xnt_rxnt";
       case "Level up":
         return "level_up";
       case "Deactivate position":
@@ -1097,6 +1143,88 @@ export function PublicDashboard() {
     });
   };
 
+  const onClaimRipperSplit = async () => {
+    if (busy != null) return;
+    if (!anchorWallet || !publicKey || !config) return;
+    if (finalPendingXnt === 0n) return;
+    if (claimRipperAmount === 0n) {
+      await onClaimXnt();
+      return;
+    }
+    if (!ripperPool) {
+      setError("Ripper pool is unavailable right now.");
+      return;
+    }
+    const stakeLamports = claimRipperNet;
+    if (stakeLamports === 0n) {
+      await onClaimXnt();
+      return;
+    }
+    const toLamportsNumber = (value: bigint) => {
+      if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error("Amount too large for transfer.");
+      }
+      return Number(value);
+    };
+    const feeLamports = claimRipperFee;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Claim + stake rXNT", async () => {
+      const tx = new Transaction();
+      const claimIx = await program.methods
+        .claimXnt()
+        .accounts({
+          owner: publicKey,
+          config: deriveConfigPda(),
+          userProfile: deriveUserProfilePda(publicKey),
+          userStake: deriveUserStakePda(publicKey),
+          stakingRewardVault: config.stakingRewardVault,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+      tx.add(claimIx);
+      if (feeLamports > 0n) {
+        tx.add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: config.stakingRewardVault,
+            lamports: toLamportsNumber(feeLamports),
+          })
+        );
+      }
+      const { ata: rXntAta, ix: createRxtAtaIx } = await ensureAta(
+        publicKey,
+        ripperPool.poolMint
+      );
+      if (createRxtAtaIx) {
+        tx.add(createRxtAtaIx);
+      }
+      const ripperFunding = Keypair.generate();
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: ripperFunding.publicKey,
+          lamports: toLamportsNumber(stakeLamports),
+        })
+      );
+      const depositIx = createRipperDepositSolInstruction({
+        stakePool: RIPPER_POOL_ADDRESS,
+        withdrawAuthority: findRipperWithdrawAuthority(),
+        reserveStake: ripperPool.reserveStake,
+        fundingAccount: ripperFunding.publicKey,
+        destinationPoolAccount: rXntAta,
+        managerFeeAccount: ripperPool.managerFeeAccount,
+        referralPoolAccount: rXntAta,
+        poolMint: ripperPool.poolMint,
+        lamports: stakeLamports,
+        depositAuthority: ripperPool.solDepositAuthority,
+      });
+      tx.add(depositIx);
+      tx.feePayer = publicKey;
+      const sig = await program.provider.sendAndConfirm(tx, [ripperFunding]);
+      return sig;
+    });
+  };
+
   const onLevelUp = async () => {
     if (busy != null) return;
     if (!anchorWallet || !publicKey || !config || !userProfile) return;
@@ -1158,6 +1286,17 @@ export function PublicDashboard() {
   const unstakeDisabled =
     !publicKey || !config || !mintDecimals || Boolean(busy) || unstakeAmountUi.trim() === "";
   const claimDisabled = !publicKey || !config || Boolean(busy);
+  const claimSplitDisabled =
+    !publicKey ||
+    !anchorWallet ||
+    !config ||
+    Boolean(busy) ||
+    finalPendingXnt === 0n ||
+    (claimRipperNet > 0n && !ripperPool);
+  const claimSplitHint =
+    claimRipperNet > 0n && !ripperPool
+      ? "rXNT pool is unavailable right now."
+      : "Claim rewards and optionally auto-stake to rXNT.";
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -1645,6 +1784,44 @@ export function PublicDashboard() {
             </div>
             <div className="mt-5 text-xs text-zinc-500">
               Your stake: {stakeSummary} · Your share: {stakeShareRounded}
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
+                Claim split
+              </div>
+              <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
+                <span>To rXNT</span>
+                <span>{claimRipperPctClamped}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={claimRipperPct}
+                onChange={(event) => setClaimRipperPct(Number(event.target.value))}
+                className="mt-2 w-full accent-emerald-300"
+              />
+              <div className="mt-3 text-[11px] text-zinc-500">
+                Wallet: {claimWalletLabel} XNT
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                rXNT: {claimRipperNetLabel} XNT · Fee {claimRipperFeeLabel} XNT
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                Estimated rXNT: {claimRipperEstimateLabel} rXNT
+              </div>
+              <Button
+                className="mt-3 w-full"
+                onClick={() => void onClaimRipperSplit()}
+                disabled={claimSplitDisabled}
+                title={claimSplitHint}
+              >
+                {busy === "Claim + stake rXNT" ? "Claiming..." : "Claim now"}
+              </Button>
+              <div className="mt-2 text-[10px] text-zinc-500">
+                0.2% fee on the rXNT portion goes back to the rewards vault.
+              </div>
             </div>
           </Card>
         </section>

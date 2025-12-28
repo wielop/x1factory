@@ -1766,6 +1766,12 @@ export function PublicDashboard() {
                     p.data.buffAppliedFromCycle > 0n &&
                     now != null &&
                     BigInt(now) < p.data.buffAppliedFromCycle;
+                  const buffPendingIn =
+                    buffPending && now != null
+                      ? formatDurationSeconds(
+                          Number(p.data.buffAppliedFromCycle - BigInt(now))
+                        )
+                      : null;
                   const showRenew =
                     now != null &&
                     !p.data.deactivated &&
@@ -1820,7 +1826,7 @@ export function PublicDashboard() {
                       </div>
                       {buffPending ? (
                         <div className="mt-1 text-[11px] text-zinc-500">
-                          Buff aktywny od nastepnego cyklu.
+                          Buff activates next cycle (in {buffPendingIn ?? "-"}).
                         </div>
                       ) : null}
                       {inGrace ? (

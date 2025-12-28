@@ -1484,116 +1484,121 @@
     },
     {
       "code": 6007,
+      "name": "PositionRenewTooEarly",
+      "msg": "Renewal window not open"
+    },
+    {
+      "code": 6008,
       "name": "InvalidMintAuthority",
       "msg": "Invalid mint authority"
     },
     {
-      "code": 6008,
+      "code": 6009,
       "name": "InsufficientStake",
       "msg": "Insufficient stake balance"
     },
     {
-      "code": 6009,
+      "code": 6010,
       "name": "InsufficientVaultBalance",
       "msg": "Insufficient vault balance"
     },
     {
-      "code": 6010,
+      "code": 6011,
       "name": "InvalidContractType",
       "msg": "Invalid contract type"
     },
     {
-      "code": 6011,
+      "code": 6012,
       "name": "InvalidMint",
       "msg": "Invalid mint"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "InvalidUserProfileOwner",
       "msg": "Invalid user profile owner"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "InvalidUserProfileDiscriminator",
       "msg": "Invalid user profile discriminator"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "InvalidUserProfileSize",
       "msg": "Invalid user profile size"
     },
     {
-      "code": 6015,
+      "code": 6016,
       "name": "MaxLevelReached",
       "msg": "Max level reached"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "InsufficientXp",
       "msg": "Insufficient XP"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "InsufficientLevelUpFunds",
       "msg": "Insufficient MIND for level up"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "HpScaleAlreadyEnabled",
       "msg": "HP scaling already enabled"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "InvalidLevel",
       "msg": "Invalid level"
     },
     {
-      "code": 6020,
+      "code": 6021,
       "name": "InvalidLevelUpPositions",
       "msg": "Invalid level up positions"
     },
     {
-      "code": 6021,
+      "code": 6022,
       "name": "InvalidPositionOwner",
       "msg": "Invalid position owner"
     },
     {
-      "code": 6022,
+      "code": 6023,
       "name": "InvalidPositionDiscriminator",
       "msg": "Invalid position discriminator"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "InvalidPositionSize",
       "msg": "Invalid position size"
     },
     {
-      "code": 6024,
+      "code": 6025,
       "name": "InvalidRigDuration",
       "msg": "Invalid rig duration"
     },
     {
-      "code": 6025,
+      "code": 6026,
       "name": "PositionInGrace",
       "msg": "Position still in grace period"
     },
     {
-      "code": 6026,
+      "code": 6027,
       "name": "PositionGraceExpired",
       "msg": "Position grace period expired"
     },
     {
-      "code": 6027,
+      "code": 6028,
       "name": "RigBuffCapExceeded",
       "msg": "Rig buff cap exceeded"
     },
     {
-      "code": 6028,
+      "code": 6029,
       "name": "InsufficientBuffFunds",
       "msg": "Insufficient MIND for rig buff"
     },
     {
-      "code": 6029,
+      "code": 6030,
       "name": "InvalidRigBuffPositions",
       "msg": "Invalid rig buff positions"
     }

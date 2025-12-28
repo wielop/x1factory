@@ -76,7 +76,7 @@ export function AdminDashboard() {
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
   const [treasuryBalance, setTreasuryBalance] = useState<bigint>(0n);
   const [activeMiners, setActiveMiners] = useState<
-    Array<{ owner: string; rigs: number; hp: bigint; sharePct: number }>
+    Array<{ owner: string; rigs: number; hp: bigint; level: number; sharePct: number }>
   >([]);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
   const [activeRigTotal, setActiveRigTotal] = useState(0);
@@ -183,7 +183,7 @@ export function AdminDashboard() {
       setMaxEffectiveHpUi(cfg.maxEffectiveHp.toString());
       try {
         const programId = getProgramId();
-        const [positions, stakes] = await Promise.all([
+        const [positions, stakes, profilesV1, profilesV2] = await Promise.all([
           connection.getProgramAccounts(programId, {
             commitment: "confirmed",
             filters: [{ dataSize: MINER_POSITION_LEN }],
@@ -192,7 +192,23 @@ export function AdminDashboard() {
             commitment: "confirmed",
             filters: [{ dataSize: USER_STAKE_LEN }],
           }),
+          connection.getProgramAccounts(programId, {
+            commitment: "confirmed",
+            filters: [{ dataSize: USER_PROFILE_LEN_V1 }],
+          }),
+          connection.getProgramAccounts(programId, {
+            commitment: "confirmed",
+            filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
+          }),
         ]);
+        const levels = new Map<string, number>();
+        const loadProfile = (entry: (typeof profilesV1)[number]) => {
+          const decoded = decodeUserMiningProfileAccount(Buffer.from(entry.account.data));
+          const ownerKey = new PublicKey(decoded.owner).toBase58();
+          levels.set(ownerKey, decoded.level || 1);
+        };
+        profilesV1.forEach(loadProfile);
+        profilesV2.forEach(loadProfile);
         const now = ts ?? Math.floor(Date.now() / 1000);
         const map = new Map<string, { rigs: number; hp: bigint }>();
         let totalRigs = 0;
@@ -212,11 +228,12 @@ export function AdminDashboard() {
           cfg.networkHpActive > 0n ? cfg.networkHpActive : totalHp * HP_SCALE;
         const list = Array.from(map.entries())
           .map(([owner, value]) => {
+            const level = levels.get(owner) ?? 1;
             const sharePct =
               networkHp > 0n
                 ? Number((value.hp * HP_SCALE * 10_000n) / networkHp) / 100
                 : 0;
-            return { owner, rigs: value.rigs, hp: value.hp, sharePct };
+            return { owner, rigs: value.rigs, hp: value.hp, level, sharePct };
           })
           .sort((a, b) => (b.rigs !== a.rigs ? b.rigs - a.rigs : Number(b.hp - a.hp)));
         setActiveMiners(list);
@@ -635,7 +652,8 @@ export function AdminDashboard() {
                 >
                   <div className="font-mono break-all">{entry.owner}</div>
                   <div className="text-zinc-500">
-                    Rigs: {entry.rigs} | HP: {entry.hp.toString()} | Share: {entry.sharePct.toFixed(2)}%
+                    Rigs: {entry.rigs} | HP: {entry.hp.toString()} | Lvl: {entry.level} | Share:{" "}
+                    {entry.sharePct.toFixed(2)}%
                   </div>
                 </div>
               ))

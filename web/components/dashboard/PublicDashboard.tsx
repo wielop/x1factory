@@ -1757,6 +1757,10 @@ export function PublicDashboard() {
                       ? "text-amber-300"
                       : "text-zinc-500"
                     : "text-zinc-400";
+                  const graceLeftLabel =
+                    inGrace && now != null
+                      ? formatDurationSeconds(Math.max(0, graceEnds - now))
+                      : null;
                   const buffPending =
                     p.data.buffLevel > 0 &&
                     p.data.buffAppliedFromCycle > 0n &&
@@ -1840,10 +1844,16 @@ export function PublicDashboard() {
                       ) : null}
                       {showRenew ? (
                         <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                          <div className="text-[11px] text-zinc-300">
-                            Renew your rig to keep earning
+                        <div className="text-[11px] text-zinc-300">
+                          Renew your rig to keep earning
+                        </div>
+                        {graceLeftLabel ? (
+                          <div className="mt-1 text-[11px] text-zinc-500">
+                            Grace left to renew: {graceLeftLabel}
                           </div>
-                          <div className="mt-3 space-y-2">
+                        ) : null}
+                        <div className="mt-3 space-y-2">
+                          {inGrace ? (
                             <Button
                               size="sm"
                               className="w-full"
@@ -1855,6 +1865,7 @@ export function PublicDashboard() {
                             >
                               {busy === "Renew rig" ? "Submitting..." : "Renew rig"}
                             </Button>
+                          ) : null}
                             <Button
                               size="sm"
                               className="w-full"

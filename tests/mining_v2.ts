@@ -8,7 +8,6 @@ import {
   createMint,
   getAccount,
   getAssociatedTokenAddressSync,
-  mintTo,
   transfer,
 } from "@solana/spl-token";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
@@ -109,11 +108,15 @@ describe("mining_v2", () => {
   const userB = Keypair.generate();
 
   const MIND_DECIMALS = 9;
-  const XNT_DECIMALS = 9;
   const EMISSION_PER_SEC = new BN(1_000_000_000); // 1 MIND/sec
   const MAX_EFFECTIVE_HP = new BN(50);
   const SECONDS_PER_DAY = new BN(1); // speed up tests
   const ACC_SCALE = new BN("1000000000000000000");
+  const HP_SCALE = new BN(100);
+  const STARTER_HP = new BN(60);
+  const PRO_HP = new BN(700);
+  const INDUSTRIAL_HP = new BN(1500);
+  const MIND_PER_HP_PER_DAY = new BN(1_000_000_000);
 
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
@@ -123,8 +126,20 @@ describe("mining_v2", () => {
     [Buffer.from("level_config")],
     program.programId
   );
+  const [rigBuffConfigPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("rig_buff")],
+    program.programId
+  );
   const [vaultAuthority] = PublicKey.findProgramAddressSync(
     [Buffer.from("vault")],
+    program.programId
+  );
+  const [stakingRewardVault] = PublicKey.findProgramAddressSync(
+    [Buffer.from("staking_reward_vault")],
+    program.programId
+  );
+  const [treasuryVault] = PublicKey.findProgramAddressSync(
+    [Buffer.from("treasury_vault")],
     program.programId
   );
   const positionPda = (owner: PublicKey, idx: number) =>
@@ -137,19 +152,13 @@ describe("mining_v2", () => {
   const stakePda = (owner: PublicKey) =>
     PublicKey.findProgramAddressSync([Buffer.from("stake"), owner.toBuffer()], program.programId)[0];
 
-  let xntMint: PublicKey;
   let mindMint: PublicKey;
-  let stakingRewardVault: PublicKey;
-  let treasuryVault: PublicKey;
   let stakingMindVault: PublicKey;
   let mindBurnVault: PublicKey;
   let mindTreasuryVault: PublicKey;
-  let adminXntAta: PublicKey;
 
   const userMindAta = (owner: PublicKey) =>
     getAssociatedTokenAddressSync(mindMint, owner, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-  const userXntAta = (owner: PublicKey) =>
-    getAssociatedTokenAddressSync(xntMint, owner, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -188,7 +197,10 @@ describe("mining_v2", () => {
     return new BN(account.amount.toString());
   };
 
-  const toBn = (n: number) => new BN(n.toString());
+  const getLamports = async (address: PublicKey) => {
+    const balance = await provider.connection.getBalance(address);
+    return new BN(balance.toString());
+  };
 
   const calcAccDelta = (emission: BN, dt: BN, totalHp: BN) =>
     emission.mul(dt).mul(ACC_SCALE).div(totalHp);
@@ -196,17 +208,10 @@ describe("mining_v2", () => {
   let stressPositions: Array<{ owner: Keypair; index: number }> = [];
 
   before(async () => {
-    await airdrop(admin.publicKey, 4);
-    await airdrop(userA.publicKey, 2);
-    await airdrop(userB.publicKey, 2);
+    await airdrop(admin.publicKey, 500);
+    await airdrop(userA.publicKey, 100);
+    await airdrop(userB.publicKey, 100);
 
-    xntMint = await createMint(
-      provider.connection,
-      admin,
-      admin.publicKey,
-      null,
-      XNT_DECIMALS
-    );
     mindMint = await createMint(
       provider.connection,
       admin,
@@ -215,20 +220,6 @@ describe("mining_v2", () => {
       MIND_DECIMALS
     );
 
-    stakingRewardVault = await createAccount(
-      provider.connection,
-      admin,
-      xntMint,
-      vaultAuthority,
-      Keypair.generate()
-    );
-    treasuryVault = await createAccount(
-      provider.connection,
-      admin,
-      xntMint,
-      vaultAuthority,
-      Keypair.generate()
-    );
     stakingMindVault = await createAccount(
       provider.connection,
       admin,
@@ -251,28 +242,13 @@ describe("mining_v2", () => {
       Keypair.generate()
     );
 
-    adminXntAta = await createAssociatedTokenAccountIdempotent(
-      provider.connection,
-      admin,
-      xntMint,
-      admin.publicKey
-    );
-    await mintTo(provider.connection, admin, xntMint, adminXntAta, admin, 1_000_000_000_000);
-
     for (const user of [userA, userB]) {
-      const userXnt = await createAssociatedTokenAccountIdempotent(
-        provider.connection,
-        admin,
-        xntMint,
-        user.publicKey
-      );
       await createAssociatedTokenAccountIdempotent(
         provider.connection,
         admin,
         mindMint,
         user.publicKey
       );
-      await mintTo(provider.connection, admin, xntMint, userXnt, admin, 200_000_000_000);
     }
 
     await program.methods
@@ -287,13 +263,11 @@ describe("mining_v2", () => {
         vaultAuthority,
         config: configPda,
         mindMint,
-        xntMint,
         stakingRewardVault,
         treasuryVault,
         stakingMindVault,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
       .signers([admin])
       .rpc();
@@ -304,6 +278,22 @@ describe("mining_v2", () => {
         admin: admin.publicKey,
         config: configPda,
         levelConfig: levelConfigPda,
+        mindMint,
+        mindBurnVault,
+        mindTreasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([admin])
+      .rpc();
+
+    await program.methods
+      .initRigBuffConfig({
+        mindPerHpPerDay: MIND_PER_HP_PER_DAY,
+      })
+      .accounts({
+        admin: admin.publicKey,
+        config: configPda,
+        rigBuffConfig: rigBuffConfigPda,
         mindMint,
         mindBurnVault,
         mindTreasuryVault,
@@ -322,12 +312,8 @@ describe("mining_v2", () => {
         config: configPda,
         userProfile: profilePda(userA.publicKey),
         position: positionPda(userA.publicKey, 0),
-        vaultAuthority,
-        xntMint,
         stakingRewardVault,
         treasuryVault,
-        ownerXntAta: userXntAta(userA.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([userA])
@@ -349,12 +335,8 @@ describe("mining_v2", () => {
         config: configPda,
         userProfile: profilePda(userB.publicKey),
         position: positionPda(userB.publicKey, 0),
-        vaultAuthority,
-        xntMint,
         stakingRewardVault,
         treasuryVault,
-        ownerXntAta: userXntAta(userB.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([userB])
@@ -411,15 +393,16 @@ describe("mining_v2", () => {
     const dt1 = t2.sub(t1);
     const dt2a = t3.sub(t2);
     const dt2b = t4.sub(t2);
-    const acc1 = calcAccDelta(EMISSION_PER_SEC, dt1, toBn(1));
-    const acc2a = calcAccDelta(EMISSION_PER_SEC, dt2a, toBn(6));
-    const acc2b = calcAccDelta(EMISSION_PER_SEC, dt2b, toBn(6));
+    const totalHpAfter = STARTER_HP.add(PRO_HP);
+    const acc1 = calcAccDelta(EMISSION_PER_SEC, dt1, STARTER_HP);
+    const acc2a = calcAccDelta(EMISSION_PER_SEC, dt2a, totalHpAfter);
+    const acc2b = calcAccDelta(EMISSION_PER_SEC, dt2b, totalHpAfter);
     const accFinalA = acc1.add(acc2a);
     const accFinalB = acc1.add(acc2b);
 
-    const pendingA = accFinalA.mul(toBn(1)).div(ACC_SCALE);
-    const rewardDebtB = acc1.mul(toBn(5)).div(ACC_SCALE);
-    const pendingB = accFinalB.mul(toBn(5)).div(ACC_SCALE).sub(rewardDebtB);
+    const pendingA = accFinalA.mul(STARTER_HP).div(ACC_SCALE);
+    const rewardDebtB = acc1.mul(PRO_HP).div(ACC_SCALE);
+    const pendingB = accFinalB.mul(PRO_HP).div(ACC_SCALE).sub(rewardDebtB);
 
     const mintedA = afterA.sub(beforeA);
     const mintedB = afterB.sub(beforeB);
@@ -428,9 +411,9 @@ describe("mining_v2", () => {
   });
 
   it("has no arbitrage across contracts (XNT per HP-day)", async () => {
-    const starter = 1 / (1 * 7);
-    const pro = 10 / (5 * 14);
-    const industrial = 20 / (7 * 28);
+    const starter = 1 / (0.6 * 7);
+    const pro = 8 / (7 * 14);
+    const industrial = 16 / (15 * 28);
     expect(starter).to.be.at.least(pro);
     expect(pro).to.be.at.least(industrial);
   });
@@ -439,18 +422,21 @@ describe("mining_v2", () => {
     const cfgBefore = await program.account.config.fetch(configPda);
     expect(cfgBefore.networkHpActive.toNumber()).to.be.greaterThan(0);
 
-    await sleep(7000);
+    await sleep(10_000);
     await program.methods
       .deactivatePosition()
       .accounts({
+        owner: userA.publicKey,
         config: configPda,
         position: positionPda(userA.publicKey, 0),
         userProfile: profilePda(userA.publicKey),
+        systemProgram: SystemProgram.programId,
       })
+      .signers([userA])
       .rpc();
 
     const cfgAfter = await program.account.config.fetch(configPda);
-    expect(cfgAfter.networkHpActive.toNumber()).to.eq(5); // only Pro rig active
+    expect(cfgAfter.networkHpActive.toNumber()).to.eq(PRO_HP.toNumber()); // only Pro rig active
   });
 
   it("smooths staking rewards and caps badge bonus", async () => {
@@ -466,14 +452,14 @@ describe("mining_v2", () => {
       .signers([admin])
       .rpc();
 
-    await transfer(
-      provider.connection,
-      admin,
-      adminXntAta,
-      stakingRewardVault,
-      admin,
-      100_000_000_000
+    const fundTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: admin.publicKey,
+        toPubkey: stakingRewardVault,
+        lamports: 100_000_000_000,
+      })
     );
+    await provider.sendAndConfirm(fundTx, [admin]);
 
     const stakeAmount = new BN(100_000_000);
     await program.methods
@@ -504,7 +490,7 @@ describe("mining_v2", () => {
     const t0 = new BN(cfgRoll.stakingLastUpdateTs.toString());
     await sleep(2100);
 
-    const beforeXnt = await getTokenAmount(userXntAta(userA.publicKey));
+    const beforeXnt = await getLamports(userA.publicKey);
     await program.methods
       .claimXnt()
       .accounts({
@@ -512,10 +498,7 @@ describe("mining_v2", () => {
         config: configPda,
         userProfile: profilePda(userA.publicKey),
         userStake: stakePda(userA.publicKey),
-        vaultAuthority,
         stakingRewardVault,
-        ownerXntAta: userXntAta(userA.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([userA])
@@ -528,7 +511,7 @@ describe("mining_v2", () => {
     const basePending = rate.mul(dt);
     const expected = basePending.muln(120).divn(100);
 
-    const afterXnt = await getTokenAmount(userXntAta(userA.publicKey));
+    const afterXnt = await getLamports(userA.publicKey);
     const paid = afterXnt.sub(beforeXnt);
     expect(paid.toString()).to.eq(expected.toString());
   });
@@ -536,25 +519,17 @@ describe("mining_v2", () => {
   it("stress: 50 buys then claim stays within emission", async () => {
     const users: Keypair[] = [];
     const positionIndex = new Map<string, number>();
-    const xntSeed = new BN(200_000_000_000); // 200 XNT base units
 
     for (let i = 0; i < 10; i += 1) {
       const user = Keypair.generate();
       users.push(user);
-      await airdrop(user.publicKey, 2);
-      const userXnt = await createAssociatedTokenAccountIdempotent(
-        provider.connection,
-        admin,
-        xntMint,
-        user.publicKey
-      );
+      await airdrop(user.publicKey, 100);
       await createAssociatedTokenAccountIdempotent(
         provider.connection,
         admin,
         mindMint,
         user.publicKey
       );
-      await mintTo(provider.connection, admin, xntMint, userXnt, admin, xntSeed.toNumber());
       positionIndex.set(user.publicKey.toBase58(), 0);
     }
 
@@ -573,12 +548,8 @@ describe("mining_v2", () => {
           config: configPda,
           userProfile: profilePda(user.publicKey),
           position: positionPda(user.publicKey, idx),
-          vaultAuthority,
-          xntMint,
           stakingRewardVault,
           treasuryVault,
-          ownerXntAta: userXntAta(user.publicKey),
-          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .signers([user])
@@ -654,8 +625,9 @@ describe("mining_v2", () => {
     }
 
     const now = await getClusterTime();
-    if (maxEndTs > now) {
-      await sleep((maxEndTs - now + 1) * 1000);
+    const graceSeconds = SECONDS_PER_DAY.toNumber() * 2;
+    if (maxEndTs + graceSeconds > now) {
+      await sleep((maxEndTs + graceSeconds - now + 1) * 1000);
     }
 
     for (const item of unique.values()) {
@@ -663,10 +635,13 @@ describe("mining_v2", () => {
         await program.methods
           .deactivatePosition()
           .accounts({
+            owner: item.owner.publicKey,
             config: configPda,
             position: positionPda(item.owner.publicKey, item.index),
             userProfile: profilePda(item.owner.publicKey),
+            systemProgram: SystemProgram.programId,
           })
+          .signers([item.owner])
           .rpc();
       } catch {
         // ignore failures for missing/already-closed positions
@@ -681,10 +656,13 @@ describe("mining_v2", () => {
     await program.methods
       .deactivatePosition()
       .accounts({
+        owner: userA.publicKey,
         config: configPda,
         position: positionPda(userA.publicKey, 0),
         userProfile: profilePda(userA.publicKey),
+        systemProgram: SystemProgram.programId,
       })
+      .signers([userA])
       .rpc();
     const cfgAfterPause = await program.account.config.fetch(configPda);
     expect(cfgAfterPause.accMindPerHp.toString()).to.eq(accBefore);
@@ -693,20 +671,13 @@ describe("mining_v2", () => {
   it("stress: staking badge cap stays within 20%", async () => {
     const users = [Keypair.generate(), Keypair.generate(), Keypair.generate()];
     for (const user of users) {
-      await airdrop(user.publicKey, 2);
-      const userXnt = await createAssociatedTokenAccountIdempotent(
-        provider.connection,
-        admin,
-        xntMint,
-        user.publicKey
-      );
+      await airdrop(user.publicKey, 50);
       await createAssociatedTokenAccountIdempotent(
         provider.connection,
         admin,
         mindMint,
         user.publicKey
       );
-      await mintTo(provider.connection, admin, xntMint, userXnt, admin, 20_000_000_000);
     }
 
     const buyAndClaim = async (user: Keypair, index: number) => {
@@ -717,12 +688,8 @@ describe("mining_v2", () => {
           config: configPda,
           userProfile: profilePda(user.publicKey),
           position: positionPda(user.publicKey, index),
-          vaultAuthority,
-          xntMint,
           stakingRewardVault,
           treasuryVault,
-          ownerXntAta: userXntAta(user.publicKey),
-          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .signers([user])
@@ -816,14 +783,14 @@ describe("mining_v2", () => {
       await stakeFor(users[2], stakeThird);
     }
 
-    await transfer(
-      provider.connection,
-      admin,
-      adminXntAta,
-      stakingRewardVault,
-      admin,
-      200_000_000_000
+    const fundTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: admin.publicKey,
+        toPubkey: stakingRewardVault,
+        lamports: 200_000_000_000,
+      })
     );
+    await provider.sendAndConfirm(fundTx, [admin]);
 
     await program.methods
       .rollEpoch(new BN(10))
@@ -843,17 +810,14 @@ describe("mining_v2", () => {
           config: configPda,
           userProfile: profilePda(user.publicKey),
           userStake: stakePda(user.publicKey),
-          vaultAuthority,
           stakingRewardVault,
-          ownerXntAta: userXntAta(user.publicKey),
-          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .instruction();
 
-    const before0 = await getTokenAmount(userXntAta(users[0].publicKey));
-    const before1 = await getTokenAmount(userXntAta(users[1].publicKey));
-    const before2 = await getTokenAmount(userXntAta(users[2].publicKey));
+    const before0 = await getLamports(users[0].publicKey);
+    const before1 = await getLamports(users[1].publicKey);
+    const before2 = await getLamports(users[2].publicKey);
 
     const tx = new Transaction();
     tx.add(await claimIxFor(users[0]));
@@ -864,9 +828,9 @@ describe("mining_v2", () => {
     const signers = stakeThird.gt(new BN(0)) ? users : users.slice(0, 2);
     await provider.sendAndConfirm(tx, signers);
 
-    const after0 = await getTokenAmount(userXntAta(users[0].publicKey));
-    const after1 = await getTokenAmount(userXntAta(users[1].publicKey));
-    const after2 = await getTokenAmount(userXntAta(users[2].publicKey));
+    const after0 = await getLamports(users[0].publicKey);
+    const after1 = await getLamports(users[1].publicKey);
+    const after2 = await getLamports(users[2].publicKey);
 
     const payout0 = after0.sub(before0);
     const payout1 = after1.sub(before1);
@@ -884,20 +848,13 @@ describe("mining_v2", () => {
 
   it("updates XP with time and base HP", async () => {
     const user = Keypair.generate();
-    await airdrop(user.publicKey, 2);
-    const userXnt = await createAssociatedTokenAccountIdempotent(
-      provider.connection,
-      admin,
-      xntMint,
-      user.publicKey
-    );
+    await airdrop(user.publicKey, 50);
     await createAssociatedTokenAccountIdempotent(
       provider.connection,
       admin,
       mindMint,
       user.publicKey
     );
-    await mintTo(provider.connection, admin, xntMint, userXnt, admin, 50_000_000_000);
 
     await program.methods
       .buyContract(1, new BN(0))
@@ -906,12 +863,8 @@ describe("mining_v2", () => {
         config: configPda,
         userProfile: profilePda(user.publicKey),
         position: positionPda(user.publicKey, 0),
-        vaultAuthority,
-        xntMint,
         stakingRewardVault,
         treasuryVault,
-        ownerXntAta: userXntAta(user.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([user])
@@ -944,26 +897,19 @@ describe("mining_v2", () => {
       profilePda(user.publicKey)
     );
     const delta = profileAfter.lastXpUpdateTs.toNumber() - lastTs;
-    const expectedXp = Math.floor((5 * delta) / 36000);
+    const expectedXp = Math.floor((7 * delta) / 36000);
     expect(profileAfter.xp.toNumber()).to.eq(expectedXp);
   });
 
   it("rejects level up without enough XP", async () => {
     const user = Keypair.generate();
-    await airdrop(user.publicKey, 2);
-    const userXnt = await createAssociatedTokenAccountIdempotent(
-      provider.connection,
-      admin,
-      xntMint,
-      user.publicKey
-    );
+    await airdrop(user.publicKey, 50);
     await createAssociatedTokenAccountIdempotent(
       provider.connection,
       admin,
       mindMint,
       user.publicKey
     );
-    await mintTo(provider.connection, admin, xntMint, userXnt, admin, 50_000_000_000);
 
     await program.methods
       .buyContract(0, new BN(0))
@@ -972,12 +918,8 @@ describe("mining_v2", () => {
         config: configPda,
         userProfile: profilePda(user.publicKey),
         position: positionPda(user.publicKey, 0),
-        vaultAuthority,
-        xntMint,
         stakingRewardVault,
         treasuryVault,
-        ownerXntAta: userXntAta(user.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([user])
@@ -1014,20 +956,13 @@ describe("mining_v2", () => {
 
   it("rejects level up without enough MIND", async () => {
     const user = Keypair.generate();
-    await airdrop(user.publicKey, 2);
-    const userXnt = await createAssociatedTokenAccountIdempotent(
-      provider.connection,
-      admin,
-      xntMint,
-      user.publicKey
-    );
+    await airdrop(user.publicKey, 50);
     await createAssociatedTokenAccountIdempotent(
       provider.connection,
       admin,
       mindMint,
       user.publicKey
     );
-    await mintTo(provider.connection, admin, xntMint, userXnt, admin, 50_000_000_000);
 
     await program.methods
       .buyContract(1, new BN(0))
@@ -1036,12 +971,8 @@ describe("mining_v2", () => {
         config: configPda,
         userProfile: profilePda(user.publicKey),
         position: positionPda(user.publicKey, 0),
-        vaultAuthority,
-        xntMint,
         stakingRewardVault,
         treasuryVault,
-        ownerXntAta: userXntAta(user.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([user])
@@ -1078,200 +1009,102 @@ describe("mining_v2", () => {
     }
   });
 
-  it("levels up with enough XP + MIND and caps bonus at 10%", async () => {
+  it("levels up with enough XP + MIND and applies rig buffs on top of level bonus", async () => {
     const levelUser = Keypair.generate();
-    const baseUser = Keypair.generate();
-    const fundingUser = Keypair.generate();
-    const users = [levelUser, baseUser, fundingUser];
-
-    for (const user of users) {
-      await airdrop(user.publicKey, 2);
-      const userXnt = await createAssociatedTokenAccountIdempotent(
-        provider.connection,
-        admin,
-        xntMint,
-        user.publicKey
-      );
-      await createAssociatedTokenAccountIdempotent(
-        provider.connection,
-        admin,
-        mindMint,
-        user.publicKey
-      );
-      await mintTo(provider.connection, admin, xntMint, userXnt, admin, 200_000_000_000);
-    }
-
-    for (let i = 0; i < 10; i += 1) {
-      await program.methods
-        .buyContract(1, new BN(i))
-        .accounts({
-          owner: levelUser.publicKey,
-          config: configPda,
-          userProfile: profilePda(levelUser.publicKey),
-          position: positionPda(levelUser.publicKey, i),
-          vaultAuthority,
-          xntMint,
-          stakingRewardVault,
-          treasuryVault,
-          ownerXntAta: userXntAta(levelUser.publicKey),
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([levelUser])
-        .rpc();
-    }
-
-    await program.methods
-      .buyContract(1, new BN(0))
-      .accounts({
-        owner: fundingUser.publicKey,
-        config: configPda,
-        userProfile: profilePda(fundingUser.publicKey),
-        position: positionPda(fundingUser.publicKey, 0),
-        vaultAuthority,
-        xntMint,
-        stakingRewardVault,
-        treasuryVault,
-        ownerXntAta: userXntAta(fundingUser.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([fundingUser])
-      .rpc();
-
-    await warpForwardSeconds(11_600_000);
-
-    await program.methods
-      .claimMind()
-      .accounts({
-        owner: fundingUser.publicKey,
-        config: configPda,
-        userProfile: profilePda(fundingUser.publicKey),
-        position: positionPda(fundingUser.publicKey, 0),
-        vaultAuthority,
-        mindMint,
-        userMindAta: userMindAta(fundingUser.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([fundingUser])
-      .rpc();
-
-    await transfer(
+    await airdrop(levelUser.publicKey, 2000);
+    await createAssociatedTokenAccountIdempotent(
       provider.connection,
-      fundingUser,
-      userMindAta(fundingUser.publicKey),
-      userMindAta(levelUser.publicKey),
-      fundingUser,
-      8_000_000_000_000
+      admin,
+      mindMint,
+      levelUser.publicKey
     );
 
-    const remaining = Array.from({ length: 10 }).map((_, idx) => ({
-      pubkey: positionPda(levelUser.publicKey, idx),
-      isSigner: false,
-      isWritable: true,
-    }));
-
-    for (let i = 0; i < 5; i += 1) {
-      await program.methods
-        .levelUp()
-        .accounts({
-          owner: levelUser.publicKey,
-          config: configPda,
-          levelConfig: levelConfigPda,
-          userProfile: profilePda(levelUser.publicKey),
-          ownerMindAta: userMindAta(levelUser.publicKey),
-          burnMindVault: mindBurnVault,
-          treasuryMindVault: mindTreasuryVault,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .remainingAccounts(remaining)
-        .signers([levelUser])
-        .rpc();
-    }
-
-    const leveledProfile = await program.account.userMiningProfile.fetch(
-      profilePda(levelUser.publicKey)
-    );
-    expect(leveledProfile.level).to.eq(6);
-
-    for (let i = 0; i < 10; i += 1) {
-      await program.methods
-        .deactivatePosition()
-        .accounts({
-          config: configPda,
-          position: positionPda(levelUser.publicKey, i),
-          userProfile: profilePda(levelUser.publicKey),
-        })
-        .rpc();
-    }
-
-    const levelIdx = leveledProfile.nextPositionIndex.toNumber();
     await program.methods
-      .buyContract(1, new BN(levelIdx))
+      .buyContract(2, new BN(0))
       .accounts({
         owner: levelUser.publicKey,
         config: configPda,
         userProfile: profilePda(levelUser.publicKey),
-        position: positionPda(levelUser.publicKey, levelIdx),
-        vaultAuthority,
-        xntMint,
+        position: positionPda(levelUser.publicKey, 0),
         stakingRewardVault,
         treasuryVault,
-        ownerXntAta: userXntAta(levelUser.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .signers([levelUser])
       .rpc();
 
+    const cycles = 83;
+    for (let i = 0; i < cycles; i += 1) {
+      await warpForwardSeconds(29);
+      await program.methods
+        .claimMind()
+        .accounts({
+          owner: levelUser.publicKey,
+          config: configPda,
+          userProfile: profilePda(levelUser.publicKey),
+          position: positionPda(levelUser.publicKey, 0),
+          vaultAuthority,
+          mindMint,
+          userMindAta: userMindAta(levelUser.publicKey),
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([levelUser])
+        .rpc();
+
+      await program.methods
+        .renewRig()
+        .accounts({
+          owner: levelUser.publicKey,
+          config: configPda,
+          userProfile: profilePda(levelUser.publicKey),
+          position: positionPda(levelUser.publicKey, 0),
+          stakingRewardVault,
+          treasuryVault,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([levelUser])
+        .rpc();
+    }
+
     await program.methods
-      .buyContract(1, new BN(0))
+      .levelUp()
       .accounts({
-        owner: baseUser.publicKey,
+        owner: levelUser.publicKey,
         config: configPda,
-        userProfile: profilePda(baseUser.publicKey),
-        position: positionPda(baseUser.publicKey, 0),
-        vaultAuthority,
-        xntMint,
-        stakingRewardVault,
-        treasuryVault,
-        ownerXntAta: userXntAta(baseUser.publicKey),
+        levelConfig: levelConfigPda,
+        userProfile: profilePda(levelUser.publicKey),
+        ownerMindAta: userMindAta(levelUser.publicKey),
+        burnMindVault: mindBurnVault,
+        treasuryMindVault: mindTreasuryVault,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
-      .signers([baseUser])
+      .remainingAccounts([
+        {
+          pubkey: positionPda(levelUser.publicKey, 0),
+          isSigner: false,
+          isWritable: true,
+        },
+      ])
+      .signers([levelUser])
       .rpc();
 
-    await warpForwardSeconds(50);
+    const leveledProfile = await program.account.userMiningProfile.fetch(
+      profilePda(levelUser.publicKey)
+    );
+    expect(leveledProfile.level).to.eq(2);
 
-    const beforeBase = await getTokenAmount(userMindAta(baseUser.publicKey));
-    const beforeLevel = await getTokenAmount(userMindAta(levelUser.publicKey));
+    const cfgBefore = await program.account.config.fetch(configPda);
 
-    await program.methods
-      .claimMind()
-      .accounts({
-        owner: baseUser.publicKey,
-        config: configPda,
-        userProfile: profilePda(baseUser.publicKey),
-        position: positionPda(baseUser.publicKey, 0),
-        vaultAuthority,
-        mindMint,
-        userMindAta: userMindAta(baseUser.publicKey),
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([baseUser])
-      .rpc();
-
+    await warpForwardSeconds(29);
     await program.methods
       .claimMind()
       .accounts({
         owner: levelUser.publicKey,
         config: configPda,
         userProfile: profilePda(levelUser.publicKey),
-        position: positionPda(levelUser.publicKey, levelIdx),
+        position: positionPda(levelUser.publicKey, 0),
         vaultAuthority,
         mindMint,
         userMindAta: userMindAta(levelUser.publicKey),
@@ -1281,13 +1114,355 @@ describe("mining_v2", () => {
       .signers([levelUser])
       .rpc();
 
-    const afterBase = await getTokenAmount(userMindAta(baseUser.publicKey));
-    const afterLevel = await getTokenAmount(userMindAta(levelUser.publicKey));
-    const mintedBase = afterBase.sub(beforeBase);
-    const mintedLevel = afterLevel.sub(beforeLevel);
-    expect(mintedLevel.gt(mintedBase)).to.be.true;
+    await program.methods
+      .renewRigWithBuff()
+      .accounts({
+        owner: levelUser.publicKey,
+        config: configPda,
+        rigBuffConfig: rigBuffConfigPda,
+        userProfile: profilePda(levelUser.publicKey),
+        position: positionPda(levelUser.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        mindMint,
+        ownerMindAta: userMindAta(levelUser.publicKey),
+        burnMindVault: mindBurnVault,
+        treasuryMindVault: mindTreasuryVault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([levelUser])
+      .rpc();
 
-    const cap = mintedBase.muln(11).add(new BN(1_000_000));
-    expect(mintedLevel.muln(10).lte(cap)).to.be.true;
+    const cfgAfter = await program.account.config.fetch(configPda);
+    const beforeHp = new BN(cfgBefore.networkHpActive.toString());
+    const afterHp = new BN(cfgAfter.networkHpActive.toString());
+
+    const bps = new BN(10_000);
+    const levelBonusBps = new BN(160);
+    const buffBps = new BN(150);
+    const effectiveBefore = INDUSTRIAL_HP.mul(bps.add(levelBonusBps)).div(bps);
+    const effectiveAfter = INDUSTRIAL_HP
+      .mul(bps.add(buffBps))
+      .div(bps)
+      .mul(bps.add(levelBonusBps))
+      .div(bps);
+    const expectedDelta = effectiveAfter.sub(effectiveBefore);
+    expect(afterHp.sub(beforeHp).toString()).to.eq(expectedDelta.toString());
+  });
+
+  it("renews starter rig with and without buff and charges buff cost", async () => {
+    const user = Keypair.generate();
+    await airdrop(user.publicKey, 50);
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      user.publicKey
+    );
+
+    await program.methods
+      .buyContract(0, new BN(0))
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    await warpForwardSeconds(8);
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(user.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    await program.methods
+      .renewRig()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    let position = await program.account.minerPosition.fetch(
+      positionPda(user.publicKey, 0)
+    );
+    expect(position.buffLevel).to.eq(0);
+
+    await warpForwardSeconds(8);
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(user.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    const burnBefore = await getTokenAmount(mindBurnVault);
+    const treasuryBefore = await getTokenAmount(mindTreasuryVault);
+
+    await program.methods
+      .renewRigWithBuff()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        rigBuffConfig: rigBuffConfigPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        mindMint,
+        ownerMindAta: userMindAta(user.publicKey),
+        burnMindVault: mindBurnVault,
+        treasuryMindVault: mindTreasuryVault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    position = await program.account.minerPosition.fetch(positionPda(user.publicKey, 0));
+    expect(position.buffLevel).to.eq(1);
+    expect(position.buffAppliedFromCycle.toNumber()).to.be.greaterThan(0);
+
+    const burnAfter = await getTokenAmount(mindBurnVault);
+    const treasuryAfter = await getTokenAmount(mindTreasuryVault);
+
+    const rewardBase = STARTER_HP.mul(MIND_PER_HP_PER_DAY).mul(new BN(7)).div(HP_SCALE);
+    const buffCost = rewardBase.mul(new BN(150)).div(new BN(10_000));
+    const burnExpected = buffCost.div(new BN(2));
+    const treasuryExpected = buffCost.sub(burnExpected);
+
+    expect(burnAfter.sub(burnBefore).toString()).to.eq(burnExpected.toString());
+    expect(treasuryAfter.sub(treasuryBefore).toString()).to.eq(treasuryExpected.toString());
+  });
+
+  it("buff progression caps for pro and industrial rigs", async () => {
+    const proUser = Keypair.generate();
+    await airdrop(proUser.publicKey, 100);
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      proUser.publicKey
+    );
+
+    await program.methods
+      .buyContract(1, new BN(0))
+      .accounts({
+        owner: proUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(proUser.publicKey),
+        position: positionPda(proUser.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([proUser])
+      .rpc();
+
+    const proLevels: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      await warpForwardSeconds(15);
+      await program.methods
+        .claimMind()
+        .accounts({
+          owner: proUser.publicKey,
+          config: configPda,
+          userProfile: profilePda(proUser.publicKey),
+          position: positionPda(proUser.publicKey, 0),
+          vaultAuthority,
+          mindMint,
+          userMindAta: userMindAta(proUser.publicKey),
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([proUser])
+        .rpc();
+      await program.methods
+        .renewRigWithBuff()
+        .accounts({
+          owner: proUser.publicKey,
+          config: configPda,
+          rigBuffConfig: rigBuffConfigPda,
+          userProfile: profilePda(proUser.publicKey),
+          position: positionPda(proUser.publicKey, 0),
+          stakingRewardVault,
+          treasuryVault,
+          mindMint,
+          ownerMindAta: userMindAta(proUser.publicKey),
+          burnMindVault: mindBurnVault,
+          treasuryMindVault: mindTreasuryVault,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([proUser])
+        .rpc();
+      const position = await program.account.minerPosition.fetch(
+        positionPda(proUser.publicKey, 0)
+      );
+      proLevels.push(position.buffLevel);
+    }
+    expect(proLevels).to.deep.eq([1, 2, 3, 3]);
+
+    const indUser = Keypair.generate();
+    await airdrop(indUser.publicKey, 150);
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      indUser.publicKey
+    );
+
+    await program.methods
+      .buyContract(2, new BN(0))
+      .accounts({
+        owner: indUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(indUser.publicKey),
+        position: positionPda(indUser.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([indUser])
+      .rpc();
+
+    const indLevels: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      await warpForwardSeconds(29);
+      await program.methods
+        .claimMind()
+        .accounts({
+          owner: indUser.publicKey,
+          config: configPda,
+          userProfile: profilePda(indUser.publicKey),
+          position: positionPda(indUser.publicKey, 0),
+          vaultAuthority,
+          mindMint,
+          userMindAta: userMindAta(indUser.publicKey),
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([indUser])
+        .rpc();
+      await program.methods
+        .renewRigWithBuff()
+        .accounts({
+          owner: indUser.publicKey,
+          config: configPda,
+          rigBuffConfig: rigBuffConfigPda,
+          userProfile: profilePda(indUser.publicKey),
+          position: positionPda(indUser.publicKey, 0),
+          stakingRewardVault,
+          treasuryVault,
+          mindMint,
+          ownerMindAta: userMindAta(indUser.publicKey),
+          burnMindVault: mindBurnVault,
+          treasuryMindVault: mindTreasuryVault,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([indUser])
+        .rpc();
+      const position = await program.account.minerPosition.fetch(
+        positionPda(indUser.publicKey, 0)
+      );
+      indLevels.push(position.buffLevel);
+    }
+    expect(indLevels).to.deep.eq([1, 2, 3, 3]);
+  });
+
+  it("rejects renewals after grace period", async () => {
+    const user = Keypair.generate();
+    await airdrop(user.publicKey, 50);
+    await createAssociatedTokenAccountIdempotent(
+      provider.connection,
+      admin,
+      mindMint,
+      user.publicKey
+    );
+
+    await program.methods
+      .buyContract(0, new BN(0))
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 0),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    await warpForwardSeconds(10);
+
+    try {
+      await program.methods
+        .renewRig()
+        .accounts({
+          owner: user.publicKey,
+          config: configPda,
+          userProfile: profilePda(user.publicKey),
+          position: positionPda(user.publicKey, 0),
+          stakingRewardVault,
+          treasuryVault,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user])
+        .rpc();
+      expect.fail("Expected renewal to fail after grace");
+    } catch (err) {
+      expect(`${err}`).to.include("PositionGraceExpired");
+    }
+
+    await program.methods
+      .deactivatePosition()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        position: positionPda(user.publicKey, 0),
+        userProfile: profilePda(user.publicKey),
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    const position = await program.account.minerPosition.fetch(
+      positionPda(user.publicKey, 0)
+    );
+    expect(position.deactivated).to.eq(true);
   });
 });

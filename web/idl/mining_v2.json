@@ -112,6 +112,77 @@
       "args": []
     },
     {
+      "name": "initRigBuffConfig",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rigBuffConfig",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindBurnVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindTreasuryVault",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": "InitRigBuffConfigParams"
+          }
+        }
+      ]
+    },
+    {
+      "name": "adminUpdateRigBuffConfig",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "rigBuffConfig",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": "UpdateRigBuffConfigParams"
+          }
+        }
+      ]
+    },
+    {
       "name": "buyContract",
       "accounts": [
         {
@@ -160,6 +231,118 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "renewRig",
+      "accounts": [
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "renewRigWithBuff",
+      "accounts": [
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "rigBuffConfig",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "stakingRewardVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "burnMindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "treasuryMindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
     },
     {
       "name": "claimMind",
@@ -216,6 +399,11 @@
       "name": "deactivatePosition",
       "accounts": [
         {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
           "name": "config",
           "isMut": true,
           "isSigner": false
@@ -228,6 +416,11 @@
         {
           "name": "userProfile",
           "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
           "isSigner": false
         }
       ],
@@ -760,6 +953,38 @@
       }
     },
     {
+      "name": "RigBuffConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindMint",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindBurnVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindTreasuryVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindPerHpPerDay",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "HpScaleConfig",
       "type": {
         "kind": "struct",
@@ -815,6 +1040,10 @@
           {
             "name": "lastXpUpdateTs",
             "type": "i64"
+          },
+          {
+            "name": "hpScaled",
+            "type": "bool"
           }
         ]
       }
@@ -855,6 +1084,26 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "rigType",
+            "type": "u8"
+          },
+          {
+            "name": "buffLevel",
+            "type": "u8"
+          },
+          {
+            "name": "hpScaled",
+            "type": "bool"
+          },
+          {
+            "name": "expired",
+            "type": "bool"
+          },
+          {
+            "name": "buffAppliedFromCycle",
+            "type": "u64"
           }
         ]
       }
@@ -910,6 +1159,30 @@
       }
     },
     {
+      "name": "InitRigBuffConfigParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mindPerHpPerDay",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateRigBuffConfigParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mindPerHpPerDay",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "UserMiningProfileV1",
       "type": {
         "kind": "struct",
@@ -946,6 +1219,50 @@
       }
     },
     {
+      "name": "UserMiningProfileV2Legacy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "nextPositionIndex",
+            "type": "u64"
+          },
+          {
+            "name": "activeHp",
+            "type": "u64"
+          },
+          {
+            "name": "xp",
+            "type": "u64"
+          },
+          {
+            "name": "badgeTier",
+            "type": "u8"
+          },
+          {
+            "name": "badgeBonusBps",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "level",
+            "type": "u8"
+          },
+          {
+            "name": "lastXpUpdateTs",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "ConfigBumps",
       "type": {
         "kind": "struct",
@@ -956,6 +1273,46 @@
           },
           {
             "name": "vaultAuthority",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MinerPositionV1",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "hp",
+            "type": "u64"
+          },
+          {
+            "name": "startTs",
+            "type": "i64"
+          },
+          {
+            "name": "endTs",
+            "type": "i64"
+          },
+          {
+            "name": "rewardDebt",
+            "type": "u128"
+          },
+          {
+            "name": "finalAccMindPerHp",
+            "type": "u128"
+          },
+          {
+            "name": "deactivated",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
             "type": "u8"
           }
         ]
@@ -1194,6 +1551,51 @@
       "code": 6020,
       "name": "InvalidLevelUpPositions",
       "msg": "Invalid level up positions"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidPositionOwner",
+      "msg": "Invalid position owner"
+    },
+    {
+      "code": 6022,
+      "name": "InvalidPositionDiscriminator",
+      "msg": "Invalid position discriminator"
+    },
+    {
+      "code": 6023,
+      "name": "InvalidPositionSize",
+      "msg": "Invalid position size"
+    },
+    {
+      "code": 6024,
+      "name": "InvalidRigDuration",
+      "msg": "Invalid rig duration"
+    },
+    {
+      "code": 6025,
+      "name": "PositionInGrace",
+      "msg": "Position still in grace period"
+    },
+    {
+      "code": 6026,
+      "name": "PositionGraceExpired",
+      "msg": "Position grace period expired"
+    },
+    {
+      "code": 6027,
+      "name": "RigBuffCapExceeded",
+      "msg": "Rig buff cap exceeded"
+    },
+    {
+      "code": 6028,
+      "name": "InsufficientBuffFunds",
+      "msg": "Insufficient MIND for rig buff"
+    },
+    {
+      "code": 6029,
+      "name": "InvalidRigBuffPositions",
+      "msg": "Invalid rig buff positions"
     }
   ]
 }

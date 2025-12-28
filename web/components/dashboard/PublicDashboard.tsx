@@ -38,7 +38,8 @@ import type { DecodedUserStake } from "@/lib/decoders";
 import {
   decodeMinerPositionAccount,
   decodeUserMiningProfileAccount,
-  MINER_POSITION_LEN,
+  MINER_POSITION_LEN_V1,
+  MINER_POSITION_LEN_V2,
   tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
 import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
@@ -67,10 +68,43 @@ const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
 const HP_SCALE = 100n;
 const CONTRACTS = [
-  { key: 0, label: "Starter Rig", durationDays: 7, costXnt: 1, hp: 1 },
-  { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 10, hp: 5 },
-  { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 20, hp: 7 },
+  { key: 0, label: "Starter Rig", durationDays: 7, costXnt: 1, hp: 0.6 },
+  { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 8, hp: 7 },
+  { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 16, hp: 15 },
 ] as const;
+
+function rigTypeFromDuration(startTs: number, endTs: number, secondsPerDay: number) {
+  if (!Number.isFinite(secondsPerDay) || secondsPerDay <= 0) return 0;
+  const duration = Math.max(0, endTs - startTs);
+  const days = Math.round(duration / secondsPerDay);
+  switch (days) {
+    case 7:
+      return 0;
+    case 14:
+      return 1;
+    case 28:
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+function rigBuffBps(rigType: number, buffLevel: number) {
+  if (rigType === 0) return buffLevel >= 1 ? 100 : 0;
+  if (rigType === 1) {
+    if (buffLevel >= 3) return 350;
+    if (buffLevel === 2) return 200;
+    if (buffLevel === 1) return 100;
+    return 0;
+  }
+  if (rigType === 2) {
+    if (buffLevel >= 3) return 500;
+    if (buffLevel === 2) return 300;
+    if (buffLevel === 1) return 150;
+    return 0;
+  }
+  return 0;
+}
 
 function formatIntegerBig(value: bigint) {
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -258,11 +292,25 @@ export function PublicDashboard() {
       }
 
       const programId = getProgramId();
-      const [posGpa, profileAcc, stakeAcc, allPositions] = await Promise.all([
+      const [
+        posGpaV1,
+        posGpaV2,
+        profileAcc,
+        stakeAcc,
+        allPositionsV1,
+        allPositionsV2,
+      ] = await Promise.all([
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
           filters: [
-            { dataSize: MINER_POSITION_LEN },
+            { dataSize: MINER_POSITION_LEN_V1 },
+            { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
+          ],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [
+            { dataSize: MINER_POSITION_LEN_V2 },
             { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
           ],
         }),
@@ -270,9 +318,15 @@ export function PublicDashboard() {
         connection.getAccountInfo(deriveUserStakePda(publicKey), "confirmed"),
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
-          filters: [{ dataSize: MINER_POSITION_LEN }],
+          filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
         }),
       ]);
+      const posGpa = [...posGpaV1, ...posGpaV2];
+      const allPositions = [...allPositionsV1, ...allPositionsV2];
       if (isStale()) return;
 
       const decodedPositions = posGpa
@@ -409,6 +463,12 @@ export function PublicDashboard() {
   const userLevel = Math.max(userProfile?.level ?? 1, 1);
   const userXp = userProfile?.xp ?? 0n;
   const lastXpUpdateTs = userProfile?.lastXpUpdateTs ?? 0;
+  const profileHpScaled =
+    userProfile == null
+      ? 0n
+      : userProfile.hpScaled
+      ? userProfile.activeHp
+      : userProfile.activeHp * HP_SCALE;
 
   useEffect(() => {
     if (!nowTs || !userProfile) return;
@@ -419,7 +479,7 @@ export function PublicDashboard() {
       }
       return;
     }
-    if (userProfile.activeHp <= 0n) {
+    if (profileHpScaled <= 0n) {
       xpEstimateStartRef.current = null;
       if (xpEstimateKey) {
         window.localStorage.removeItem(xpEstimateKey);
@@ -432,7 +492,7 @@ export function PublicDashboard() {
         try {
           const parsed = JSON.parse(raw) as { ts: number; hp: string };
           const storedHp = BigInt(parsed.hp);
-          if (storedHp === userProfile.activeHp) {
+          if (storedHp === profileHpScaled) {
             xpEstimateStartRef.current = parsed.ts;
             return;
           }
@@ -446,11 +506,11 @@ export function PublicDashboard() {
       if (xpEstimateKey) {
         window.localStorage.setItem(
           xpEstimateKey,
-          JSON.stringify({ ts: nowTs, hp: userProfile.activeHp.toString() })
+          JSON.stringify({ ts: nowTs, hp: profileHpScaled.toString() })
         );
       }
     }
-  }, [lastXpUpdateTs, nowTs, userProfile, xpEstimateKey]);
+  }, [lastXpUpdateTs, nowTs, profileHpScaled, userProfile, xpEstimateKey]);
   const levelIdx = Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1;
   const levelBonusBps = LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
   const nextLevelXp = userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
@@ -469,11 +529,11 @@ export function PublicDashboard() {
     if (deltaSeconds <= 0) {
       return { whole: userXp, hundredths: userXp * 100n };
     }
-    const baseHp = userProfile.activeHp;
-    const gainHundredths = (baseHp * BigInt(deltaSeconds) * 100n) / 36_000n;
+    const gainHundredths =
+      (profileHpScaled * BigInt(deltaSeconds) * 100n) / (36_000n * HP_SCALE);
     const hundredths = userXp * 100n + gainHundredths;
     return { whole: hundredths / 100n, hundredths };
-  }, [nowTs, userProfile, userXp, lastXpUpdateTs]);
+  }, [nowTs, profileHpScaled, userProfile, userXp, lastXpUpdateTs]);
   const xpDisplay = xpEstimate.whole;
   const xpDisplayHundredths = xpEstimate.hundredths;
   const xpRemainingHundredths =
@@ -525,50 +585,65 @@ export function PublicDashboard() {
     ? `XP: ${formatFixed2(xpDisplayHundredths)} / ${formatIntegerBig(nextLevelXp)}`
     : `XP: ${formatFixed2(xpDisplayHundredths)} (max level)`;
   const xpPerHourHundredths =
-    userProfile?.activeHp != null ? userProfile.activeHp * 10n : 0n;
+    userProfile?.activeHp != null ? (profileHpScaled * 10n) / HP_SCALE : 0n;
   const xpRateLine =
-    userProfile?.activeHp != null && userProfile.activeHp > 0n
+    userProfile?.activeHp != null && profileHpScaled > 0n
       ? `≈ ${formatFixed2(xpPerHourHundredths)} XP/hour`
       : null;
   const bonusLine = `HP bonus: +${levelBonusPct}%`;
   const progressionDescription =
     "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs.";
   const xpEstimateNote =
-    lastXpUpdateTs <= 0 && userProfile?.activeHp
+    lastXpUpdateTs <= 0 && profileHpScaled
       ? "XP is estimated until your next on-chain interaction (claim, buy, renew)."
       : null;
   const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(2)}%`;
 
-  const baseUserHp = useMemo(() => {
-    if (userProfile) return userProfile.activeHp;
-    if (!nowTs) return 0n;
-    return positions
-      .filter((p) => !p.data.deactivated && nowTs < p.data.endTs)
-      .reduce((acc, p) => acc + p.data.hp, 0n);
-  }, [positions, userProfile, nowTs]);
+  const activePositions = useMemo(
+    () =>
+      positions.filter(
+        (p) => !p.data.deactivated && !p.data.expired && nowTs != null && nowTs < p.data.endTs
+      ),
+    [positions, nowTs]
+  );
 
-  const cappedBaseUserHp = useMemo(() => {
-    if (!config) return baseUserHp;
-    return baseUserHp > config.maxEffectiveHp ? config.maxEffectiveHp : baseUserHp;
-  }, [config, baseUserHp]);
+  const baseUserHpHundredths = useMemo(() => {
+    if (activePositions.length > 0) {
+      return activePositions.reduce((acc, p) => acc + p.data.hp, 0n);
+    }
+    if (userProfile) {
+      return userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
+    }
+    return 0n;
+  }, [activePositions, userProfile]);
+
+  const buffedUserHpHundredths = useMemo(() => {
+    if (activePositions.length === 0) return baseUserHpHundredths;
+    const secondsPerDay = config ? Number(config.secondsPerDay) : 0;
+    return activePositions.reduce((acc, p) => {
+      const rigType = p.data.hpScaled
+        ? p.data.rigType
+        : rigTypeFromDuration(p.data.startTs, p.data.endTs, secondsPerDay);
+      const buffBpsBase = rigBuffBps(rigType, p.data.buffLevel);
+      const buffApplied =
+        p.data.buffLevel > 0 &&
+        (p.data.buffAppliedFromCycle === 0n ||
+          nowTs == null ||
+          BigInt(nowTs) >= p.data.buffAppliedFromCycle);
+      const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
+      const buffedHp = (p.data.hp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
+      return acc + buffedHp;
+    }, 0n);
+  }, [activePositions, baseUserHpHundredths, config, nowTs]);
 
   const effectiveUserHpHundredths = useMemo(() => {
-    if (cappedBaseUserHp === 0n) return 0n;
+    if (buffedUserHpHundredths === 0n) return 0n;
     return (
-      cappedBaseUserHp *
-      (BPS_DENOMINATOR + levelBonusBpsBig) *
-      HP_SCALE /
+      buffedUserHpHundredths *
+      (BPS_DENOMINATOR + levelBonusBpsBig) /
       BPS_DENOMINATOR
     );
-  }, [cappedBaseUserHp, levelBonusBpsBig]);
-  const bonusHpHundredths = useMemo(() => {
-    if (effectiveUserHpHundredths === 0n) return 0n;
-    const baseHundredths = cappedBaseUserHp * HP_SCALE;
-    return effectiveUserHpHundredths > baseHundredths
-      ? effectiveUserHpHundredths - baseHundredths
-      : 0n;
-  }, [effectiveUserHpHundredths, cappedBaseUserHp]);
-
+  }, [buffedUserHpHundredths, levelBonusBpsBig]);
   const networkHp = config?.networkHpActive ?? 0n;
   const networkHpHundredths = useMemo(() => networkHp, [networkHp]);
   const sharePct =
@@ -609,20 +684,39 @@ export function PublicDashboard() {
 
   const pendingPositions = useMemo(() => {
     const bonusMultiplier = BPS_DENOMINATOR + levelBonusBpsBig;
+    const secondsPerDay = config ? Number(config.secondsPerDay) : 0;
     return positions.map((p) => {
       if (!config) {
         return { position: p, pending: 0n, livePending: 0n };
       }
+      const rigType = p.data.hpScaled
+        ? p.data.rigType
+        : rigTypeFromDuration(p.data.startTs, p.data.endTs, secondsPerDay);
+      const buffBpsBase = rigBuffBps(rigType, p.data.buffLevel);
+      const buffApplied =
+        p.data.buffLevel > 0 &&
+        (p.data.buffAppliedFromCycle === 0n ||
+          nowTs == null ||
+          BigInt(nowTs) >= p.data.buffAppliedFromCycle);
+      const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
+      const baseHp = p.data.hp;
+      const hpWithBuff = p.data.deactivated
+        ? baseHp
+        : (baseHp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
       const hpEffective = p.data.deactivated
-        ? p.data.hp
-        : (p.data.hp * bonusMultiplier * HP_SCALE) / BPS_DENOMINATOR;
-      const acc = p.data.deactivated ? p.data.finalAccMindPerHp : config.accMindPerHp;
+        ? baseHp
+        : (hpWithBuff * bonusMultiplier) / BPS_DENOMINATOR;
+      const acc =
+        p.data.deactivated || p.data.expired ? p.data.finalAccMindPerHp : config.accMindPerHp;
       const earned = (hpEffective * acc) / ACC_SCALE;
       const pending = earned > p.data.rewardDebt ? earned - p.data.rewardDebt : 0n;
-      const livePending = pending + (hpEffective * extraAccSinceRefresh) / ACC_SCALE;
+      const livePending =
+        p.data.deactivated || p.data.expired
+          ? pending
+          : pending + (hpEffective * extraAccSinceRefresh) / ACC_SCALE;
       return { position: p, pending, livePending };
     });
-  }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig]);
+  }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig, nowTs]);
 
   const totalPendingMind = pendingPositions.reduce((acc, entry) => acc + entry.pending, 0n);
   const livePendingMind =
@@ -1026,15 +1120,17 @@ export function PublicDashboard() {
     }
   }, [config, connection, nowTs, onClaimAll, publicKey]);
   const onDeactivate = async (posPubkey: string, ownerBytes: Uint8Array) => {
-    if (!anchorWallet || !config) return;
+    if (!anchorWallet || !config || !publicKey) return;
     const program = getProgram(connection, anchorWallet);
     await withTx("Deactivate position", async () => {
       const sig = await program.methods
         .deactivatePosition()
         .accounts({
+          owner: publicKey,
           config: deriveConfigPda(),
           position: new PublicKey(posPubkey),
           userProfile: deriveUserProfilePda(new PublicKey(ownerBytes)),
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
       return sig;
@@ -1239,13 +1335,17 @@ export function PublicDashboard() {
       setError("Leveling is not available yet. Ask an admin to initialize level config.");
       return;
     }
-    const activePositions = positions.filter((entry) => !entry.data.deactivated);
+    const activePositions = positions.filter(
+      (entry) => !entry.data.deactivated && !entry.data.expired && nowTs != null && nowTs < entry.data.endTs
+    );
     if (activePositions.length === 0) {
       setError("No active rigs found for leveling up.");
       return;
     }
     const activeHp = activePositions.reduce((acc, entry) => acc + entry.data.hp, 0n);
-    if (activeHp !== userProfile.activeHp) {
+    const profileHpScaled =
+      userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
+    if (activeHp !== profileHpScaled) {
       setError("Active rig list out of sync. Refresh and try again.");
       return;
     }
@@ -1315,11 +1415,6 @@ export function PublicDashboard() {
             <Card className="p-4">
               <div className="text-3xl font-semibold text-white">
                 <span>{formatFixed2(effectiveUserHpHundredths)} HP</span>
-                {bonusHpHundredths > 0n ? (
-                  <span className="ml-2 text-base font-semibold text-emerald-300">
-                    (+{formatFixed2(bonusHpHundredths)})
-                  </span>
-                ) : null}
               </div>
               <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Your HP</div>
             </Card>
@@ -1533,7 +1628,7 @@ export function PublicDashboard() {
                 </Button>
               </div>
             </div>
-            <div className="mt-4 grid max-h-[320px] gap-3 overflow-y-auto pr-2 sm:max-h-[440px]">
+            <div className="mt-4 grid max-h-[260px] gap-3 overflow-y-auto pr-2 sm:max-h-[440px]">
               {positions.length === 0 ? (
                 <div className="text-xs text-zinc-500">No positions yet.</div>
               ) : (
@@ -1542,12 +1637,34 @@ export function PublicDashboard() {
                   const remaining = nowTs ? Math.max(0, p.data.endTs - nowTs) : null;
                   const expired = nowTs != null && nowTs >= p.data.endTs;
                   const bonusMultiplier = BPS_DENOMINATOR + levelBonusBpsBig;
-                  const positionHpEffective = p.data.deactivated
-                    ? p.data.hp
-                    : (p.data.hp * bonusMultiplier * HP_SCALE) / BPS_DENOMINATOR;
-                  const positionHpLabel = p.data.deactivated
-                    ? formatFixed2(p.data.hp)
-                    : p.data.hp.toString();
+                  const rigType = p.data.hpScaled
+                    ? p.data.rigType
+                    : rigTypeFromDuration(
+                        p.data.startTs,
+                        p.data.endTs,
+                        config ? Number(config.secondsPerDay) : 0
+                      );
+                  const buffBpsBase = rigBuffBps(rigType, p.data.buffLevel);
+                  const buffApplied =
+                    p.data.buffLevel > 0 &&
+                    (p.data.buffAppliedFromCycle === 0n ||
+                      nowTs == null ||
+                      BigInt(nowTs) >= p.data.buffAppliedFromCycle);
+                  const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
+                  const buffedHp =
+                    p.data.deactivated || expired
+                      ? p.data.hp
+                      : (p.data.hp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
+                  const positionHpEffective =
+                    p.data.deactivated || expired
+                      ? p.data.hp
+                      : (buffedHp * bonusMultiplier) / BPS_DENOMINATOR;
+                  const positionHpLabel =
+                    p.data.deactivated || expired
+                      ? formatFixed2(p.data.hp)
+                      : formatFixed2(positionHpEffective);
+                  const positionRateHp =
+                    p.data.deactivated || expired ? 0n : positionHpEffective;
                   return (
                     <div key={p.pubkey} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                       <div className="flex items-center justify-between">
@@ -1563,7 +1680,7 @@ export function PublicDashboard() {
                         <div className="mt-2 text-[11px] text-zinc-500">
                           {networkHpHundredths > 0n
                             ? `Current rate: ${formatRoundedToken(
-                                ((config?.emissionPerSec ?? 0n) * 3_600n * positionHpEffective) /
+                                ((config?.emissionPerSec ?? 0n) * 3_600n * positionRateHp) /
                                   networkHpHundredths,
                                 mintDecimals.mind
                               )} MIND / h`

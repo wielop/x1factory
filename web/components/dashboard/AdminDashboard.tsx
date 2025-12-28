@@ -29,9 +29,11 @@ import {
   decodeMinerPositionAccount,
   decodeUserMiningProfileAccount,
   decodeUserStakeAccount,
-  MINER_POSITION_LEN,
+  MINER_POSITION_LEN_V1,
+  MINER_POSITION_LEN_V2,
   USER_PROFILE_LEN_V1,
   USER_PROFILE_LEN_V2,
+  USER_PROFILE_LEN_V3,
   USER_STAKE_LEN,
 } from "@/lib/decoders";
 
@@ -62,6 +64,39 @@ function levelBonusBps(level: number) {
     default:
       return 1000n;
   }
+}
+
+function rigTypeFromDuration(startTs: number, endTs: number, secondsPerDay: number) {
+  if (!Number.isFinite(secondsPerDay) || secondsPerDay <= 0) return 0;
+  const duration = Math.max(0, endTs - startTs);
+  const days = Math.round(duration / secondsPerDay);
+  switch (days) {
+    case 7:
+      return 0;
+    case 14:
+      return 1;
+    case 28:
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+function rigBuffBps(rigType: number, buffLevel: number) {
+  if (rigType === 0) return buffLevel >= 1 ? 100 : 0;
+  if (rigType === 1) {
+    if (buffLevel >= 3) return 350;
+    if (buffLevel === 2) return 200;
+    if (buffLevel === 1) return 100;
+    return 0;
+  }
+  if (rigType === 2) {
+    if (buffLevel >= 3) return 500;
+    if (buffLevel === 2) return 300;
+    if (buffLevel === 1) return 150;
+    return 0;
+  }
+  return 0;
 }
 
 export function AdminDashboard() {
@@ -183,10 +218,15 @@ export function AdminDashboard() {
       setMaxEffectiveHpUi(cfg.maxEffectiveHp.toString());
       try {
         const programId = getProgramId();
-        const [positions, stakes, profilesV1, profilesV2] = await Promise.all([
+        const [positionsV1, positionsV2, stakes, profilesV1, profilesV2, profilesV3] =
+          await Promise.all([
           connection.getProgramAccounts(programId, {
             commitment: "confirmed",
-            filters: [{ dataSize: MINER_POSITION_LEN }],
+            filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
+          }),
+          connection.getProgramAccounts(programId, {
+            commitment: "confirmed",
+            filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
           }),
           connection.getProgramAccounts(programId, {
             commitment: "confirmed",
@@ -200,6 +240,10 @@ export function AdminDashboard() {
             commitment: "confirmed",
             filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
           }),
+          connection.getProgramAccounts(programId, {
+            commitment: "confirmed",
+            filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
+          }),
         ]);
         const levels = new Map<string, number>();
         const loadProfile = (entry: (typeof profilesV1)[number]) => {
@@ -209,31 +253,48 @@ export function AdminDashboard() {
         };
         profilesV1.forEach(loadProfile);
         profilesV2.forEach(loadProfile);
+        profilesV3.forEach(loadProfile);
         const now = ts ?? Math.floor(Date.now() / 1000);
-        const map = new Map<string, { rigs: number; hp: bigint }>();
+        const positions = [...positionsV1, ...positionsV2];
+        const secondsPerDay = Number(cfg.secondsPerDay);
+        const map = new Map<string, { rigs: number; baseHp: bigint; effectiveHp: bigint }>();
         let totalRigs = 0;
-        let totalHp = 0n;
+        let totalEffectiveHp = 0n;
         for (const entry of positions) {
           const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
-          if (decoded.deactivated || decoded.endTs <= now) continue;
+          if (decoded.deactivated || decoded.expired || decoded.endTs <= now) continue;
           const ownerKey = new PublicKey(decoded.owner).toBase58();
-          const current = map.get(ownerKey) ?? { rigs: 0, hp: 0n };
+          const rigType = decoded.hpScaled
+            ? decoded.rigType
+            : rigTypeFromDuration(decoded.startTs, decoded.endTs, secondsPerDay);
+          const buffBpsBase = rigBuffBps(rigType, decoded.buffLevel);
+          const buffApplied =
+            decoded.buffLevel > 0 &&
+            (decoded.buffAppliedFromCycle === 0n ||
+              BigInt(now) >= decoded.buffAppliedFromCycle);
+          const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
+          const buffedHp = (decoded.hp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
+          const level = levels.get(ownerKey) ?? 1;
+          const bonus = levelBonusBps(level);
+          const effectiveHp = (buffedHp * (BPS_DENOMINATOR + bonus)) / BPS_DENOMINATOR;
+          const current = map.get(ownerKey) ?? { rigs: 0, baseHp: 0n, effectiveHp: 0n };
           current.rigs += 1;
-          current.hp += decoded.hp;
+          current.baseHp += decoded.hp;
+          current.effectiveHp += effectiveHp;
           map.set(ownerKey, current);
           totalRigs += 1;
-          totalHp += decoded.hp;
+          totalEffectiveHp += effectiveHp;
         }
         const networkHp =
-          cfg.networkHpActive > 0n ? cfg.networkHpActive : totalHp * HP_SCALE;
+          cfg.networkHpActive > 0n ? cfg.networkHpActive : totalEffectiveHp;
         const list = Array.from(map.entries())
           .map(([owner, value]) => {
             const level = levels.get(owner) ?? 1;
             const sharePct =
               networkHp > 0n
-                ? Number((value.hp * HP_SCALE * 10_000n) / networkHp) / 100
+                ? Number((value.effectiveHp * 10_000n) / networkHp) / 100
                 : 0;
-            return { owner, rigs: value.rigs, hp: value.hp, level, sharePct };
+            return { owner, rigs: value.rigs, hp: value.effectiveHp, level, sharePct };
           })
           .sort((a, b) => (b.rigs !== a.rigs ? b.rigs - a.rigs : Number(b.hp - a.hp)));
         setActiveMiners(list);
@@ -528,10 +589,15 @@ export function AdminDashboard() {
     await withTx("Recalc network HP", async () => {
       const programId = getProgramId();
       const now = await fetchClockUnixTs(connection);
-      const [positions, profilesV1, profilesV2] = await Promise.all([
+      const [positionsV1, positionsV2, profilesV1, profilesV2, profilesV3] =
+        await Promise.all([
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
-          filters: [{ dataSize: MINER_POSITION_LEN }],
+          filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
         }),
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
@@ -540,6 +606,10 @@ export function AdminDashboard() {
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
           filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
         }),
       ]);
 
@@ -551,21 +621,34 @@ export function AdminDashboard() {
       };
       profilesV1.forEach(loadProfile);
       profilesV2.forEach(loadProfile);
+      profilesV3.forEach(loadProfile);
 
-      const ownerBaseHp = new Map<string, bigint>();
+      const positions = [...positionsV1, ...positionsV2];
+      const secondsPerDay = Number(config?.secondsPerDay ?? 0);
+      const ownerBuffedHp = new Map<string, bigint>();
       for (const entry of positions) {
         const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
-        if (decoded.deactivated || decoded.endTs <= now) continue;
+        if (decoded.deactivated || decoded.expired || decoded.endTs <= now) continue;
         const ownerKey = new PublicKey(decoded.owner).toBase58();
-        ownerBaseHp.set(ownerKey, (ownerBaseHp.get(ownerKey) ?? 0n) + decoded.hp);
+        const rigType = decoded.hpScaled
+          ? decoded.rigType
+          : rigTypeFromDuration(decoded.startTs, decoded.endTs, secondsPerDay);
+        const buffBpsBase = rigBuffBps(rigType, decoded.buffLevel);
+        const buffApplied =
+          decoded.buffLevel > 0 &&
+          (decoded.buffAppliedFromCycle === 0n ||
+            BigInt(now) >= decoded.buffAppliedFromCycle);
+        const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
+        const buffedHp = (decoded.hp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
+        ownerBuffedHp.set(ownerKey, (ownerBuffedHp.get(ownerKey) ?? 0n) + buffedHp);
       }
 
       let totalEffectiveHp = 0n;
-      for (const [ownerKey, baseHp] of ownerBaseHp) {
+      for (const [ownerKey, buffedHp] of ownerBuffedHp) {
         const level = levels.get(ownerKey) ?? 1;
         const bonus = levelBonusBps(level);
         const effective =
-          baseHp * (BPS_DENOMINATOR + bonus) * HP_SCALE / BPS_DENOMINATOR;
+          (buffedHp * (BPS_DENOMINATOR + bonus)) / BPS_DENOMINATOR;
         totalEffectiveHp += effective;
       }
 
@@ -652,7 +735,7 @@ export function AdminDashboard() {
                 >
                   <div className="font-mono break-all">{entry.owner}</div>
                   <div className="text-zinc-500">
-                    Rigs: {entry.rigs} | HP: {entry.hp.toString()} | Lvl: {entry.level} | Share:{" "}
+                    Rigs: {entry.rigs} | HP: {formatHp(entry.hp)} | Lvl: {entry.level} | Share:{" "}
                     {entry.sharePct.toFixed(2)}%
                   </div>
                 </div>

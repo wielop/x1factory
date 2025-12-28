@@ -6,6 +6,11 @@ export type DecodedMinerPosition = {
   rewardDebt: bigint;
   finalAccMindPerHp: bigint;
   deactivated: boolean;
+  rigType: number;
+  buffLevel: number;
+  hpScaled: boolean;
+  expired: boolean;
+  buffAppliedFromCycle: bigint;
 };
 
 export type DecodedUserMiningProfile = {
@@ -17,6 +22,7 @@ export type DecodedUserMiningProfile = {
   badgeBonusBps: number;
   level: number;
   lastXpUpdateTs: number;
+  hpScaled: boolean;
 };
 
 export type DecodedUserStake = {
@@ -39,13 +45,15 @@ function readU128LE(data: Buffer, offset: number): bigint {
   return lo + (hi << 64n);
 }
 
-export const MINER_POSITION_LEN = 8 + 32 + 8 + 8 + 8 + 16 + 16 + 1 + 1;
+export const MINER_POSITION_LEN_V1 = 8 + 32 + 8 + 8 + 8 + 16 + 16 + 1 + 1;
+export const MINER_POSITION_LEN_V2 = MINER_POSITION_LEN_V1 + 1 + 1 + 1 + 1 + 8;
 export const USER_PROFILE_LEN_V1 = 8 + 32 + 8 + 8 + 8 + 1 + 2 + 1;
 export const USER_PROFILE_LEN_V2 = USER_PROFILE_LEN_V1 + 1 + 8;
+export const USER_PROFILE_LEN_V3 = USER_PROFILE_LEN_V2 + 1;
 export const USER_STAKE_LEN = 8 + 32 + 8 + 16 + 8 + 1;
 
 export function decodeMinerPositionAccount(data: Buffer): DecodedMinerPosition {
-  assertMinLen(data, MINER_POSITION_LEN, "MinerPosition");
+  assertMinLen(data, MINER_POSITION_LEN_V1, "MinerPosition");
   let offset = 8;
   const owner = data.subarray(offset, offset + 32);
   offset += 32;
@@ -60,14 +68,48 @@ export function decodeMinerPositionAccount(data: Buffer): DecodedMinerPosition {
   const finalAccMindPerHp = readU128LE(data, offset);
   offset += 16;
   const deactivated = data.readUInt8(offset) !== 0;
+  offset += 1;
+  offset += 1;
+  let rigType = 0;
+  let buffLevel = 0;
+  let hpScaled = false;
+  let expired = false;
+  let buffAppliedFromCycle = 0n;
+  if (data.length >= MINER_POSITION_LEN_V2) {
+    rigType = data.readUInt8(offset);
+    offset += 1;
+    buffLevel = data.readUInt8(offset);
+    offset += 1;
+    hpScaled = data.readUInt8(offset) !== 0;
+    offset += 1;
+    expired = data.readUInt8(offset) !== 0;
+    offset += 1;
+    buffAppliedFromCycle = data.readBigUInt64LE(offset);
+    offset += 8;
+  }
   if (deactivated) {
     if (hp & HP_SCALED_MARKER) {
       hp = hp & ~HP_SCALED_MARKER;
     } else {
       hp = hp * HP_SCALE;
     }
+  } else if (!hpScaled) {
+    hp = hp * HP_SCALE;
   }
-  return { owner, hp, startTs, endTs, rewardDebt, finalAccMindPerHp, deactivated };
+  return {
+    owner,
+    hp,
+    startTs,
+    endTs,
+    rewardDebt,
+    finalAccMindPerHp,
+    deactivated,
+    rigType,
+    buffLevel,
+    hpScaled,
+    expired,
+    buffAppliedFromCycle,
+  };
 }
 
 export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningProfile {
@@ -88,10 +130,15 @@ export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningP
   offset += 1;
   let level = 1;
   let lastXpUpdateTs = 0;
+  let hpScaled = false;
   if (data.length >= USER_PROFILE_LEN_V2) {
     level = data.readUInt8(offset);
     offset += 1;
     lastXpUpdateTs = Number(data.readBigInt64LE(offset));
+    offset += 8;
+  }
+  if (data.length >= USER_PROFILE_LEN_V3) {
+    hpScaled = data.readUInt8(offset) !== 0;
   }
   return {
     owner,
@@ -102,6 +149,7 @@ export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningP
     badgeBonusBps,
     level,
     lastXpUpdateTs,
+    hpScaled,
   };
 }
 

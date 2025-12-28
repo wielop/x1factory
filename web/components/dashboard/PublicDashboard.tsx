@@ -1757,6 +1757,11 @@ export function PublicDashboard() {
                       ? "text-amber-300"
                       : "text-zinc-500"
                     : "text-zinc-400";
+                  const buffPending =
+                    p.data.buffLevel > 0 &&
+                    p.data.buffAppliedFromCycle > 0n &&
+                    now != null &&
+                    BigInt(now) < p.data.buffAppliedFromCycle;
                   const showRenew =
                     now != null &&
                     !p.data.deactivated &&
@@ -1809,6 +1814,11 @@ export function PublicDashboard() {
                       <div className={`mt-2 text-xs ${timeClass}`} title={expiryTooltip}>
                         {timeLine}
                       </div>
+                      {buffPending ? (
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          Buff aktywny od nastepnego cyklu.
+                        </div>
+                      ) : null}
                       {inGrace ? (
                         <div className="mt-1 text-[11px] text-zinc-500">
                           You can renew this rig and keep your bonus.

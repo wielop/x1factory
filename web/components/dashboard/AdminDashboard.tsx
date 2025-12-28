@@ -27,20 +27,41 @@ import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import {
   decodeMinerPositionAccount,
+  decodeUserMiningProfileAccount,
   decodeUserStakeAccount,
   MINER_POSITION_LEN,
+  USER_PROFILE_LEN_V1,
+  USER_PROFILE_LEN_V2,
   USER_STAKE_LEN,
 } from "@/lib/decoders";
 
 const DAY_SECONDS = 86_400n;
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
+const BPS_DENOMINATOR = 10_000n;
 const HP_SCALE = 100n;
 
 function formatHp(value: bigint) {
   const whole = value / HP_SCALE;
   const frac = value % HP_SCALE;
   return `${whole.toString()}.${frac.toString().padStart(2, "0")}`;
+}
+
+function levelBonusBps(level: number) {
+  switch (level) {
+    case 1:
+      return 0n;
+    case 2:
+      return 160n;
+    case 3:
+      return 340n;
+    case 4:
+      return 550n;
+    case 5:
+      return 780n;
+    default:
+      return 1000n;
+  }
 }
 
 export function AdminDashboard() {
@@ -282,6 +303,8 @@ export function AdminDashboard() {
         return "admin_withdraw_treasury";
       case "Use native XNT vaults":
         return "admin_sync_vaults";
+      case "Recalc network HP":
+        return "admin_set_network_hp_active";
       default:
         return "admin_other";
     }
@@ -470,6 +493,59 @@ export function AdminDashboard() {
     });
   };
 
+  const onRecalcNetworkHp = async () => {
+    if (!anchorWallet || !config || !publicKey) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Recalc network HP", async () => {
+      const programId = getProgramId();
+      const now = await fetchClockUnixTs(connection);
+      const [positions, profilesV1, profilesV2] = await Promise.all([
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: MINER_POSITION_LEN }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V1 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
+        }),
+      ]);
+
+      const levels = new Map<string, number>();
+      const loadProfile = (entry: (typeof profilesV1)[number]) => {
+        const decoded = decodeUserMiningProfileAccount(Buffer.from(entry.account.data));
+        const ownerKey = new PublicKey(decoded.owner).toBase58();
+        levels.set(ownerKey, decoded.level || 1);
+      };
+      profilesV1.forEach(loadProfile);
+      profilesV2.forEach(loadProfile);
+
+      let totalEffectiveHp = 0n;
+      for (const entry of positions) {
+        const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
+        if (decoded.deactivated || decoded.endTs <= now) continue;
+        const ownerKey = new PublicKey(decoded.owner).toBase58();
+        const level = levels.get(ownerKey) ?? 1;
+        const bonus = levelBonusBps(level);
+        const effective =
+          decoded.hp * (BPS_DENOMINATOR + bonus) * HP_SCALE / BPS_DENOMINATOR;
+        totalEffectiveHp += effective;
+      }
+
+      const sig = await program.methods
+        .adminSetNetworkHpActive(new BN(totalEffectiveHp.toString()))
+        .accounts({
+          admin: publicKey,
+          config: deriveConfigPda(),
+        })
+        .rpc();
+      return sig;
+    });
+  };
+
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -613,6 +689,16 @@ export function AdminDashboard() {
             </div>
             <Button className="mt-4" onClick={() => void onUseNativeVaults()} disabled={!isAdmin || busy != null}>
               {busy === "Use native XNT vaults" ? "Submitting..." : "Sync native vaults"}
+            </Button>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Recalculate network HP</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Rebuilds total network HP from active rigs and current level bonuses.
+            </div>
+            <Button className="mt-4" onClick={() => void onRecalcNetworkHp()} disabled={!isAdmin || busy != null}>
+              {busy === "Recalc network HP" ? "Submitting..." : "Recalc network HP"}
             </Button>
           </Card>
 

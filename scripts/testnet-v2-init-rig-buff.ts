@@ -12,6 +12,7 @@ import dotenv from "dotenv";
 import {
   deriveConfigPda,
   deriveLevelConfigPda,
+  fetchConfig,
   getProgram,
   getProvider,
 } from "./v2-common";
@@ -50,7 +51,10 @@ const main = async () => {
   if (!configInfo) {
     throw new Error("Config not found. Run scripts/testnet-v2-init.ts first.");
   }
-  const cfg = await program.account.config.fetch(configPda);
+  const cfg = await fetchConfig(connection);
+  if (!cfg) {
+    throw new Error("Failed to load config after initialization.");
+  }
 
   const rigBuffInfo = await connection.getAccountInfo(rigBuffConfigPda, "confirmed");
   if (rigBuffInfo) {

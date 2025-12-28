@@ -1845,8 +1845,6 @@ dependencies = [
 [[package]]
 name = "solana-program"
 version = "1.16.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20c16757f43d4384907f6e81924e155b8bd8228efcdcf9ea38bd4e18ea100804"
 dependencies = [
  "ark-bn254",
  "ark-ec",

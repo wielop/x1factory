@@ -23,3 +23,4 @@ proc-macro-crate = { path = "vendor/proc-macro-crate-3.4.0" }
 indexmap = { path = "vendor/indexmap-2.0.0" }
 toml = { path = "vendor/toml-0.8.12" }
 proc-macro-error = { path = "vendor/proc-macro-error-1.0.4" }
+solana-program = { path = "vendor/solana-program-1.16.27" }

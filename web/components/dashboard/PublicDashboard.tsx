@@ -254,7 +254,12 @@ export function PublicDashboard() {
   const { publicKey: walletPublicKey } = useWallet();
   const anchorWallet = useAnchorWallet();
   const viewPublicKey = useMemo(() => {
-    const raw = process.env.NEXT_PUBLIC_E2E_WALLET?.trim();
+    const fromEnv = process.env.NEXT_PUBLIC_E2E_WALLET?.trim();
+    const fromQuery =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("view")
+        : null;
+    const raw = (fromQuery || fromEnv || "").trim();
     if (!raw) return null;
     try {
       return new PublicKey(raw);

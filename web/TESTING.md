@@ -9,7 +9,6 @@
 cd web
 NEXT_PUBLIC_RPC_URL=https://rpc.testnet.x1.xyz \\
 NEXT_PUBLIC_PROGRAM_ID=uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw \\
-NEXT_PUBLIC_E2E_WALLET=<WALLET_PUBKEY> \\
 yarn dev
 ```
 
@@ -22,5 +21,5 @@ yarn test:e2e
 ```
 
 ### Notes
-- `NEXT_PUBLIC_E2E_WALLET` enables read-only wallet view (no transactions).
+- Append `?view=<WALLET_PUBKEY>` to the URL to view a wallet in read-only mode.
 - `E2E_WALLET` is used by tests to compute on-chain expectations.

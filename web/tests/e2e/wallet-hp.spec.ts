@@ -15,7 +15,7 @@ test("your HP and share match on-chain", async ({ page }) => {
   if (!wallet) return;
   const snapshot = await fetchWalletHp(wallet);
 
-  await page.goto("/");
+  await page.goto(`/?view=${wallet}`);
   await expect(page.getByTestId("your-hp")).toContainText("HP");
   await expect(page.getByTestId("your-base-hp")).not.toHaveText("-");
 

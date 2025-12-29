@@ -187,6 +187,7 @@ interface RigPosition {
   buffLevel: number;
   buffAppliedFromCycle: number;
   expiresAtTs: number;
+  baseHpHundredths: bigint;
 }
 
 interface AccountLevelInfo {
@@ -280,9 +281,13 @@ function getRigBuffBpsNow(position: RigPosition, now: number) {
 }
 
 function getRigEffectiveHpNow(position: RigPosition, now: number) {
-  const baseHp = BASE_HP_BY_TYPE[position.type] ?? 0;
+  const baseHundredths =
+    position.baseHpHundredths ??
+    BigInt(Math.round((BASE_HP_BY_TYPE[position.type] ?? 0) * 100));
   const buffBpsNow = getRigBuffBpsNow(position, now);
-  return (baseHp * (10_000 + buffBpsNow)) / 10_000;
+  const buffedHundredths =
+    (baseHundredths * BigInt(10_000 + buffBpsNow)) / 10_000n;
+  return Number(buffedHundredths) / 100;
 }
 
 function getRigEffectiveHpNextCycle(position: RigPosition) {
@@ -2271,6 +2276,7 @@ export function PublicDashboard() {
                     buffLevel: p.data.buffLevel,
                     buffAppliedFromCycle: Number(p.data.buffAppliedFromCycle),
                     expiresAtTs: p.data.endTs,
+                    baseHpHundredths: p.data.hp,
                   };
                   const buffBpsBase = rigBuffBps(rigType, p.data.buffLevel);
                   const buffPctLabel =

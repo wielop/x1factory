@@ -205,20 +205,16 @@ function formatRoundedToken(amountBase: bigint, decimals: number, digits = 2) {
   });
 }
 
-function formatTokenDynamic(amountBase: bigint, decimals: number) {
-  if (amountBase === 0n) return "0.00";
-  const full = formatTokenAmount(amountBase, decimals, Math.min(decimals, 8));
-  const numeric = Number(full);
-  if (!Number.isFinite(numeric)) {
-    return full;
-  }
-  if (numeric > 0 && numeric < 0.000001) {
+function formatTokenDynamicUi(amountUi: number) {
+  if (!Number.isFinite(amountUi)) return "-";
+  if (amountUi === 0) return "0.00";
+  if (amountUi > 0 && amountUi < 0.000001) {
     return "<0.000001";
   }
   let digits = 2;
-  if (numeric < 0.001) digits = 6;
-  else if (numeric < 0.01) digits = 4;
-  return numeric.toLocaleString("en-US", {
+  if (amountUi < 0.001) digits = 6;
+  else if (amountUi < 0.01) digits = 4;
+  return amountUi.toLocaleString("en-US", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
@@ -2001,24 +1997,26 @@ export function PublicDashboard() {
                     buffCostBase != null && mintDecimals
                       ? formatRoundedToken(buffCostBase, mintDecimals.mind, 2)
                       : "-";
-                  const buffedCurrentScaled =
-                    (baseHpScaled * BigInt(10_000 + buffBpsCurrent)) / 10_000n;
-                  const buffedNextScaled =
-                    (baseHpScaled * BigInt(10_000 + buffBpsNext)) / 10_000n;
-                  const extraHpScaled =
-                    buffedNextScaled > buffedCurrentScaled
-                      ? buffedNextScaled - buffedCurrentScaled
-                      : 0n;
-                  const extraYieldBase =
+                  const mindPerHpPerDayUi =
                     rigBuffConfig && mintDecimals
-                      ? (extraHpScaled *
-                          rigBuffConfig.mindPerHpPerDay *
-                          BigInt(contractMeta.durationDays)) /
-                        HP_SCALE
+                      ? Number(
+                          formatTokenAmount(
+                            rigBuffConfig.mindPerHpPerDay,
+                            mintDecimals.mind,
+                            Math.min(mintDecimals.mind, 8)
+                          )
+                        )
+                      : null;
+                  const extraHpUi = hasNextBuffLevel
+                    ? ((BASE_HP_BY_TYPE[rigKind] ?? 0) * (buffBpsNext - buffBpsCurrent)) / 10_000
+                    : 0;
+                  const extraYieldUi =
+                    mindPerHpPerDayUi != null
+                      ? extraHpUi * mindPerHpPerDayUi * contractMeta.durationDays
                       : null;
                   const extraYieldLabel =
-                    extraYieldBase != null && mintDecimals
-                      ? formatTokenDynamic(extraYieldBase, mintDecimals.mind)
+                    extraYieldUi != null
+                      ? formatTokenDynamicUi(extraYieldUi)
                       : "-";
                   const buffLevelProgress =
                     maxBuffLevel > 0

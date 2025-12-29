@@ -813,14 +813,11 @@ export function PublicDashboard() {
   const networkBaseHpLabel = formatFixed2(networkBaseHpHundredths);
   const networkRigBuffBonusLabel = formatFixed2(networkRigBuffBonusHundredths);
   const networkAccountBonusLabel = formatFixed2(networkAccountBonusHundredths);
-  const sharePct =
-    networkHpHundredths > 0n
-      ? Number((effectiveUserHpHundredths * 10_000n) / networkHpHundredths) / 100
-      : 0;
-  const sharePctFull =
-    networkHpHundredths > 0n
-      ? Number((effectiveUserHpHundredths * 1_000_000n) / networkHpHundredths) / 10_000
-      : 0;
+  const networkHpUi = networkHpHundredths > 0n ? Number(networkHpHundredths) / 100 : 0;
+  const sharePctRaw =
+    networkHpUi > 0 ? (hpFinal / networkHpUi) * 100 : 0;
+  const sharePct = Number.isFinite(sharePctRaw) ? sharePctRaw : 0;
+  const sharePctFull = sharePct;
   const shareTooltip =
     "You receive rewards continuously based on your current share. Your share may change when others join or expire.";
   const miningStatusText =

@@ -665,8 +665,8 @@ export function PublicDashboard() {
     );
   }, [buffedUserHpHundredths, levelBonusBpsBig]);
   const bonusHpHundredths =
-    effectiveUserHpHundredths > buffedUserHpHundredths
-      ? effectiveUserHpHundredths - buffedUserHpHundredths
+    effectiveUserHpHundredths > baseUserHpHundredths
+      ? effectiveUserHpHundredths - baseUserHpHundredths
       : 0n;
   const bonusHpLabel = bonusHpHundredths > 0n ? formatBonusHp(bonusHpHundredths) : null;
   const networkHp = config?.networkHpActive ?? 0n;

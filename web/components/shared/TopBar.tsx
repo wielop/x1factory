@@ -64,14 +64,6 @@ export function TopBar({
           >
             {progressionLabel ?? "Progression"}
           </Link>
-          <Link
-            href="https://t.me/+ME_vsXeLLcMyMmE0"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-ink/70 px-3 text-sm font-medium text-zinc-100 transition hover:border-cyan-300/40 hover:bg-ink/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
-          >
-            Telegram
-          </Link>
           {link ? (
             <Link className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300 hover:text-white" href={link.href}>
               {link.label}

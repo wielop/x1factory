@@ -34,7 +34,7 @@ const XNT_BASE: u64 = 1_000_000_000;
 const MIND_DECIMALS: u64 = 1_000_000_000;
 const MIND_DECIMALS_U8: u8 = 9;
 const XP_SECONDS_PER_POINT_DENOMINATOR: u64 = 36_000;
-const RIG_BUFF_CAP_BPS: u16 = 850; // 8.5%
+const RIG_BUFF_CAP_BPS: u16 = 1_500; // 15%
 
 #[program]
 pub mod mining_v2 {

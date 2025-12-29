@@ -23,6 +23,7 @@ Rigs / levels / buffs
 - Contract terms: default (7/14/28 days, 60/700/1500 HP, default base costs)
 - Level thresholds/costs/bonus: default
 - Rig buff config: default (mind_per_hp_per_day + cap)
+- Rig buff cap: 15%
 
 Staking / epochs
 - roll_epoch: admin-only; fixed epoch length = seconds_per_day * 14

@@ -1217,7 +1217,7 @@ export function PublicDashboard() {
         errorMsg = formatError(e);
         if (label === "Renew with buff" && errorMsg.includes("Rig buff cap exceeded")) {
           errorMsg =
-            "Max rig buff reached (+8.5% HP). You can still renew this rig, but further buffs won't apply.";
+            "Max rig buff reached (+15% HP). You can still renew this rig, but further buffs won't apply.";
         }
         setError(errorMsg);
       } finally {
@@ -1677,7 +1677,7 @@ export function PublicDashboard() {
               </div>
               <div
                 className="mt-3 rounded-xl border border-white/10 bg-black/30 p-2"
-                title="Rig buffs can increase your total HP by up to +8.5%. Your account level bonus is applied on top of that separate cap."
+                title="Rig buffs can increase your total HP by up to +15%. Your account level bonus is applied on top of that separate cap."
               >
                 <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                   <span>Rig buff cap</span>

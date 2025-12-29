@@ -205,6 +205,25 @@ function formatRoundedToken(amountBase: bigint, decimals: number, digits = 2) {
   });
 }
 
+function formatTokenDynamic(amountBase: bigint, decimals: number) {
+  if (amountBase === 0n) return "0.00";
+  const full = formatTokenAmount(amountBase, decimals, Math.min(decimals, 8));
+  const numeric = Number(full);
+  if (!Number.isFinite(numeric)) {
+    return full;
+  }
+  if (numeric > 0 && numeric < 0.000001) {
+    return "<0.000001";
+  }
+  let digits = 2;
+  if (numeric < 0.001) digits = 6;
+  else if (numeric < 0.01) digits = 4;
+  return numeric.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 function formatPercent(value: number | null, digits = 2) {
   if (value == null || !Number.isFinite(value)) return "-";
   return `${value.toLocaleString("en-US", {
@@ -1999,7 +2018,7 @@ export function PublicDashboard() {
                       : null;
                   const extraYieldLabel =
                     extraYieldBase != null && mintDecimals
-                      ? formatRoundedToken(extraYieldBase, mintDecimals.mind, 2)
+                      ? formatTokenDynamic(extraYieldBase, mintDecimals.mind)
                       : "-";
                   const buffLevelProgress =
                     maxBuffLevel > 0

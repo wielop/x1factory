@@ -2286,11 +2286,14 @@ export function PublicDashboard() {
                           maximumFractionDigits: 1,
                         })}%`
                       : null;
+                  const buffEligible = !p.data.deactivated && !expired;
                   const buffActive =
+                    buffEligible &&
                     p.data.buffLevel > 0 &&
                     (p.data.buffAppliedFromCycle === 0n ||
                       (now != null && BigInt(now) >= p.data.buffAppliedFromCycle));
                   const buffScheduled =
+                    buffEligible &&
                     p.data.buffLevel > 0 &&
                     p.data.buffAppliedFromCycle > 0n &&
                     (now == null || BigInt(now) < p.data.buffAppliedFromCycle);
@@ -2348,8 +2351,9 @@ export function PublicDashboard() {
                   const buffIncreaseLabel = hasNextBuffLevel
                     ? `+${(buffIncreaseBps / 100).toFixed(1)}%`
                     : null;
-                  const hpNow = now != null ? getRigEffectiveHpNow(rigPosition, now) : null;
-                  const hpNext = getRigEffectiveHpNextCycle(rigPosition);
+                  const hpNow =
+                    now != null && buffEligible ? getRigEffectiveHpNow(rigPosition, now) : 0;
+                  const hpNext = buffEligible ? getRigEffectiveHpNextCycle(rigPosition) : 0;
                   const hpNowLabel = hpNow != null ? formatFixed2Number(hpNow) : "-";
                   const hpNextLabel = formatFixed2Number(hpNext);
                   const hpNextWithoutLabel = formatFixed2Number(hpNext);

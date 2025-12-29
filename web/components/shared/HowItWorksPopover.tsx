@@ -42,16 +42,16 @@ export function HowItWorksPopover() {
             <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">MINING FLOW</div>
             <ol className="mt-3 space-y-2 text-xs text-zinc-300">
               <li>
-                1. Buy a mining contract to get hashpower (HP) for a set time. Your HP stays fixed, but your share can
-                change as others join or expire.
+                1. Lock a mining rig to get hashpower (HP) for a fixed term. Your HP is fixed, but your share moves as
+                the network grows or shrinks.
               </li>
-              <li>2. Global MIND emission is split pro-rata across all active HP.</li>
+              <li>2. Daily MIND emission is split pro-rata across all active HP.</li>
               <li>3. If network HP is zero, emission pauses.</li>
-              <li>4. Claim MIND anytime.</li>
-              <li>5. When a contract expires, you can deactivate it to free up HP.</li>
-              <li>6. Stake MIND to earn XNT rewards.</li>
-              <li>7. Rewards are distributed over time, based on your share of the pool.</li>
-              <li>8. Badges can boost staking rewards — up to a +20% bonus cap.</li>
+              <li>4. Claim MIND anytime. Your rigs keep running.</li>
+              <li>5. When a rig expires, renew it or deactivate to free up HP.</li>
+              <li>6. Stake MIND to earn XNT rewards from the pool.</li>
+              <li>7. Rewards stream over time based on your share of the pool.</li>
+              <li>8. Badges can boost staking rewards up to a +20% cap.</li>
             </ol>
           </div>
         ) : (
@@ -64,41 +64,40 @@ export function HowItWorksPopover() {
                 <div className="font-semibold text-zinc-200">1) Connect wallet & get XNT</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
                   <li>Connect your X1 wallet.</li>
-                  <li>Make sure you have some XNT to pay for mining contracts and a bit of XNT for gas.</li>
+                  <li>Keep some XNT for rigs and a little extra for gas.</li>
                 </ul>
               </div>
               <div>
                 <div className="font-semibold text-zinc-200">2) Buy your first rig</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>Go to “Choose a rig” and pick Starter / Pro / Industrial.</li>
-                  <li>Check the Selected box to see hashpower, duration and cost.</li>
-                  <li>Click “Start mining” to launch the rig.</li>
+                  <li>Go to "Choose a rig" and pick Starter / Pro / Industrial.</li>
+                  <li>Review HP, duration, and cost in the Selected card.</li>
+                  <li>Click "Start mining" to launch the rig.</li>
                 </ul>
               </div>
               <div>
                 <div className="font-semibold text-zinc-200">3) Watch your share & emission</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>On the main dashboard you’ll see: Your HP, Network HP, Your share and Est. MIND/day.</li>
-                  <li>Your share can change when other users start or finish their rigs.</li>
+                  <li>Main dashboard shows Your HP, Network HP, Your share, and Est. MIND/day.</li>
+                  <li>Your share moves as other miners start or finish rigs.</li>
                 </ul>
               </div>
               <div>
                 <div className="font-semibold text-zinc-200">4) Claim MIND</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>As your rig mines, MIND builds up in your rigs section.</li>
-                  <li>Use “Start Claim” to collect rewards from all active rigs.</li>
-                  <li>Claiming does not stop your rigs.</li>
+                  <li>As rigs run, MIND accrues in your rigs section.</li>
+                  <li>Use "Start Claim" to collect from all active rigs.</li>
+                  <li>Claiming does not stop mining.</li>
                 </ul>
               </div>
               <div>
                 <div className="font-semibold text-zinc-200">5) Stake MIND → earn XNT</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>In the Staking section, enter how much MIND you want to stake and click “Stake”.</li>
+                  <li>In Staking, enter how much MIND you want to stake and click "Stake".</li>
                   <li>
-                    Rewards are funded from mining purchases (30% of revenue) and distributed over time based on your
-                    share of the pool.
+                    30% of mining revenue funds the pool and rewards stream over time based on your share.
                   </li>
-                  <li>You can claim XNT anytime with “Claim XNT”.</li>
+                  <li>Claim XNT anytime with "Claim XNT".</li>
                 </ul>
               </div>
               <div>
@@ -113,9 +112,9 @@ export function HowItWorksPopover() {
               <div>
                 <div className="font-semibold text-zinc-200">Quick recap</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>Mining = XNT → time-limited hashpower → you earn MIND.</li>
-                  <li>Staking = MIND → staking pool → you earn XNT.</li>
-                  <li>No fixed APR, no magic yield – everything comes from real payments into the system.</li>
+                  <li>Mining: XNT → time-limited HP → earn MIND.</li>
+                  <li>Staking: MIND → pool share → earn XNT.</li>
+                  <li>No fixed APR. Rewards come from real demand in the system.</li>
                 </ul>
               </div>
             </div>

@@ -11,7 +11,6 @@ import {
   transfer,
 } from "@solana/spl-token";
 import {
-  BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -109,9 +108,12 @@ describe("mining_v2", () => {
   const idl = normalizeIdl(miningV2Idl as anchor.Idl);
   idl.address = programId.toBase58();
   const program = new Program(idl, provider) as Program<MiningV2>;
+  const upgradeableLoaderId = new PublicKey(
+    "BPFLoaderUpgradeab1e11111111111111111111111"
+  );
   const [programData] = PublicKey.findProgramAddressSync(
     [programId.toBuffer()],
-    BPF_LOADER_UPGRADEABLE_PROGRAM_ID
+    upgradeableLoaderId
   );
 
   const admin = (provider.wallet as anchor.Wallet & { payer: Keypair }).payer;

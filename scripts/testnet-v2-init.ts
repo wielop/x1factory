@@ -8,13 +8,7 @@ import {
   getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import {
-  BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-} from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import dotenv from "dotenv";
 import {
   deriveConfigPda,
@@ -34,6 +28,9 @@ const toBaseUnits = (value: bigint, decimals: number) =>
   value * 10n ** BigInt(decimals);
 
 const XNT_DECIMALS = 9;
+const UPGRADEABLE_LOADER_ID = new PublicKey(
+  "BPFLoaderUpgradeab1e11111111111111111111111"
+);
 const INCINERATOR = new PublicKey("1nc1nerator11111111111111111111111111111111");
 
 const parseBigInt = (value: string | undefined, fallback: bigint) => {
@@ -56,7 +53,7 @@ const main = async () => {
   const treasuryVault = deriveTreasuryVaultPda();
   const [programData] = PublicKey.findProgramAddressSync(
     [program.programId.toBuffer()],
-    BPF_LOADER_UPGRADEABLE_PROGRAM_ID
+    UPGRADEABLE_LOADER_ID
   );
 
   let cfg = await fetchConfig(connection);

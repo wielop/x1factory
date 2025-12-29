@@ -16,6 +16,11 @@
           "isSigner": true
         },
         {
+          "name": "programData",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
           "name": "vaultAuthority",
           "isMut": false,
           "isSigner": false
@@ -75,7 +80,7 @@
       "accounts": [
         {
           "name": "admin",
-          "isMut": true,
+          "isMut": false,
           "isSigner": true
         },
         {
@@ -628,6 +633,11 @@
     {
       "name": "rollEpoch",
       "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
         {
           "name": "config",
           "isMut": true,

@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::Discriminator;
 use anchor_lang::system_program::{self, Transfer as SystemTransfer};
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
+use solana_program::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
 use solana_program::program_option::COption;
 
 declare_id!("uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw");
@@ -28,8 +29,10 @@ const STAKING_SHARE_BPS: u128 = 3_000; // 30%
 const BADGE_BONUS_CAP_BPS: u16 = 2_000; // 20%
 const LEVEL_BONUS_CAP_BPS: u16 = 1_000; // 10%
 const UNSTAKE_BURN_BPS: u128 = 300; // 3%
+const STAKING_EPOCH_DAYS: u64 = 14;
 const XNT_BASE: u64 = 1_000_000_000;
 const MIND_DECIMALS: u64 = 1_000_000_000;
+const MIND_DECIMALS_U8: u8 = 9;
 const XP_SECONDS_PER_POINT_DENOMINATOR: u64 = 36_000;
 const RIG_BUFF_CAP_BPS: u16 = 850; // 8.5%
 
@@ -46,11 +49,16 @@ pub mod mining_v2 {
             params.seconds_per_day
         };
         require!(seconds_per_day > 0, ErrorCode::InvalidAmount);
+        assert_upgrade_authority(&ctx.accounts.program_data, ctx.accounts.admin.key())?;
 
         require!(
             ctx.accounts.mind_mint.mint_authority
                 == COption::Some(ctx.accounts.vault_authority.key()),
             ErrorCode::InvalidMintAuthority
+        );
+        require!(
+            ctx.accounts.mind_mint.decimals == MIND_DECIMALS_U8,
+            ErrorCode::InvalidMintDecimals
         );
 
         let now = Clock::get()?.unix_timestamp;
@@ -1084,6 +1092,12 @@ pub mod mining_v2 {
         require!(epoch_seconds > 0, ErrorCode::InvalidAmount);
         let now = Clock::get()?.unix_timestamp;
         let cfg = &mut ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        let expected = cfg
+            .seconds_per_day
+            .checked_mul(STAKING_EPOCH_DAYS)
+            .ok_or(ErrorCode::MathOverflow)?;
+        require!(epoch_seconds == expected, ErrorCode::InvalidEpochSeconds);
         update_staking_global(cfg, now)?;
 
         let vault_balance = vault_available_lamports(&ctx.accounts.staking_reward_vault)?;
@@ -1260,6 +1274,8 @@ pub struct InitConfig<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     pub admin: Signer<'info>,
+    /// CHECK: ProgramData account for the upgrade authority check.
+    pub program_data: UncheckedAccount<'info>,
     /// CHECK: PDA derived from VAULT_SEED/bump used as vault authority.
     /// CHECK: PDA derived from VAULT_SEED/bump used as vault authority.
     #[account(seeds = [VAULT_SEED], bump)]
@@ -1775,6 +1791,7 @@ pub struct ClaimXnt<'info> {
 
 #[derive(Accounts)]
 pub struct RollEpoch<'info> {
+    pub admin: Signer<'info>,
     #[account(
         mut,
         seeds = [CONFIG_SEED],
@@ -2645,6 +2662,29 @@ fn ensure_user_profile_v2<'info>(
     Ok(profile)
 }
 
+fn assert_upgrade_authority(program_data: &AccountInfo, admin: Pubkey) -> Result<()> {
+    let (expected, _) =
+        Pubkey::find_program_address(&[crate::ID.as_ref()], &bpf_loader_upgradeable::ID);
+    require_keys_eq!(expected, program_data.key(), ErrorCode::InvalidProgramData);
+    require!(
+        program_data.owner == &bpf_loader_upgradeable::ID,
+        ErrorCode::InvalidProgramData
+    );
+    let data = program_data.try_borrow_data()?;
+    let state: UpgradeableLoaderState =
+        bincode::deserialize(&data).map_err(|_| ErrorCode::InvalidProgramData)?;
+    match state {
+        UpgradeableLoaderState::ProgramData {
+            upgrade_authority_address: Some(authority),
+            ..
+        } => {
+            require_keys_eq!(authority, admin, ErrorCode::Unauthorized);
+        }
+        _ => return Err(ErrorCode::InvalidProgramData.into()),
+    }
+    Ok(())
+}
+
 fn vault_available_lamports(vault: &Account<NativeVault>) -> Result<u64> {
     let rent = Rent::get()?.minimum_balance(8 + NativeVault::INIT_SPACE);
     Ok(vault.to_account_info().lamports().saturating_sub(rent))
@@ -2935,6 +2975,8 @@ pub enum ErrorCode {
     PositionRenewTooEarly,
     #[msg("Invalid mint authority")]
     InvalidMintAuthority,
+    #[msg("Invalid mint decimals")]
+    InvalidMintDecimals,
     #[msg("Insufficient stake balance")]
     InsufficientStake,
     #[msg("Insufficient vault balance")]
@@ -2943,6 +2985,8 @@ pub enum ErrorCode {
     InvalidContractType,
     #[msg("Invalid mint")]
     InvalidMint,
+    #[msg("Invalid program data")]
+    InvalidProgramData,
     #[msg("Invalid user profile owner")]
     InvalidUserProfileOwner,
     #[msg("Invalid user profile discriminator")]
@@ -2973,6 +3017,8 @@ pub enum ErrorCode {
     PositionInGrace,
     #[msg("Position grace period expired")]
     PositionGraceExpired,
+    #[msg("Invalid epoch seconds")]
+    InvalidEpochSeconds,
     #[msg("Rig buff cap exceeded")]
     RigBuffCapExceeded,
     #[msg("Insufficient MIND for rig buff")]

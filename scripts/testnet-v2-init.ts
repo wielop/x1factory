@@ -8,7 +8,13 @@ import {
   getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+  BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import dotenv from "dotenv";
 import {
   deriveConfigPda,
@@ -48,6 +54,10 @@ const main = async () => {
   const vaultAuthority = deriveVaultPda();
   const stakingRewardVault = deriveStakingRewardVaultPda();
   const treasuryVault = deriveTreasuryVaultPda();
+  const [programData] = PublicKey.findProgramAddressSync(
+    [program.programId.toBuffer()],
+    BPF_LOADER_UPGRADEABLE_PROGRAM_ID
+  );
 
   let cfg = await fetchConfig(connection);
   let mindMint = process.env.MIND_MINT
@@ -94,6 +104,7 @@ const main = async () => {
       .accounts({
         payer: wallet.publicKey,
         admin: wallet.publicKey,
+        programData,
         vaultAuthority,
         config: configPda,
         mindMint,

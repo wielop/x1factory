@@ -38,6 +38,7 @@ import {
 } from "@/lib/decoders";
 
 const DAY_SECONDS = 86_400n;
+const STAKING_EPOCH_DAYS = 14n;
 const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
 const BPS_DENOMINATOR = 10_000n;
@@ -125,7 +126,9 @@ export function AdminDashboard() {
 
   const [emissionPerDayUi, setEmissionPerDayUi] = useState<string>("");
   const [maxEffectiveHpUi, setMaxEffectiveHpUi] = useState<string>("");
-  const [epochSecondsUi, setEpochSecondsUi] = useState<string>("86400");
+  const [epochSecondsUi, setEpochSecondsUi] = useState<string>(
+    (DAY_SECONDS * STAKING_EPOCH_DAYS).toString()
+  );
   const [badgeUser, setBadgeUser] = useState<string>("");
   const [badgeTier, setBadgeTier] = useState<string>("0");
   const [badgeBonusBps, setBadgeBonusBps] = useState<string>("0");
@@ -170,6 +173,7 @@ export function AdminDashboard() {
         }
       }
       setMintDecimals({ xnt: XNT_DECIMALS, mind: mindMintInfo.decimals });
+      setEpochSecondsUi((cfg.secondsPerDay * STAKING_EPOCH_DAYS).toString());
       let rewardBal: bigint;
       try {
         if (useNativeXnt) {
@@ -464,20 +468,18 @@ export function AdminDashboard() {
   };
 
   const onRollEpoch = async () => {
-    if (!anchorWallet || !config) return;
-    let seconds: bigint;
-    try {
-      seconds = BigInt(epochSecondsUi || "0");
-    } catch {
-      setError("Invalid epoch seconds");
-      return;
-    }
+    if (!anchorWallet || !config || !publicKey) return;
+    const seconds =
+      config?.secondsPerDay != null
+        ? config.secondsPerDay * STAKING_EPOCH_DAYS
+        : BigInt(epochSecondsUi || "0");
     if (seconds <= 0n) return;
     const program = getProgram(connection, anchorWallet);
     await withTx("Roll epoch", async () => {
       const sig = await program.methods
         .rollEpoch(new BN(seconds.toString()))
         .accounts({
+          admin: publicKey!,
           config: deriveConfigPda(),
           stakingRewardVault: config.stakingRewardVault,
         })
@@ -786,12 +788,12 @@ export function AdminDashboard() {
 
           <Card className="p-4">
             <div className="text-sm font-semibold">Roll staking epoch</div>
-            <div className="mt-3 text-xs text-zinc-400">Epoch length (seconds)</div>
-            <Input value={epochSecondsUi} onChange={setEpochSecondsUi} />
+            <div className="mt-3 text-xs text-zinc-400">Epoch length (seconds, fixed 14 days)</div>
+            <Input value={epochSecondsUi} readOnly />
             <Button
               className="mt-4"
               onClick={() => void onRollEpoch()}
-              disabled={busy != null || criticalBlocked}
+              disabled={!isAdmin || busy != null || criticalBlocked}
             >
               {busy === "Roll epoch" ? "Submitting..." : "Roll Epoch"}
             </Button>

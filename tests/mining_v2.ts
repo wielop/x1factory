@@ -10,7 +10,14 @@ import {
   getAssociatedTokenAddressSync,
   transfer,
 } from "@solana/spl-token";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+  BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import { expect } from "chai";
 import { MiningV2 } from "../target/types/mining_v2";
 import miningV2Idl from "../target/idl/mining_v2.json";
@@ -102,6 +109,10 @@ describe("mining_v2", () => {
   const idl = normalizeIdl(miningV2Idl as anchor.Idl);
   idl.address = programId.toBase58();
   const program = new Program(idl, provider) as Program<MiningV2>;
+  const [programData] = PublicKey.findProgramAddressSync(
+    [programId.toBuffer()],
+    BPF_LOADER_UPGRADEABLE_PROGRAM_ID
+  );
 
   const admin = (provider.wallet as anchor.Wallet & { payer: Keypair }).payer;
   const userA = Keypair.generate();
@@ -260,6 +271,7 @@ describe("mining_v2", () => {
       .accounts({
         payer: admin.publicKey,
         admin: admin.publicKey,
+        programData,
         vaultAuthority,
         config: configPda,
         mindMint,
@@ -479,8 +491,9 @@ describe("mining_v2", () => {
       .rpc();
 
     await program.methods
-      .rollEpoch(new BN(10))
+      .rollEpoch(new BN(14))
       .accounts({
+        admin: admin.publicKey,
         config: configPda,
         stakingRewardVault,
       })
@@ -793,8 +806,9 @@ describe("mining_v2", () => {
     await provider.sendAndConfirm(fundTx, [admin]);
 
     await program.methods
-      .rollEpoch(new BN(10))
+      .rollEpoch(new BN(14))
       .accounts({
+        admin: admin.publicKey,
         config: configPda,
         stakingRewardVault,
       })

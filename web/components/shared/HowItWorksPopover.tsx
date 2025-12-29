@@ -41,17 +41,14 @@ export function HowItWorksPopover() {
           <div className="mt-4">
             <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">MINING FLOW</div>
             <ol className="mt-3 space-y-2 text-xs text-zinc-300">
-              <li>
-                1. Lock a mining rig to get hashpower (HP) for a fixed term. Your HP is fixed, but your share moves as
-                the network grows or shrinks.
-              </li>
-              <li>2. Daily MIND emission is split pro-rata across all active HP.</li>
-              <li>3. If network HP is zero, emission pauses.</li>
-              <li>4. Claim MIND anytime. Your rigs keep running.</li>
-              <li>5. When a rig expires, renew it or deactivate to free up HP.</li>
-              <li>6. Stake MIND to earn XNT rewards from the pool.</li>
-              <li>7. Rewards stream over time based on your share of the pool.</li>
-              <li>8. Badges can boost staking rewards up to a +20% cap.</li>
+              <li>1. Buy a rig with XNT to lock hashpower (HP) for a fixed term.</li>
+              <li>2. Daily MIND emission is split pro-rata across active HP (0 HP = paused).</li>
+              <li>3. Claim MIND anytime — mining never stops.</li>
+              <li>4. Renew before expiry or deactivate to free up HP.</li>
+              <li>5. Rig buffs can lift total HP up to a +15% cap.</li>
+              <li>6. Your account earns XP while mining; levels add a small HP bonus.</li>
+              <li>7. Stake MIND to earn XNT from the reward pool (30% of rig revenue).</li>
+              <li>8. Unstake anytime — 6% of unstaked MIND is burned.</li>
             </ol>
           </div>
         ) : (
@@ -64,7 +61,7 @@ export function HowItWorksPopover() {
                 <div className="font-semibold text-zinc-200">1) Connect wallet & get XNT</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
                   <li>Connect your X1 wallet.</li>
-                  <li>Keep some XNT for rigs and a little extra for gas.</li>
+                  <li>Keep XNT for rigs and a little extra for gas.</li>
                 </ul>
               </div>
               <div>
@@ -78,7 +75,7 @@ export function HowItWorksPopover() {
               <div>
                 <div className="font-semibold text-zinc-200">3) Watch your share & emission</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>Main dashboard shows Your HP, Network HP, Your share, and Est. MIND/day.</li>
+                  <li>Main dashboard shows Your HP, Network HP, share, and Est. MIND/day.</li>
                   <li>Your share moves as other miners start or finish rigs.</li>
                 </ul>
               </div>
@@ -93,20 +90,17 @@ export function HowItWorksPopover() {
               <div>
                 <div className="font-semibold text-zinc-200">5) Stake MIND → earn XNT</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>In Staking, enter how much MIND you want to stake and click "Stake".</li>
-                  <li>
-                    30% of mining revenue funds the pool and rewards stream over time based on your share.
-                  </li>
+                  <li>In Staking, enter your amount and click "Stake".</li>
+                  <li>30% of rig revenue funds the pool; rewards stream by share.</li>
                   <li>Claim XNT anytime with "Claim XNT".</li>
                 </ul>
               </div>
               <div>
-                <div className="font-semibold text-zinc-200">6) Unstaking & burn</div>
+                <div className="font-semibold text-zinc-200">6) Levels, buffs & exits</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
-                  <li>You can unstake MIND whenever you want.</li>
-                  <li>
-                    6% of unstaked MIND is burned – this helps stabilize rewards and discourages rapid in-out cycles.
-                  </li>
+                  <li>Earn XP while mining; levels add a small HP bonus.</li>
+                  <li>Rig buffs are capped at +15% total HP.</li>
+                  <li>Unstake anytime — 6% of unstaked MIND is burned.</li>
                 </ul>
               </div>
               <div>
@@ -114,7 +108,7 @@ export function HowItWorksPopover() {
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-300">
                   <li>Mining: XNT → time-limited HP → earn MIND.</li>
                   <li>Staking: MIND → pool share → earn XNT.</li>
-                  <li>No fixed APR. Rewards come from real demand in the system.</li>
+                  <li>Rewards come from real demand in the system.</li>
                 </ul>
               </div>
             </div>

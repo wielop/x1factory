@@ -253,21 +253,7 @@ export function PublicDashboard() {
   const { connection } = useConnection();
   const { publicKey: walletPublicKey } = useWallet();
   const anchorWallet = useAnchorWallet();
-  const viewPublicKey = useMemo(() => {
-    const fromEnv = process.env.NEXT_PUBLIC_E2E_WALLET?.trim();
-    const fromQuery =
-      typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search).get("view")
-        : null;
-    const raw = (fromQuery || fromEnv || "").trim();
-    if (!raw) return null;
-    try {
-      return new PublicKey(raw);
-    } catch {
-      return null;
-    }
-  }, []);
-  const publicKey = walletPublicKey ?? viewPublicKey;
+  const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
   const { push: pushToast } = useToast();
 

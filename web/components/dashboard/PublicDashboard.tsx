@@ -1637,47 +1637,10 @@ export function PublicDashboard() {
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-10">
         <div className="space-y-4">
           <Card className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
-                  What is happening right now?
-                </div>
-                <div className={`mt-2 text-sm font-semibold ${statusAccentClass}`}>{miningStatusText}</div>
-              </div>
-              <div className="w-full max-w-xs space-y-2 text-xs text-zinc-400">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
-                  Account progression
-                </div>
-                <div className="text-base font-semibold text-white">Level {userLevel}</div>
-                <div>{xpLine}</div>
-                <div>{xpRateLine ?? "≈ 0.00 XP/hour"}</div>
-                <div>{bonusLine}</div>
-                <div className="text-[11px] text-zinc-500">{progressionDescription}</div>
-                <div className="pt-1 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                  Progress to next level
-                </div>
-                <div className="text-[11px] text-zinc-500">{levelProgressLabel}</div>
-                <div className="h-1.5 rounded-full bg-white/10">
-                  <div
-                    className="h-1.5 rounded-full bg-cyan-300/70"
-                    style={{ width: `${levelProgressPct}%` }}
-                  />
-                </div>
-                <div className="pt-1 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                  Requirements
-                </div>
-                <div className="space-y-1 text-[11px] text-zinc-400">
-                  <div className="flex items-center justify-between">
-                    <span>XP:</span>
-                    <span>{missingXpLabel}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Cost:</span>
-                    <span>{requiredMindLabel} MIND</span>
-                  </div>
-                </div>
-              </div>
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
+              What is happening right now?
             </div>
+            <div className={`mt-2 text-sm font-semibold ${statusAccentClass}`}>{miningStatusText}</div>
           </Card>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -32,7 +32,6 @@ const XNT_BASE: u64 = 1_000_000_000;
 const MIND_DECIMALS: u64 = 1_000_000_000;
 const XP_SECONDS_PER_POINT_DENOMINATOR: u64 = 36_000;
 const RIG_BUFF_CAP_BPS: u16 = 850; // 8.5%
-const RIG_BUFF_COST_BPS: u128 = 150; // 1.5%
 
 #[program]
 pub mod mining_v2 {
@@ -533,38 +532,6 @@ pub mod mining_v2 {
                 bonus_bps <= RIG_BUFF_CAP_BPS as u128,
                 ErrorCode::RigBuffCapExceeded
             );
-        }
-
-        let reward_base = (renewed_base_hp_scaled)
-            .checked_mul(ctx.accounts.rig_buff_config.mind_per_hp_per_day as u128)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_mul(duration_days as u128)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(HP_SCALE)
-            .ok_or(ErrorCode::MathOverflow)?;
-        let buff_cost = reward_base
-            .checked_mul(RIG_BUFF_COST_BPS)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(BPS_DENOMINATOR)
-            .ok_or(ErrorCode::MathOverflow)?;
-        let buff_cost_u64 = u64::try_from(buff_cost).map_err(|_| ErrorCode::MathOverflow)?;
-        require!(
-            ctx.accounts.owner_mind_ata.amount >= buff_cost_u64,
-            ErrorCode::InsufficientBuffFunds
-        );
-
-        if buff_cost_u64 > 0 {
-            token::burn(
-                CpiContext::new(
-                    ctx.accounts.token_program.to_account_info(),
-                    Burn {
-                        mint: ctx.accounts.mind_mint.to_account_info(),
-                        from: ctx.accounts.owner_mind_ata.to_account_info(),
-                        authority: ctx.accounts.owner.to_account_info(),
-                    },
-                ),
-                buff_cost_u64,
-            )?;
         }
 
         ensure_position_v2(

@@ -789,7 +789,7 @@ export function AdminDashboard() {
           <Card className="p-4">
             <div className="text-sm font-semibold">Roll staking epoch</div>
             <div className="mt-3 text-xs text-zinc-400">Epoch length (seconds, fixed 14 days)</div>
-            <Input value={epochSecondsUi} readOnly />
+            <Input value={epochSecondsUi} onChange={setEpochSecondsUi} disabled />
             <Button
               className="mt-4"
               onClick={() => void onRollEpoch()}

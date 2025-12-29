@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import {
   decodeMinerPositionAccount,
-  decodeUserMiningProfileAccount,
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
-  USER_PROFILE_LEN_V1,
-  USER_PROFILE_LEN_V2,
-  USER_PROFILE_LEN_V3,
 } from "@/lib/decoders";
 import { fetchClockUnixTs, fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 
@@ -23,23 +19,6 @@ type CachedPayload = {
 };
 
 let cached: { ts: number; payload: CachedPayload } | null = null;
-
-const levelBonusBps = (level: number) => {
-  switch (level) {
-    case 1:
-      return 0n;
-    case 2:
-      return 160n;
-    case 3:
-      return 340n;
-    case 4:
-      return 550n;
-    case 5:
-      return 780n;
-    default:
-      return 1000n;
-  }
-};
 
 const rigTypeFromDuration = (startTs: number, endTs: number, secondsPerDay: number) => {
   if (!Number.isFinite(secondsPerDay) || secondsPerDay <= 0) return 0;
@@ -86,7 +65,7 @@ export async function GET() {
     const nowTs = await fetchClockUnixTs(connection);
     const programId = getProgramId();
 
-    const [positionsV1, positionsV2, profilesV1, profilesV2, profilesV3] = await Promise.all([
+    const [positionsV1, positionsV2] = await Promise.all([
       connection.getProgramAccounts(programId, {
         commitment: "confirmed",
         filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
@@ -95,39 +74,15 @@ export async function GET() {
         commitment: "confirmed",
         filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
       }),
-      connection.getProgramAccounts(programId, {
-        commitment: "confirmed",
-        filters: [{ dataSize: USER_PROFILE_LEN_V1 }],
-      }),
-      connection.getProgramAccounts(programId, {
-        commitment: "confirmed",
-        filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
-      }),
-      connection.getProgramAccounts(programId, {
-        commitment: "confirmed",
-        filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
-      }),
     ]);
 
-    const levels = new Map<string, number>();
-    const loadProfile = (entry: (typeof profilesV1)[number]) => {
-      const decoded = decodeUserMiningProfileAccount(Buffer.from(entry.account.data));
-      const ownerKey = new PublicKey(decoded.owner).toBase58();
-      levels.set(ownerKey, decoded.level || 1);
-    };
-    profilesV1.forEach(loadProfile);
-    profilesV2.forEach(loadProfile);
-    profilesV3.forEach(loadProfile);
-
     const secondsPerDay = Number(cfg.secondsPerDay);
-    const buffedHpByOwner = new Map<string, bigint>();
     let totalBaseHp = 0n;
     let totalBuffedHp = 0n;
 
     for (const entry of [...positionsV1, ...positionsV2]) {
       const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
       if (decoded.deactivated || decoded.expired || decoded.endTs <= nowTs) continue;
-      const ownerKey = new PublicKey(decoded.owner).toBase58();
       const rigType = decoded.hpScaled
         ? decoded.rigType
         : rigTypeFromDuration(decoded.startTs, decoded.endTs, secondsPerDay);
@@ -140,24 +95,18 @@ export async function GET() {
       const buffedHp = (baseHp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
       totalBaseHp += baseHp;
       totalBuffedHp += buffedHp;
-      buffedHpByOwner.set(ownerKey, (buffedHpByOwner.get(ownerKey) ?? 0n) + buffedHp);
     }
 
-    let totalEffectiveHp = 0n;
-    for (const [owner, buffedHp] of buffedHpByOwner.entries()) {
-      const level = levels.get(owner) ?? 1;
-      const bonus = levelBonusBps(level);
-      totalEffectiveHp += (buffedHp * (BPS_DENOMINATOR + bonus)) / BPS_DENOMINATOR;
-    }
-
+    const effectiveHp =
+      cfg.networkHpActive > 0n ? cfg.networkHpActive : totalBuffedHp;
     const rigBuffHp = totalBuffedHp > totalBaseHp ? totalBuffedHp - totalBaseHp : 0n;
-    const accountBonusHp = totalEffectiveHp > totalBuffedHp ? totalEffectiveHp - totalBuffedHp : 0n;
+    const accountBonusHp = effectiveHp > totalBuffedHp ? effectiveHp - totalBuffedHp : 0n;
 
     const payload: CachedPayload = {
       baseHp: totalBaseHp.toString(),
       rigBuffHp: rigBuffHp.toString(),
       accountBonusHp: accountBonusHp.toString(),
-      effectiveHp: totalEffectiveHp.toString(),
+      effectiveHp: effectiveHp.toString(),
       updatedAt: new Date().toISOString(),
     };
     cached = { ts: nowMs, payload };

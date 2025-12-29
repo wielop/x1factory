@@ -77,6 +77,24 @@ const CONTRACTS = [
   { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 8, hp: 7 },
   { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 16, hp: 15 },
 ] as const;
+type RigType = "starter" | "pro" | "industrial";
+
+const BASE_HP_BY_TYPE: Record<RigType, number> = {
+  starter: 0.6,
+  pro: 7,
+  industrial: 15,
+};
+
+interface RigPosition {
+  type: RigType;
+  buffLevel: number;
+  buffAppliedFromCycle: number;
+  expiresAtTs: number;
+}
+
+interface AccountLevelInfo {
+  levelBonusBps: number;
+}
 
 function rigTypeFromDuration(startTs: number, endTs: number, secondsPerDay: number) {
   if (!Number.isFinite(secondsPerDay) || secondsPerDay <= 0) return 0;
@@ -92,6 +110,18 @@ function rigTypeFromDuration(startTs: number, endTs: number, secondsPerDay: numb
     default:
       return 0;
   }
+}
+
+function rigTypeKey(rigType: number): RigType {
+  if (rigType === 1) return "pro";
+  if (rigType === 2) return "industrial";
+  return "starter";
+}
+
+function rigMaxBuffLevel(rigType: number) {
+  if (rigType === 0) return 1;
+  if (rigType === 1 || rigType === 2) return 3;
+  return 0;
 }
 
 function rigBuffBps(rigType: number, buffLevel: number) {
@@ -111,6 +141,41 @@ function rigBuffBps(rigType: number, buffLevel: number) {
   return 0;
 }
 
+function getRigBuffBpsForLevel(type: RigType, buffLevel: number) {
+  if (type === "starter") return buffLevel >= 1 ? 100 : 0;
+  if (type === "pro") {
+    if (buffLevel >= 3) return 350;
+    if (buffLevel === 2) return 200;
+    if (buffLevel === 1) return 100;
+    return 0;
+  }
+  if (type === "industrial") {
+    if (buffLevel >= 3) return 500;
+    if (buffLevel === 2) return 300;
+    if (buffLevel === 1) return 150;
+    return 0;
+  }
+  return 0;
+}
+
+function getRigBuffBpsNow(position: RigPosition, now: number) {
+  if (position.buffLevel <= 0) return 0;
+  if (position.buffAppliedFromCycle === 0 || now >= position.buffAppliedFromCycle) {
+    return getRigBuffBpsForLevel(position.type, position.buffLevel);
+  }
+  return 0;
+}
+
+function getRigEffectiveHpNow(position: RigPosition, now: number) {
+  const baseHp = BASE_HP_BY_TYPE[position.type] ?? 0;
+  const buffBpsNow = getRigBuffBpsNow(position, now);
+  return (baseHp * (10_000 + buffBpsNow)) / 10_000;
+}
+
+function getRigEffectiveHpNextCycle(position: RigPosition) {
+  return getRigEffectiveHpNow(position, position.expiresAtTs);
+}
+
 function formatIntegerBig(value: bigint) {
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
@@ -121,14 +186,12 @@ function formatFixed2(valueHundredths: bigint) {
   return `${formatIntegerBig(whole)}.${frac.toString().padStart(2, "0")}`;
 }
 
-function formatBonusHp(valueHundredths: bigint) {
-  const abs = valueHundredths < 0n ? -valueHundredths : valueHundredths;
-  const whole = abs / 100n;
-  const frac = abs % 100n;
-  if (frac === 0n) {
-    return formatIntegerBig(whole);
-  }
-  return `${formatIntegerBig(whole)}.${frac.toString().padStart(2, "0")}`;
+function formatFixed2Number(value: number) {
+  if (!Number.isFinite(value)) return "-";
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatRoundedToken(amountBase: bigint, decimals: number, digits = 2) {
@@ -664,11 +727,6 @@ export function PublicDashboard() {
       BPS_DENOMINATOR
     );
   }, [buffedUserHpHundredths, levelBonusBpsBig]);
-  const bonusHpHundredths =
-    effectiveUserHpHundredths > baseUserHpHundredths
-      ? effectiveUserHpHundredths - baseUserHpHundredths
-      : 0n;
-  const bonusHpLabel = bonusHpHundredths > 0n ? formatBonusHp(bonusHpHundredths) : null;
   const networkHp = config?.networkHpActive ?? 0n;
   const networkHpHundredths = useMemo(() => networkHp, [networkHp]);
   const sharePct =
@@ -687,6 +745,52 @@ export function PublicDashboard() {
       : "Status: Emission paused — no active hashpower";
   const statusAccentClass = networkHp > 0n ? "text-emerald-300" : "text-amber-300";
   const secondsPerDayUi = config && Number(config.secondsPerDay) > 0 ? Number(config.secondsPerDay) : 86_400;
+  const rigBuffSummary = useMemo(() => {
+    if (nowTs == null || activePositions.length === 0) {
+      return {
+        hpBaseTotal: 0,
+        hpWithRigBuffsTotal: 0,
+        hpFinal: 0,
+        rigBuffRatio: 0,
+      };
+    }
+    let hpBaseTotal = 0;
+    let hpWithRigBuffsTotal = 0;
+    for (const entry of activePositions) {
+      const rigType = entry.data.hpScaled
+        ? entry.data.rigType
+        : rigTypeFromDuration(entry.data.startTs, entry.data.endTs, secondsPerDayUi);
+      const rigPosition: RigPosition = {
+        type: rigTypeKey(rigType),
+        buffLevel: entry.data.buffLevel,
+        buffAppliedFromCycle: Number(entry.data.buffAppliedFromCycle),
+        expiresAtTs: entry.data.endTs,
+      };
+      hpBaseTotal += BASE_HP_BY_TYPE[rigPosition.type] ?? 0;
+      hpWithRigBuffsTotal += getRigEffectiveHpNow(rigPosition, nowTs);
+    }
+    const rigBuffRatio = hpBaseTotal > 0 ? hpWithRigBuffsTotal / hpBaseTotal - 1 : 0;
+    const hpFinal = hpWithRigBuffsTotal * (1 + levelBonusBps / 10_000);
+    return { hpBaseTotal, hpWithRigBuffsTotal, hpFinal, rigBuffRatio };
+  }, [activePositions, levelBonusBps, nowTs, secondsPerDayUi]);
+  const rigBuffBonusHp = Math.max(0, rigBuffSummary.hpWithRigBuffsTotal - rigBuffSummary.hpBaseTotal);
+  const accountBonusHp = Math.max(0, rigBuffSummary.hpFinal - rigBuffSummary.hpWithRigBuffsTotal);
+  const rigBuffPct =
+    rigBuffSummary.hpBaseTotal > 0
+      ? (rigBuffBonusHp / rigBuffSummary.hpBaseTotal) * 100
+      : 0;
+  const accountBonusPct = levelBonusBps / 100;
+  const rigBuffCapRatio = Number(RIG_BUFF_CAP_BPS) / 10_000;
+  const rigBuffCapPct = Number(RIG_BUFF_CAP_BPS) / 100;
+  const rigBuffCapProgress =
+    rigBuffCapRatio > 0
+      ? Math.min(100, Math.max(0, (rigBuffSummary.rigBuffRatio / rigBuffCapRatio) * 100))
+      : 0;
+  const rigBuffCapReached = rigBuffSummary.rigBuffRatio >= rigBuffCapRatio;
+  const hpFinalLabel = formatFixed2Number(rigBuffSummary.hpFinal);
+  const baseHpLabel = formatFixed2Number(rigBuffSummary.hpBaseTotal);
+  const rigBuffBonusLabel = formatFixed2Number(rigBuffBonusHp);
+  const accountBonusLabel = formatFixed2Number(accountBonusHp);
   const graceSeconds = secondsPerDayUi * GRACE_DAYS;
   const renewWindowSeconds = secondsPerDayUi * RENEW_REMINDER_DAYS;
   const expiryTooltip =
@@ -745,31 +849,6 @@ export function PublicDashboard() {
       return { position: p, pending, livePending };
     });
   }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig, nowTs]);
-
-  const rigBuffCapReached = useMemo(() => {
-    if (!nowTs) return false;
-    let baseTotal = 0n;
-    let buffedTotal = 0n;
-    for (const entry of positions) {
-      if (entry.data.deactivated || nowTs >= entry.data.endTs) continue;
-      const rigType = entry.data.hpScaled
-        ? entry.data.rigType
-        : rigTypeFromDuration(entry.data.startTs, entry.data.endTs, secondsPerDayUi);
-      const buffBpsBase = rigBuffBps(rigType, entry.data.buffLevel);
-      const buffApplied =
-        entry.data.buffLevel > 0 &&
-        (entry.data.buffAppliedFromCycle === 0n ||
-          BigInt(nowTs) >= entry.data.buffAppliedFromCycle);
-      const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
-      const baseHp = entry.data.hp;
-      baseTotal += baseHp;
-      const buffedHp = (baseHp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
-      buffedTotal += buffedHp;
-    }
-    if (baseTotal === 0n) return false;
-    const bonusBps = ((buffedTotal - baseTotal) * BPS_DENOMINATOR) / baseTotal;
-    return bonusBps >= RIG_BUFF_CAP_BPS;
-  }, [nowTs, positions, secondsPerDayUi]);
 
   const visiblePositions = useMemo(() => {
     if (nowTs == null) return pendingPositions;
@@ -1077,6 +1156,10 @@ export function PublicDashboard() {
       } catch (e: unknown) {
         console.error(e);
         errorMsg = formatError(e);
+        if (label === "Renew with buff" && errorMsg.includes("Rig buff cap exceeded")) {
+          errorMsg =
+            "Max rig buff reached (+8.5% HP). You can still renew this rig, but further buffs won't apply.";
+        }
         setError(errorMsg);
       } finally {
         setBusy(null);
@@ -1504,31 +1587,46 @@ export function PublicDashboard() {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="p-4">
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-3xl font-semibold text-white">
-                  {formatFixed2(effectiveUserHpHundredths)} HP
-                </span>
-                {bonusHpLabel ? (
-                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-300">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    >
-                      <path d="M12 19V5" />
-                      <path d="m5 12 7-7 7 7" />
-                    </svg>
-                    (+{bonusHpLabel})
-                  </span>
-                ) : null}
-              </div>
+              <div className="text-3xl font-semibold text-white">{hpFinalLabel} HP</div>
               <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">Your HP</div>
+              <div className="mt-3 space-y-1 text-[11px] text-zinc-400">
+                <div className="flex items-center justify-between">
+                  <span>Base HP</span>
+                  <span className="text-zinc-200">{baseHpLabel}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                    Rig buffs
+                  </span>
+                  <span className="text-emerald-200">
+                    +{rigBuffBonusLabel} HP (+{rigBuffPct.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Account bonus</span>
+                  <span className="text-emerald-200">
+                    +{accountBonusLabel} HP (+{accountBonusPct.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+              <div
+                className="mt-3 rounded-xl border border-white/10 bg-black/30 p-2"
+                title="Rig buffs can increase your total HP by up to +8.5%. Your account level bonus is applied on top of that separate cap."
+              >
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                  <span>Rig buff cap</span>
+                  <span>
+                    {rigBuffPct.toFixed(1)}% / {rigBuffCapPct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-white/10">
+                  <div
+                    className="h-1.5 rounded-full bg-emerald-300/70 shadow-[0_0_10px_rgba(16,185,129,0.6)]"
+                    style={{ width: `${rigBuffCapProgress}%` }}
+                  />
+                </div>
+              </div>
             </Card>
             <Card className="p-4">
               <div className="text-3xl font-semibold text-white">
@@ -1761,33 +1859,53 @@ export function PublicDashboard() {
                         p.data.endTs,
                         secondsPerDayUi
                       );
+                  const rigKind = rigTypeKey(rigType);
+                  const rigPosition: RigPosition = {
+                    type: rigKind,
+                    buffLevel: p.data.buffLevel,
+                    buffAppliedFromCycle: Number(p.data.buffAppliedFromCycle),
+                    expiresAtTs: p.data.endTs,
+                  };
                   const buffBpsBase = rigBuffBps(rigType, p.data.buffLevel);
-                  const buffApplied =
-                    p.data.buffLevel > 0 &&
-                    (p.data.buffAppliedFromCycle === 0n ||
-                      now == null ||
-                      BigInt(now) >= p.data.buffAppliedFromCycle);
-                  const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
-                  const baseHp = p.data.hp;
-                  const hpWithBuff = (baseHp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
-                  const positionHpEffective = (hpWithBuff * bonusMultiplier) / BPS_DENOMINATOR;
-                  const positionHpLabel = formatFixed2(hpWithBuff);
-                  const positionRateHp =
-                    p.data.deactivated || expired ? 0n : positionHpEffective;
-                  const buffBonusPct =
-                    buffApplied && buffBpsBase > 0
+                  const buffPctLabel =
+                    buffBpsBase > 0
                       ? `+${(buffBpsBase / 100).toLocaleString("en-US", {
                           minimumFractionDigits: 1,
                           maximumFractionDigits: 1,
                         })}%`
                       : null;
+                  const buffActive =
+                    p.data.buffLevel > 0 &&
+                    (p.data.buffAppliedFromCycle === 0n ||
+                      (now != null && BigInt(now) >= p.data.buffAppliedFromCycle));
+                  const buffScheduled =
+                    p.data.buffLevel > 0 &&
+                    p.data.buffAppliedFromCycle > 0n &&
+                    (now == null || BigInt(now) < p.data.buffAppliedFromCycle);
+                  const buffStatusLabel = buffActive && buffPctLabel
+                    ? `ACTIVE • L${p.data.buffLevel} (${buffPctLabel})`
+                    : buffScheduled && buffPctLabel
+                    ? `NEXT CYCLE • L${p.data.buffLevel} (${buffPctLabel})`
+                    : "NO BUFF";
+                  const buffStatusClass = buffActive
+                    ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                    : buffScheduled
+                    ? "border-amber-400/30 bg-amber-500/10 text-amber-200"
+                    : "border-white/10 bg-white/5 text-zinc-400";
+                  const buffDotClass = buffActive
+                    ? "bg-emerald-400"
+                    : buffScheduled
+                    ? "bg-amber-300"
+                    : "bg-zinc-500";
+                  const buffBps = buffActive ? BigInt(buffBpsBase) : 0n;
+                  const baseHp = p.data.hp;
+                  const hpWithBuff = (baseHp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
+                  const positionHpEffective = (hpWithBuff * bonusMultiplier) / BPS_DENOMINATOR;
+                  const positionRateHp =
+                    p.data.deactivated || expired ? 0n : positionHpEffective;
                   const timeLine = expired
-                    ? inGrace
-                      ? `Expired — grace: ${formatDurationSeconds(
-                          Math.max(0, graceEnds - (now ?? 0))
-                        )} left`
-                      : "Expired"
-                    : `Ends in ${remaining == null ? "-" : formatDurationSeconds(remaining)}`;
+                    ? "Expired"
+                    : `Ends in: ${remaining == null ? "-" : formatDurationSeconds(remaining)}`;
                   const timeClass = expired
                     ? inGrace
                       ? "text-amber-300"
@@ -1797,13 +1915,8 @@ export function PublicDashboard() {
                     inGrace && now != null
                       ? formatDurationSeconds(Math.max(0, graceEnds - now))
                       : null;
-                  const buffPending =
-                    p.data.buffLevel > 0 &&
-                    p.data.buffAppliedFromCycle > 0n &&
-                    now != null &&
-                    BigInt(now) < p.data.buffAppliedFromCycle;
                   const buffPendingIn =
-                    buffPending && now != null
+                    buffScheduled && now != null
                       ? formatDurationSeconds(
                           Number(p.data.buffAppliedFromCycle - BigInt(now))
                         )
@@ -1812,12 +1925,30 @@ export function PublicDashboard() {
                     now != null &&
                     !p.data.deactivated &&
                     (inGrace || (remaining != null && remaining <= renewWindowSeconds));
-                  const canRenewStandard = !p.data.deactivated && inGrace;
-                  const canRenewWithBuff =
-                    !p.data.deactivated &&
-                    (inGrace || (remaining != null && remaining <= renewWindowSeconds));
                   const contractMeta = CONTRACTS[rigType] ?? CONTRACTS[0];
                   const baseHpScaled = BigInt(Math.round(contractMeta.hp * 100));
+                  const canRenewStandard =
+                    !p.data.deactivated &&
+                    (inGrace || (remaining != null && remaining <= renewWindowSeconds));
+                  const canRenewWithBuff = canRenewStandard;
+                  const maxBuffLevel = rigMaxBuffLevel(rigType);
+                  const nextBuffLevel =
+                    p.data.buffLevel < maxBuffLevel ? p.data.buffLevel + 1 : p.data.buffLevel;
+                  const hasNextBuffLevel = nextBuffLevel > p.data.buffLevel;
+                  const buffBpsCurrent = rigBuffBps(rigType, p.data.buffLevel);
+                  const buffBpsNext = rigBuffBps(rigType, nextBuffLevel);
+                  const buffIncreaseBps = Math.max(0, buffBpsNext - buffBpsCurrent);
+                  const buffIncreaseLabel = hasNextBuffLevel
+                    ? `+${(buffIncreaseBps / 100).toFixed(1)}%`
+                    : null;
+                  const hpNow = now != null ? getRigEffectiveHpNow(rigPosition, now) : null;
+                  const hpNext = getRigEffectiveHpNextCycle(rigPosition);
+                  const hpNowLabel = hpNow != null ? formatFixed2Number(hpNow) : "-";
+                  const hpNextLabel = formatFixed2Number(hpNext);
+                  const hpNextWithoutLabel = formatFixed2Number(hpNext);
+                  const hpNextWithUpgrade =
+                    (BASE_HP_BY_TYPE[rigKind] ?? 0) * (10_000 + buffBpsNext) / 10_000;
+                  const hpNextWithLabel = formatFixed2Number(hpNextWithUpgrade);
                   const rewardBase =
                     rigBuffConfig && mintDecimals
                       ? (baseHpScaled *
@@ -1833,41 +1964,100 @@ export function PublicDashboard() {
                     buffCostBase != null && mintDecimals
                       ? formatRoundedToken(buffCostBase, mintDecimals.mind, 2)
                       : "-";
-                  const buffButtonLabel = rigBuffCapReached ? "Buff cap reached (global)" : "Renew with buff";
+                  const buffedCurrentScaled =
+                    (baseHpScaled * BigInt(10_000 + buffBpsCurrent)) / 10_000n;
+                  const buffedNextScaled =
+                    (baseHpScaled * BigInt(10_000 + buffBpsNext)) / 10_000n;
+                  const extraHpScaled =
+                    buffedNextScaled > buffedCurrentScaled
+                      ? buffedNextScaled - buffedCurrentScaled
+                      : 0n;
+                  const extraYieldBase =
+                    rigBuffConfig && mintDecimals
+                      ? (extraHpScaled *
+                          rigBuffConfig.mindPerHpPerDay *
+                          BigInt(contractMeta.durationDays)) /
+                        HP_SCALE
+                      : null;
+                  const extraYieldLabel =
+                    extraYieldBase != null && mintDecimals
+                      ? formatRoundedToken(extraYieldBase, mintDecimals.mind, 2)
+                      : "-";
+                  const buffLevelProgress =
+                    maxBuffLevel > 0
+                      ? Math.min(100, (p.data.buffLevel / maxBuffLevel) * 100)
+                      : 0;
+                  const buffButtonLabel = rigBuffCapReached
+                    ? "Buff cap reached"
+                    : hasNextBuffLevel
+                    ? `Renew + Buff${buffIncreaseLabel ? ` (${buffIncreaseLabel})` : ""}`
+                    : "Max buff reached";
                   const buffDisabled =
                     busy != null ||
                     !canRenewWithBuff ||
                     rigBuffCapReached ||
                     !rigBuffConfig ||
-                    !mintDecimals;
+                    !mintDecimals ||
+                    !hasNextBuffLevel;
                   return (
                     <div key={p.pubkey} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-white">
-                          HP {positionHpLabel}
-                          {buffBonusPct ? (
-                            <span className="ml-2 text-xs text-emerald-200">
-                              ({buffBonusPct}) <span aria-hidden="true">↑</span>
-                            </span>
-                          ) : null}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-white">
+                          {contractMeta.label}{" "}
+                          <span className="text-xs text-zinc-500">• #{shortPk(p.pubkey, 4)}</span>
                         </div>
-                        {!expired ? (
-                          <span className="text-[11px] uppercase tracking-[0.2em] text-emerald-300">
-                            active
+                        <span
+                          className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] ${buffStatusClass}`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${buffDotClass}`} />
+                          {buffStatusLabel}
+                        </span>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                          <span>HP this cycle</span>
+                          <span className="text-sm font-semibold text-white">
+                            {hpNowLabel} HP
                           </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
+                          <span>HP next cycle</span>
+                          <span
+                            className={`text-sm font-semibold ${
+                              buffScheduled ? "text-emerald-200" : "text-zinc-200"
+                            }`}
+                          >
+                            {hpNextLabel} HP
+                          </span>
+                        </div>
+                        {maxBuffLevel > 0 ? (
+                          <div className="mt-2">
+                            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                              <span>Buff level</span>
+                              <span>
+                                L{p.data.buffLevel} / L{maxBuffLevel}
+                              </span>
+                            </div>
+                            <div className="mt-1 h-1 rounded-full bg-white/10">
+                              <div
+                                className="h-1 rounded-full bg-cyan-300/70"
+                                style={{ width: `${buffLevelProgress}%` }}
+                              />
+                            </div>
+                          </div>
                         ) : null}
                       </div>
                       <div className={`mt-2 text-xs ${timeClass}`} title={expiryTooltip}>
                         {timeLine}
                       </div>
-                      {buffPending ? (
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          Buff activates next cycle (in {buffPendingIn ?? "-"}).
+                      {inGrace && graceLeftLabel ? (
+                        <div className="mt-1 text-[11px] text-amber-300">
+                          In grace: {graceLeftLabel} left to renew
                         </div>
                       ) : null}
-                      {inGrace ? (
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          You can renew this rig and keep your bonus.
+                      {buffScheduled ? (
+                        <div className="mt-1 text-[11px] text-amber-200">
+                          Locked for next cycle{buffPendingIn ? ` • ${buffPendingIn}` : ""}
                         </div>
                       ) : null}
                       {mintDecimals ? (
@@ -1886,28 +2076,28 @@ export function PublicDashboard() {
                       ) : null}
                       {showRenew ? (
                         <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-[11px] text-zinc-300">
-                          Wzmocnij swoją koparkę w następnej rundzie
-                        </div>
-                        {graceLeftLabel ? (
-                          <div className="mt-1 text-[11px] text-zinc-500">
-                            Grace left to renew: {graceLeftLabel}
+                          <div className="text-[11px] text-zinc-300">
+                            Boost your rig for the next cycle.
                           </div>
-                        ) : null}
-                        <div className="mt-3 space-y-2">
-                          {inGrace ? (
+                          {graceLeftLabel ? (
+                            <div className="mt-1 text-[11px] text-zinc-500">
+                              Grace left to renew: {graceLeftLabel}
+                            </div>
+                          ) : null}
+                          <div className="mt-3 grid gap-2">
                             <Button
                               size="sm"
                               className="w-full"
                               onClick={() => void onRenew(p.pubkey)}
                               disabled={busy != null || !canRenewStandard}
                               title={
-                                canRenewStandard ? "" : "Available after expiry during grace."
+                                canRenewStandard
+                                  ? "Renew without increasing buff level."
+                                  : "Available in the last 3 days or during grace."
                               }
                             >
-                              {busy === "Renew rig" ? "Submitting..." : "Renew rig"}
+                              {busy === "Renew rig" ? "Submitting..." : "Renew"}
                             </Button>
-                          ) : null}
                             <Button
                               size="sm"
                               className="w-full"
@@ -1916,6 +2106,8 @@ export function PublicDashboard() {
                               title={
                                 rigBuffCapReached
                                   ? "Your global rig buff cap is reached."
+                                  : !hasNextBuffLevel
+                                  ? "This rig is already at max buff level."
                                   : !rigBuffConfig || !mintDecimals
                                   ? "Rig buff config is not initialized yet."
                                   : canRenewWithBuff
@@ -1925,10 +2117,28 @@ export function PublicDashboard() {
                             >
                               {busy === "Renew with buff" ? "Submitting..." : buffButtonLabel}
                             </Button>
-                            <div className="text-[11px] text-zinc-500">
-                              Buff increases this rig&apos;s HP for the next cycle. Cost:{" "}
-                              {buffCostLabel} MIND (burned).
+                          </div>
+                          {hasNextBuffLevel ? (
+                            <div className="mt-3 space-y-1 text-[11px] text-zinc-500">
+                              <div>
+                                HP next cycle: {hpNextWithoutLabel} → {hpNextWithLabel}
+                              </div>
+                              <div>Extra yield (est.): +{extraYieldLabel} MIND / cycle</div>
+                              <div>Cost: {buffCostLabel} MIND</div>
                             </div>
+                          ) : (
+                            <div className="mt-3 text-[11px] text-zinc-500">
+                              Max buff level reached for this rig.
+                            </div>
+                          )}
+                          {rigBuffCapReached ? (
+                            <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+                              Max rig buff reached (+{rigBuffCapPct.toFixed(1)}% HP). You can
+                              still renew this rig, but further buffs won&apos;t apply.
+                            </div>
+                          ) : null}
+                          <div className="mt-2 text-[11px] text-zinc-400">
+                            Buffs always start from the next cycle to keep rewards fair.
                           </div>
                         </div>
                       ) : null}

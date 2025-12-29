@@ -73,16 +73,16 @@ const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
 const RENEW_REMINDER_DAYS = 3;
 const CONTRACTS = [
-  { key: 0, label: "Starter Rig", durationDays: 7, costXnt: 1, hp: 0.6 },
-  { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 8, hp: 7 },
-  { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 16, hp: 15 },
+  { key: 0, label: "Starter Rig", durationDays: 7, costXnt: 1, hp: 1 },
+  { key: 1, label: "Pro Rig", durationDays: 14, costXnt: 8, hp: 8 },
+  { key: 2, label: "Industrial Rig", durationDays: 28, costXnt: 16, hp: 16 },
 ] as const;
 type RigType = "starter" | "pro" | "industrial";
 
 const BASE_HP_BY_TYPE: Record<RigType, number> = {
-  starter: 0.6,
-  pro: 7,
-  industrial: 15,
+  starter: 1,
+  pro: 8,
+  industrial: 16,
 };
 
 interface RigPosition {

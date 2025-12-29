@@ -57,7 +57,7 @@ import {
 
 const ACC_SCALE = 1_000_000_000_000_000_000n;
 const AUTO_CLAIM_INTERVAL_MS = 15_000;
-const NETWORK_BREAKDOWN_REFRESH_MS = 60_000;
+const NETWORK_BREAKDOWN_REFRESH_MS = 15_000;
 const BPS_DENOMINATOR = 10_000n;
 const RIG_BUFF_CAP_BPS = 850n;
 const RIPPER_FEE_BPS = 20n;
@@ -99,9 +99,9 @@ interface AccountLevelInfo {
 type NetworkHpBreakdownResponse = {
   baseHp: string;
   rigBuffHp: string;
-  accountBonusHp: string;
-  effectiveHp: string;
-  updatedAt: string;
+  accountBonusHp?: string;
+  effectiveHp?: string;
+  updatedAt?: string;
 };
 
 type NetworkHpBreakdown = {
@@ -547,19 +547,15 @@ export function PublicDashboard() {
         if (!res.ok) return;
         const data = (await res.json()) as Partial<NetworkHpBreakdownResponse>;
         if (!active) return;
-        if (
-          typeof data.baseHp !== "string" ||
-          typeof data.rigBuffHp !== "string" ||
-          typeof data.accountBonusHp !== "string" ||
-          typeof data.effectiveHp !== "string"
-        ) {
+        if (typeof data.baseHp !== "string" || typeof data.rigBuffHp !== "string") {
           return;
         }
         setNetworkBreakdown({
           baseHp: BigInt(data.baseHp),
           rigBuffHp: BigInt(data.rigBuffHp),
-          accountBonusHp: BigInt(data.accountBonusHp),
-          effectiveHp: BigInt(data.effectiveHp),
+          accountBonusHp:
+            typeof data.accountBonusHp === "string" ? BigInt(data.accountBonusHp) : 0n,
+          effectiveHp: typeof data.effectiveHp === "string" ? BigInt(data.effectiveHp) : 0n,
           updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString(),
         });
       } catch (err) {
@@ -801,8 +797,11 @@ export function PublicDashboard() {
   const hasNetworkBreakdown = networkBreakdown != null;
   const networkBaseHpHundredths = networkBreakdown?.baseHp ?? 0n;
   const networkRigBuffBonusHundredths = networkBreakdown?.rigBuffHp ?? 0n;
-  const networkAccountBonusHundredths = networkBreakdown?.accountBonusHp ?? 0n;
   const networkBuffedHpHundredths = networkBaseHpHundredths + networkRigBuffBonusHundredths;
+  const networkAccountBonusHundredths =
+    networkHpHundredths > networkBuffedHpHundredths
+      ? networkHpHundredths - networkBuffedHpHundredths
+      : 0n;
   const networkRigBuffPct =
     networkBaseHpHundredths > 0n
       ? Number((networkRigBuffBonusHundredths * 10_000n) / networkBaseHpHundredths) / 100

@@ -8,7 +8,7 @@ import {
 import { fetchClockUnixTs, fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 
 const BPS_DENOMINATOR = 10_000n;
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 15_000;
 
 type CachedPayload = {
   baseHp: string;

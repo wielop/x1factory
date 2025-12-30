@@ -2642,12 +2642,6 @@ export function PublicDashboard() {
             <div className="mt-1 text-xs text-zinc-400">
               Rewards are funded from mining purchases (30% of revenue).
             </div>
-            <div
-              className="mt-3 text-xs text-zinc-400"
-              title="Based on current XNT reward rate and total staked MIND."
-            >
-              APR: {stakingAprDisplay} | APY: {stakingApyDisplay}
-            </div>
             <div className="mt-3 text-xs text-zinc-400">
               Claimable: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT
             </div>

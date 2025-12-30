@@ -112,7 +112,15 @@ export function AdminDashboard() {
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
   const [treasuryBalance, setTreasuryBalance] = useState<bigint>(0n);
   const [activeMiners, setActiveMiners] = useState<
-    Array<{ owner: string; rigs: number; hp: bigint; level: number; sharePct: number }>
+    Array<{
+      owner: string;
+      rigs: number;
+      hp: bigint;
+      level: number;
+      sharePct: number;
+      levelBonusHp: bigint;
+      levelBonusSharePct: number;
+    }>
   >([]);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
   const [activeRigTotal, setActiveRigTotal] = useState(0);
@@ -279,7 +287,10 @@ export function AdminDashboard() {
         const now = ts ?? Math.floor(Date.now() / 1000);
         const positions = [...positionsV1, ...positionsV2];
         const secondsPerDay = Number(cfg.secondsPerDay);
-        const map = new Map<string, { rigs: number; baseHp: bigint; effectiveHp: bigint }>();
+        const map = new Map<
+          string,
+          { rigs: number; baseHp: bigint; buffedHp: bigint; effectiveHp: bigint }
+        >();
         let totalRigs = 0;
         let totalEffectiveHp = 0n;
         for (const entry of positions) {
@@ -299,9 +310,15 @@ export function AdminDashboard() {
           const level = levels.get(ownerKey) ?? 1;
           const bonus = levelBonusBps(level);
           const effectiveHp = (buffedHp * (BPS_DENOMINATOR + bonus)) / BPS_DENOMINATOR;
-          const current = map.get(ownerKey) ?? { rigs: 0, baseHp: 0n, effectiveHp: 0n };
+          const current = map.get(ownerKey) ?? {
+            rigs: 0,
+            baseHp: 0n,
+            buffedHp: 0n,
+            effectiveHp: 0n,
+          };
           current.rigs += 1;
           current.baseHp += decoded.hp;
+          current.buffedHp += buffedHp;
           current.effectiveHp += effectiveHp;
           map.set(ownerKey, current);
           totalRigs += 1;
@@ -316,7 +333,21 @@ export function AdminDashboard() {
               networkHp > 0n
                 ? Number((value.effectiveHp * 10_000n) / networkHp) / 100
                 : 0;
-            return { owner, rigs: value.rigs, hp: value.effectiveHp, level, sharePct };
+            const levelBonusHp =
+              value.effectiveHp > value.buffedHp ? value.effectiveHp - value.buffedHp : 0n;
+            const levelBonusSharePct =
+              networkHp > 0n
+                ? Number((levelBonusHp * 10_000n) / networkHp) / 100
+                : 0;
+            return {
+              owner,
+              rigs: value.rigs,
+              hp: value.effectiveHp,
+              level,
+              sharePct,
+              levelBonusHp,
+              levelBonusSharePct,
+            };
           })
           .sort((a, b) => (b.rigs !== a.rigs ? b.rigs - a.rigs : Number(b.hp - a.hp)));
         setActiveMiners(list);
@@ -770,7 +801,7 @@ export function AdminDashboard() {
                 >
                   <div className="font-mono break-all">{entry.owner}</div>
                   <div className="text-zinc-500">
-                    Lvl bonus: +{(Number(levelBonusBps(entry.level)) / 100).toFixed(1)}%
+                    Lvl bonus: +{(Number(levelBonusBps(entry.level)) / 100).toFixed(1)}% (+{formatHp(entry.levelBonusHp)} HP, {entry.levelBonusSharePct.toFixed(2)}% network)
                   </div>
                   <div className="text-zinc-500">
                     Rigs: {entry.rigs} | HP: {formatHp(entry.hp)} | Lvl: {entry.level} | Share:{" "}

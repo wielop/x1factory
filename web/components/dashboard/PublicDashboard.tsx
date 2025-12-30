@@ -41,6 +41,7 @@ import {
   decodeUserMiningProfileAccount,
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
+  USER_STAKE_LEN,
   tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
 import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
@@ -73,6 +74,12 @@ const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
 const RENEW_REMINDER_DAYS = 3;
 type RigType = "starter" | "pro" | "industrial";
+type LeaderboardRow = {
+  owner: string;
+  hp: bigint;
+  stakedMind: bigint;
+  activeRigs: number;
+};
 
 interface RigPlan {
   type: RigType;
@@ -359,7 +366,7 @@ function formatFullPrecisionToken(amountBase: bigint, decimals: number) {
 
 export function PublicDashboard() {
   const { connection } = useConnection();
-  const { publicKey: walletPublicKey } = useWallet();
+  const { publicKey: walletPublicKey, signAllTransactions } = useWallet();
   const anchorWallet = useAnchorWallet();
   const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
@@ -387,6 +394,7 @@ export function PublicDashboard() {
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
   const [activeRigTotal, setActiveRigTotal] = useState(0);
   const [networkBreakdown, setNetworkBreakdown] = useState<NetworkHpBreakdown | null>(null);
+  const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
 
   const [selectedContract, setSelectedContract] = useState<number>(1);
   const [openRigDetails, setOpenRigDetails] = useState<RigType | null>(null);
@@ -538,6 +546,7 @@ export function PublicDashboard() {
         setUserStake(null);
         setXntBalance(0n);
         setMindBalance(0n);
+        setLeaderboardRows([]);
         return;
       }
 
@@ -549,6 +558,7 @@ export function PublicDashboard() {
         stakeAcc,
         allPositionsV1,
         allPositionsV2,
+        allStakes,
       ] = await Promise.all([
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
@@ -574,6 +584,10 @@ export function PublicDashboard() {
           commitment: "confirmed",
           filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
         }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_STAKE_LEN }],
+        }),
       ]);
       const posGpa = [...posGpaV1, ...posGpaV2];
       const allPositions = [...allPositionsV1, ...allPositionsV2];
@@ -598,19 +612,52 @@ export function PublicDashboard() {
         const now = ts;
         const unique = new Set<string>();
         let rigs = 0;
+        const leaderboardMap = new Map<string, LeaderboardRow>();
         for (const entry of allPositions) {
           const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
           if (decoded.deactivated || decoded.endTs <= now) continue;
           const ownerKey = new PublicKey(decoded.owner).toBase58();
           unique.add(ownerKey);
           rigs += 1;
+          const current =
+            leaderboardMap.get(ownerKey) ??
+            { owner: ownerKey, hp: 0n, stakedMind: 0n, activeRigs: 0 };
+          current.hp += decoded.hp;
+          current.activeRigs += 1;
+          leaderboardMap.set(ownerKey, current);
         }
         setActiveMinerTotal(unique.size);
         setActiveRigTotal(rigs);
+
+        for (const entry of allStakes) {
+          const decoded = tryDecodeUserStakeAccount(Buffer.from(entry.account.data));
+          if (!decoded) continue;
+          const ownerKey = new PublicKey(decoded.owner).toBase58();
+          const current =
+            leaderboardMap.get(ownerKey) ??
+            { owner: ownerKey, hp: 0n, stakedMind: 0n, activeRigs: 0 };
+          current.stakedMind = decoded.stakedMind;
+          leaderboardMap.set(ownerKey, current);
+        }
+
+        const rows = Array.from(leaderboardMap.values())
+          .filter((row) => row.hp > 0n)
+          .sort((a, b) => {
+            if (a.hp === b.hp) {
+              if (a.stakedMind === b.stakedMind) {
+                return a.owner.localeCompare(b.owner);
+              }
+              return a.stakedMind > b.stakedMind ? -1 : 1;
+            }
+            return a.hp > b.hp ? -1 : 1;
+          })
+          .slice(0, 50);
+        setLeaderboardRows(rows);
       } catch (err) {
         console.warn("Failed to load active miners", err);
         setActiveMinerTotal(0);
         setActiveRigTotal(0);
+        setLeaderboardRows([]);
       }
 
       const mindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);
@@ -1398,7 +1445,7 @@ export function PublicDashboard() {
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const program = getProgram(connection, anchorWallet);
       const MAX_INSTRUCTIONS = 6;
-      let sentSig = "";
+      const txs: Transaction[] = [];
       for (let i = 0; i < claimTargets.length; i += MAX_INSTRUCTIONS) {
         const chunk = claimTargets.slice(i, i + MAX_INSTRUCTIONS);
         const tx = new Transaction();
@@ -1420,6 +1467,29 @@ export function PublicDashboard() {
             .instruction();
           tx.add(instruction);
         }
+        txs.push(tx);
+      }
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+      for (const tx of txs) {
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = publicKey;
+      }
+      if (signAllTransactions) {
+        const signed = await signAllTransactions(txs);
+        const sigs = await Promise.all(
+          signed.map((signedTx) =>
+            connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false })
+          )
+        );
+        await Promise.all(
+          sigs.map((sig) =>
+            connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight })
+          )
+        );
+        return sigs[sigs.length - 1] ?? "";
+      }
+      let sentSig = "";
+      for (const tx of txs) {
         sentSig = await program.provider.sendAndConfirm(tx, []);
       }
       return sentSig;
@@ -1993,6 +2063,45 @@ export function PublicDashboard() {
             <Badge variant="muted">Total staked: {totalStakedBadge} MIND</Badge>
           </div>
         </div>
+
+        <Card className="mt-8 border-white/10 bg-white/5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Leaderboard</div>
+              <div className="mt-1 text-xs text-zinc-500">Sorted by HP, then staked MIND.</div>
+            </div>
+            <Badge variant="muted">Top {leaderboardRows.length}</Badge>
+          </div>
+          <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
+            <div className="grid grid-cols-[48px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              <div>#</div>
+              <div>Wallet</div>
+              <div className="text-right">HP</div>
+              <div className="text-right">Staked MIND</div>
+            </div>
+            {leaderboardRows.length === 0 ? (
+              <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {leaderboardRows.map((row, idx) => (
+                  <div
+                    key={row.owner}
+                    className="grid grid-cols-[48px_1fr_120px_140px] items-center text-xs text-zinc-200"
+                  >
+                    <div className="text-zinc-500">{idx + 1}</div>
+                    <div className="font-mono" title={row.owner}>
+                      {shortPk(row.owner, 4)}
+                    </div>
+                    <div className="text-right text-white">{formatFixed2(row.hp)}</div>
+                    <div className="text-right text-zinc-300">
+                      {mintDecimals ? formatRoundedToken(row.stakedMind, mintDecimals.mind, 2) : "-"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
 
         <section className="mt-10 grid gap-6 lg:grid-cols-[2fr_1fr]">
           <Card className="border-cyan-400/20 bg-ink/90 p-6">

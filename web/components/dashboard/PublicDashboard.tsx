@@ -1396,27 +1396,33 @@ export function PublicDashboard() {
     if (claimTargets.length === 0) return false;
     await withTx("Claim all rigs", async () => {
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
-      const tx = new Transaction();
-      if (ix) tx.add(ix);
       const program = getProgram(connection, anchorWallet);
-      for (const entry of claimTargets) {
-        const instruction = await program.methods
-          .claimMind()
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            userProfile: deriveUserProfilePda(publicKey),
-            position: new PublicKey(entry.position.pubkey),
-            vaultAuthority: deriveVaultPda(),
-            mindMint: config.mindMint,
-            userMindAta: ata,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .instruction();
-        tx.add(instruction);
+      const MAX_INSTRUCTIONS = 6;
+      let sentSig = "";
+      for (let i = 0; i < claimTargets.length; i += MAX_INSTRUCTIONS) {
+        const chunk = claimTargets.slice(i, i + MAX_INSTRUCTIONS);
+        const tx = new Transaction();
+        if (ix && i === 0) tx.add(ix);
+        for (const entry of chunk) {
+          const instruction = await program.methods
+            .claimMind()
+            .accounts({
+              owner: publicKey,
+              config: deriveConfigPda(),
+              userProfile: deriveUserProfilePda(publicKey),
+              position: new PublicKey(entry.position.pubkey),
+              vaultAuthority: deriveVaultPda(),
+              mindMint: config.mindMint,
+              userMindAta: ata,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction();
+          tx.add(instruction);
+        }
+        sentSig = await program.provider.sendAndConfirm(tx, []);
       }
-      return await program.provider.sendAndConfirm(tx, []);
+      return sentSig;
     });
     return true;
   }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);

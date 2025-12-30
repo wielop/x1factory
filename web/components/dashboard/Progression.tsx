@@ -9,7 +9,7 @@ import { decodeUserMiningProfileAccount } from "@/lib/decoders";
 
 const LEVEL_ROWS = [
   { level: "Level 1", xp: "0 XP", bonus: "0.0%", cost: "-" },
-  { level: "Level 2", xp: "1 XP", bonus: "+1.6%", cost: "150 MIND" },
+  { level: "Level 2", xp: "500 XP", bonus: "+1.6%", cost: "150 MIND" },
   { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%", cost: "350 MIND" },
   { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%", cost: "900 MIND" },
   { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%", cost: "2,000 MIND" },

@@ -873,7 +873,7 @@ describe("mining_v2", () => {
     );
 
     await program.methods
-      .buyContract(1, new BN(0))
+      .buyContract(2, new BN(0))
       .accounts({
         owner: user.publicKey,
         config: configPda,
@@ -994,29 +994,55 @@ describe("mining_v2", () => {
       .signers([user])
       .rpc();
 
-    await warpForwardSeconds(3_600_000);
+    await warpForwardSeconds(1_200_000);
+
+    await program.methods
+      .deactivatePosition()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        position: positionPda(user.publicKey, 0),
+        userProfile: profilePda(user.publicKey),
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
+
+    await program.methods
+      .buyContract(2, new BN(1))
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        userProfile: profilePda(user.publicKey),
+        position: positionPda(user.publicKey, 1),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([user])
+      .rpc();
 
     try {
       await program.methods
-        .levelUp()
-        .accounts({
-          owner: user.publicKey,
-          config: configPda,
-          levelConfig: levelConfigPda,
-          userProfile: profilePda(user.publicKey),
-          ownerMindAta: userMindAta(user.publicKey),
-          burnMindVault: mindBurnVault,
-          treasuryMindVault: mindTreasuryVault,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .remainingAccounts([
-          {
-            pubkey: positionPda(user.publicKey, 0),
-            isSigner: false,
-            isWritable: true,
-          },
-        ])
+      .levelUp()
+      .accounts({
+        owner: user.publicKey,
+        config: configPda,
+        levelConfig: levelConfigPda,
+        userProfile: profilePda(user.publicKey),
+        ownerMindAta: userMindAta(user.publicKey),
+        burnMindVault: mindBurnVault,
+        treasuryMindVault: mindTreasuryVault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .remainingAccounts([
+        {
+          pubkey: positionPda(user.publicKey, 1),
+          isSigner: false,
+          isWritable: true,
+        },
+      ])
         .signers([user])
         .rpc();
       expect.fail("Expected level up to fail without MIND");
@@ -1049,39 +1075,36 @@ describe("mining_v2", () => {
       .signers([levelUser])
       .rpc();
 
-    const cycles = 83;
-    for (let i = 0; i < cycles; i += 1) {
-      await warpForwardSeconds(29);
-      await program.methods
-        .claimMind()
-        .accounts({
-          owner: levelUser.publicKey,
-          config: configPda,
-          userProfile: profilePda(levelUser.publicKey),
-          position: positionPda(levelUser.publicKey, 0),
-          vaultAuthority,
-          mindMint,
-          userMindAta: userMindAta(levelUser.publicKey),
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([levelUser])
-        .rpc();
+    await warpForwardSeconds(1_200_000);
+    await program.methods
+      .claimMind()
+      .accounts({
+        owner: levelUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(levelUser.publicKey),
+        position: positionPda(levelUser.publicKey, 0),
+        vaultAuthority,
+        mindMint,
+        userMindAta: userMindAta(levelUser.publicKey),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([levelUser])
+      .rpc();
 
-      await program.methods
-        .renewRig()
-        .accounts({
-          owner: levelUser.publicKey,
-          config: configPda,
-          userProfile: profilePda(levelUser.publicKey),
-          position: positionPda(levelUser.publicKey, 0),
-          stakingRewardVault,
-          treasuryVault,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([levelUser])
-        .rpc();
-    }
+    await program.methods
+      .buyContract(2, new BN(1))
+      .accounts({
+        owner: levelUser.publicKey,
+        config: configPda,
+        userProfile: profilePda(levelUser.publicKey),
+        position: positionPda(levelUser.publicKey, 1),
+        stakingRewardVault,
+        treasuryVault,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([levelUser])
+      .rpc();
 
     await program.methods
       .levelUp()
@@ -1098,7 +1121,7 @@ describe("mining_v2", () => {
       })
       .remainingAccounts([
         {
-          pubkey: positionPda(levelUser.publicKey, 0),
+          pubkey: positionPda(levelUser.publicKey, 1),
           isSigner: false,
           isWritable: true,
         },
@@ -1120,7 +1143,7 @@ describe("mining_v2", () => {
         owner: levelUser.publicKey,
         config: configPda,
         userProfile: profilePda(levelUser.publicKey),
-        position: positionPda(levelUser.publicKey, 0),
+        position: positionPda(levelUser.publicKey, 1),
         vaultAuthority,
         mindMint,
         userMindAta: userMindAta(levelUser.publicKey),
@@ -1137,7 +1160,7 @@ describe("mining_v2", () => {
         config: configPda,
         rigBuffConfig: rigBuffConfigPda,
         userProfile: profilePda(levelUser.publicKey),
-        position: positionPda(levelUser.publicKey, 0),
+        position: positionPda(levelUser.publicKey, 1),
         stakingRewardVault,
         treasuryVault,
         mindMint,

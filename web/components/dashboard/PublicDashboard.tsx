@@ -1326,20 +1326,20 @@ export function PublicDashboard() {
         ? `${formatRoundedToken(row.stakedMind, mintDecimals.mind, 2)}${shareLabel}`
         : "-";
     return (
-      <div
-        key={row.owner}
-        className="grid grid-cols-[48px_1fr_120px_140px] items-center text-xs text-zinc-200"
-      >
-        <div className="text-zinc-500">{idx + 1}</div>
-        <div className="flex items-center gap-1 font-mono" title={row.owner}>
-          {medal ? <span aria-label={`Rank ${idx + 1} medal`}>{medal}</span> : null}
-          {shortPk(row.owner, 4)}
-        </div>
-        <div className="text-right text-white">{formatFixed2(row.hp)}</div>
-        <div className="text-right text-zinc-300">{stakedLabel}</div>
+    <div
+      key={row.owner}
+      className="grid grid-cols-[32px_32px_1fr_120px_140px] items-center text-xs text-zinc-200"
+    >
+      <div className="text-zinc-500">{idx + 1}</div>
+      <div className="text-center font-mono text-sm">{medal ?? ""}</div>
+      <div className="font-mono" title={row.owner}>
+        {shortPk(row.owner, 4)}
       </div>
-    );
-  });
+      <div className="text-right text-white">{formatFixed2(row.hp)}</div>
+      <div className="text-right text-zinc-300">{stakedLabel}</div>
+    </div>
+  );
+});
   const stakingAprDisplay = formatPercent(stakingAprPct);
   const stakingApyDisplay = formatPercent(stakingApyPct);
   const lastClaimRounded =
@@ -2999,8 +2999,9 @@ export function PublicDashboard() {
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
             <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-[48px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              <div className="grid grid-cols-[32px_32px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                 <div>#</div>
+                <div></div>
                 <div>Wallet</div>
                 <div className="text-right">HP</div>
                 <div className="text-right">Staked MIND</div>

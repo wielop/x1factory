@@ -770,6 +770,9 @@ export function AdminDashboard() {
                 >
                   <div className="font-mono break-all">{entry.owner}</div>
                   <div className="text-zinc-500">
+                    Lvl bonus: +{(Number(levelBonusBps(entry.level)) / 100).toFixed(1)}%
+                  </div>
+                  <div className="text-zinc-500">
                     Rigs: {entry.rigs} | HP: {formatHp(entry.hp)} | Lvl: {entry.level} | Share:{" "}
                     {entry.sharePct.toFixed(2)}%
                   </div>

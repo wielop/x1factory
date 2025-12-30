@@ -122,6 +122,12 @@ const RIG_BEST_FOR: Record<RigType, string> = {
   industrial: "Long-term compounding and stability.",
 };
 
+const RIG_STYLE_SUMMARY: Record<RigType, string> = {
+  starter: "Short-term / flexible",
+  pro: "Balanced, mid-term",
+  industrial: "Long-term & stable",
+};
+
 const RIG_COMPARE_ROWS = [
   {
     plan: RIG_PLANS[0],
@@ -383,12 +389,8 @@ export function PublicDashboard() {
   const [networkBreakdown, setNetworkBreakdown] = useState<NetworkHpBreakdown | null>(null);
 
   const [selectedContract, setSelectedContract] = useState<number>(1);
-  const [expandedRigs, setExpandedRigs] = useState<Record<RigType, boolean>>({
-    starter: false,
-    pro: false,
-    industrial: false,
-  });
-  const [showRigInfo, setShowRigInfo] = useState(false);
+  const [openRigDetails, setOpenRigDetails] = useState<RigType | null>(null);
+  const [showRigInfoModal, setShowRigInfoModal] = useState(false);
   const [stakeAmountUi, setStakeAmountUi] = useState<string>("");
   const [unstakeAmountUi, setUnstakeAmountUi] = useState<string>("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -398,6 +400,7 @@ export function PublicDashboard() {
   const [lastClaimAmount, setLastClaimAmount] = useState<bigint | null>(null);
   const [lastClaimTs, setLastClaimTs] = useState<number | null>(null);
   const refreshIdRef = useRef(0);
+  const rigCardsRef = useRef<HTMLDivElement | null>(null);
   const xpEstimateStartRef = useRef<number | null>(null);
   const xpEstimateKey =
     publicKey && typeof window !== "undefined"
@@ -419,6 +422,20 @@ export function PublicDashboard() {
     [mintDecimals]
   );
   const [showClaimableFull, setShowClaimableFull] = useState(false);
+
+  useEffect(() => {
+    if (!openRigDetails) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || !rigCardsRef.current) return;
+      if (rigCardsRef.current.contains(target)) return;
+      setOpenRigDetails(null);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+    };
+  }, [openRigDetails]);
 
   const contract = CONTRACTS.find((c) => c.key === selectedContract) ?? CONTRACTS[0];
   const selectedPlan = RIG_PLANS[selectedContract] ?? RIG_PLANS[0];
@@ -1965,21 +1982,26 @@ export function PublicDashboard() {
               </Badge>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div ref={rigCardsRef} className="mt-5 grid gap-3 md:grid-cols-3">
               {RIG_PLANS.map((plan, idx) => {
                 const maxBuffPctLabel = (plan.maxBuffPercent * 100).toFixed(1);
                 const maxBuffHpLabel = getMaxBuffHp(plan).toFixed(2);
-                const isExpanded = expandedRigs[plan.type];
+                const isExpanded = openRigDetails === plan.type;
                 return (
                   <div
                     key={plan.type}
+                    data-rig-card
                     role="button"
                     tabIndex={0}
-                    onClick={() => setSelectedContract(idx)}
+                    onClick={() => {
+                      setSelectedContract(idx);
+                      setOpenRigDetails(plan.type);
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         setSelectedContract(idx);
+                        setOpenRigDetails(plan.type);
                       }
                     }}
                     className={[
@@ -1989,60 +2011,43 @@ export function PublicDashboard() {
                         : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10",
                     ].join(" ")}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">{plan.label}</div>
-                        <div className="mt-1 text-[11px] text-zinc-400">
-                          {plan.durationDays} days
-                        </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-white">
+                        {plan.label}{" "}
+                        <span className="text-[11px] text-zinc-400">· {plan.durationDays} days</span>
                       </div>
                       <button
                         type="button"
+                        data-rig-details-toggle
                         onClick={(event) => {
                           event.stopPropagation();
-                          setExpandedRigs((prev) => ({
-                            ...prev,
-                            [plan.type]: !prev[plan.type],
-                          }));
+                          setSelectedContract(idx);
+                          setOpenRigDetails((prev) => (prev === plan.type ? null : plan.type));
                         }}
-                        className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 hover:text-zinc-300"
+                        className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-[11px] text-zinc-400 hover:border-cyan-300/40 hover:text-white"
+                        aria-label={`Details for ${plan.label}`}
                         aria-expanded={isExpanded}
                       >
-                        {isExpanded ? "^ Hide" : "v Details"}
+                        i
                       </button>
                     </div>
-                    <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-                      <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                        <span>Base HP</span>
-                        <span className="text-sm font-semibold text-white">{plan.baseHp} HP</span>
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-400">
-                        <span>Cost</span>
-                        <span className="text-sm font-semibold text-emerald-200">
-                          {plan.costXnt} XNT
-                        </span>
-                      </div>
+                    <div className="mt-2 text-sm font-semibold text-white">
+                      {plan.baseHp} HP <span className="text-zinc-500">•</span> {plan.costXnt} XNT
+                    </div>
+                    <div className="mt-1 text-[11px] text-zinc-500">
+                      {RIG_STYLE_SUMMARY[plan.type]}
                     </div>
                     {isExpanded ? (
-                      <div className="mt-3 grid gap-2">
-                        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                            Best for
-                          </div>
-                          <div className="mt-1 text-xs text-zinc-300">
-                            {RIG_BEST_FOR[plan.type]}
-                          </div>
+                      <div className="mt-3 border-t border-white/10 pt-3 text-[11px] text-zinc-400">
+                        <div>
+                          <span className="text-zinc-500">Best for:</span> {RIG_BEST_FOR[plan.type]}
                         </div>
-                        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                            Long-term potential
-                          </div>
-                          <div className="mt-1 text-xs text-zinc-300">
-                            Up to +{maxBuffPctLabel}% permanent HP boost.
-                          </div>
-                          <div className="mt-1 text-[11px] text-zinc-500">
-                            At max buffs: ~{maxBuffHpLabel} HP
-                          </div>
+                        <div className="mt-2">
+                          <span className="text-zinc-500">Long-term potential:</span> Up to +
+                          {maxBuffPctLabel}% permanent HP boost.
+                        </div>
+                        <div className="mt-1 text-zinc-500">
+                          At max buffs: ~{maxBuffHpLabel} HP.
                         </div>
                       </div>
                     ) : null}
@@ -2050,151 +2055,16 @@ export function PublicDashboard() {
                 );
               })}
             </div>
-            <div className="mt-2 text-xs text-zinc-500">
-              Choose the plan that fits your strategy. You can start multiple rigs.
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+              <span>Choose the plan that fits your strategy. You can start multiple rigs.</span>
+              <button
+                type="button"
+                onClick={() => setShowRigInfoModal(true)}
+                className="text-xs text-cyan-200 hover:text-cyan-100"
+              >
+                Learn how rigs &amp; buffs work
+              </button>
             </div>
-
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-white">More about rigs &amp; buffs</div>
-                <button
-                  type="button"
-                  onClick={() => setShowRigInfo((prev) => !prev)}
-                  className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 hover:text-zinc-300"
-                  aria-expanded={showRigInfo}
-                >
-                  {showRigInfo ? "^ Hide" : "v Expand"}
-                </button>
-              </div>
-            </div>
-
-            {showRigInfo ? (
-              <div className="mt-4 space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-sm font-semibold text-white">Compare plans</div>
-                  <div className="mt-1 text-xs text-zinc-500">{RISK_HELPER_TEXT}</div>
-
-                  <div className="mt-4 hidden md:block">
-                    <div className="grid grid-cols-6 gap-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                      <div>Rig</div>
-                      <div>Base HP</div>
-                      <div>Max buff</div>
-                      <div>Cycle length</div>
-                      <div title={RISK_HELPER_TEXT}>Risk</div>
-                      <div>Style</div>
-                    </div>
-                    <div className="mt-2 space-y-2">
-                      {RIG_COMPARE_ROWS.map((row) => (
-                        <div
-                          key={row.plan.type}
-                          className="grid grid-cols-6 gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-300"
-                        >
-                          <div className="font-semibold text-white">{row.plan.label}</div>
-                          <div>{row.plan.baseHp} HP</div>
-                          <div>+{(row.plan.maxBuffPercent * 100).toFixed(1)}%</div>
-                          <div>{row.plan.durationDays} days</div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1">
-                              {Array.from({ length: 5 }, (_, idx) => (
-                                <span
-                                  key={idx}
-                                  className={`h-1.5 w-1.5 rounded-full ${
-                                    idx < row.riskDots ? "bg-cyan-300" : "bg-white/10"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-[11px] text-zinc-500">{row.riskLabel}</span>
-                          </div>
-                          <div className="text-zinc-400">{row.style}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:hidden">
-                    {RIG_COMPARE_ROWS.map((row) => (
-                      <div
-                        key={row.plan.type}
-                        className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
-                      >
-                        <div className="text-sm font-semibold text-white">{row.plan.label}</div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
-                          <div>Base HP</div>
-                          <div className="text-zinc-200">{row.plan.baseHp} HP</div>
-                          <div>Max buff</div>
-                          <div className="text-zinc-200">
-                            +{(row.plan.maxBuffPercent * 100).toFixed(1)}%
-                          </div>
-                          <div>Cycle length</div>
-                          <div className="text-zinc-200">{row.plan.durationDays} days</div>
-                          <div>Style</div>
-                          <div className="text-zinc-200">{row.style}</div>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
-                          <span title={RISK_HELPER_TEXT}>Risk</span>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1">
-                              {Array.from({ length: 5 }, (_, idx) => (
-                                <span
-                                  key={idx}
-                                  className={`h-1.5 w-1.5 rounded-full ${
-                                    idx < row.riskDots ? "bg-cyan-300" : "bg-white/10"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-zinc-500">{row.riskLabel}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-sm font-semibold text-white">How rigs grow over time</div>
-                  <div className="mt-1 text-xs text-zinc-500">
-                    When you renew your rig, you can optionally add a buff. Buffs slightly increase
-                    that rig&apos;s HP and stack over time, up to its maximum boost.
-                  </div>
-                  <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-                    {growthExamples.map((example) => (
-                      <li key={example.key}>
-                        {example.label}: {example.baseLabel} → ~{example.maxLabel} HP at max buffs.
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-3 text-[11px] text-zinc-500">
-                    Buffs always apply from the next cycle to keep rewards fair.
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-sm font-semibold text-white">Pick based on your playstyle</div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    {PLAYSTYLE_HINTS.map((hint) => (
-                      <div
-                        key={hint.title}
-                        className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
-                      >
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          {hint.title}
-                        </div>
-                        <div className="mt-2 text-sm font-semibold text-white">
-                          Recommend: {hint.recommend}
-                        </div>
-                        <ul className="mt-2 space-y-1 text-[11px] text-zinc-400">
-                          {hint.bullets.map((bullet) => (
-                            <li key={bullet}>• {bullet}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : null}
 
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Selected</div>
@@ -2226,6 +2096,159 @@ export function PublicDashboard() {
                 </Button>
               </div>
             </div>
+
+            {showRigInfoModal ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                  onClick={() => setShowRigInfoModal(false)}
+                  aria-label="Close rig info"
+                />
+                <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-cyan-300/20 bg-ink/95 shadow-[0_0_40px_rgba(34,242,255,0.15)] backdrop-blur-xl">
+                  <button
+                    type="button"
+                    onClick={() => setShowRigInfoModal(false)}
+                    className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-xs text-zinc-300 hover:border-cyan-300/40 hover:text-white"
+                    aria-label="Close"
+                  >
+                    X
+                  </button>
+                  <div className="max-h-[80vh] overflow-y-auto p-5">
+                    <div className="text-sm font-semibold text-white">Rigs &amp; buffs</div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                      Compare plans, see how buffs stack, and pick the best playstyle for you.
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-sm font-semibold text-white">Compare plans</div>
+                        <div className="mt-1 text-xs text-zinc-500">{RISK_HELPER_TEXT}</div>
+
+                        <div className="mt-4 hidden md:block">
+                          <div className="grid grid-cols-6 gap-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                            <div>Rig</div>
+                            <div>Base HP</div>
+                            <div>Max buff</div>
+                            <div>Cycle length</div>
+                            <div title={RISK_HELPER_TEXT}>Risk</div>
+                            <div>Style</div>
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            {RIG_COMPARE_ROWS.map((row) => (
+                              <div
+                                key={row.plan.type}
+                                className="grid grid-cols-6 gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-300"
+                              >
+                                <div className="font-semibold text-white">{row.plan.label}</div>
+                                <div>{row.plan.baseHp} HP</div>
+                                <div>+{(row.plan.maxBuffPercent * 100).toFixed(1)}%</div>
+                                <div>{row.plan.durationDays} days</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-1">
+                                    {Array.from({ length: 5 }, (_, idx) => (
+                                      <span
+                                        key={idx}
+                                        className={`h-1.5 w-1.5 rounded-full ${
+                                          idx < row.riskDots ? "bg-cyan-300" : "bg-white/10"
+                                        }`}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="text-[11px] text-zinc-500">{row.riskLabel}</span>
+                                </div>
+                                <div className="text-zinc-400">{row.style}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:hidden">
+                          {RIG_COMPARE_ROWS.map((row) => (
+                            <div
+                              key={row.plan.type}
+                              className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                            >
+                              <div className="text-sm font-semibold text-white">{row.plan.label}</div>
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                                <div>Base HP</div>
+                                <div className="text-zinc-200">{row.plan.baseHp} HP</div>
+                                <div>Max buff</div>
+                                <div className="text-zinc-200">
+                                  +{(row.plan.maxBuffPercent * 100).toFixed(1)}%
+                                </div>
+                                <div>Cycle length</div>
+                                <div className="text-zinc-200">{row.plan.durationDays} days</div>
+                                <div>Style</div>
+                                <div className="text-zinc-200">{row.style}</div>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
+                                <span title={RISK_HELPER_TEXT}>Risk</span>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-1">
+                                    {Array.from({ length: 5 }, (_, idx) => (
+                                      <span
+                                        key={idx}
+                                        className={`h-1.5 w-1.5 rounded-full ${
+                                          idx < row.riskDots ? "bg-cyan-300" : "bg-white/10"
+                                        }`}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="text-zinc-500">{row.riskLabel}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-sm font-semibold text-white">How rigs grow over time</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          When you renew your rig, you can optionally add a buff. Buffs slightly increase
+                          that rig&apos;s HP and stack over time, up to its maximum boost.
+                        </div>
+                        <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+                          {growthExamples.map((example) => (
+                            <li key={example.key}>
+                              {example.label}: {example.baseLabel} → ~{example.maxLabel} HP at max buffs.
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-3 text-[11px] text-zinc-500">
+                          Buffs always apply from the next cycle to keep rewards fair.
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-sm font-semibold text-white">Pick based on your playstyle</div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          {PLAYSTYLE_HINTS.map((hint) => (
+                            <div
+                              key={hint.title}
+                              className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                            >
+                              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                                {hint.title}
+                              </div>
+                              <div className="mt-2 text-sm font-semibold text-white">
+                                Recommend: {hint.recommend}
+                              </div>
+                              <ul className="mt-2 space-y-1 text-[11px] text-zinc-400">
+                                {hint.bullets.map((bullet) => (
+                                  <li key={bullet}>• {bullet}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </Card>
 
           <Card className="border-cyan-400/20 bg-ink/90 p-6">

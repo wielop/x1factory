@@ -1,6 +1,6 @@
 import { PublicKey, type Connection } from "@solana/web3.js";
 
-export const DEFAULT_RPC_URL = "https://rpc.mainnet.x1.xyz";
+export const DEFAULT_RPC_URL = "https://rpc.testnet.x1.xyz";
 export const DEFAULT_PROGRAM_ID = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw";
 
 const CONFIG_SEED = "config";

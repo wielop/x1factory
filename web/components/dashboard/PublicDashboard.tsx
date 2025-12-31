@@ -2149,10 +2149,7 @@ export function PublicDashboard() {
               Active miners: Unique addresses: {activeMinerTotal} | Active rigs: {activeRigTotal}
             </Badge>
             <Badge variant="muted">Reward pool: {rewardPoolBadge} XNT</Badge>
-            <Badge
-              variant="muted"
-              title={`Circulating supply excludes tokens held by ${EXCLUDED_MIND_LP_ADDRESS} (LP).`}
-            >
+            <Badge variant="muted">
               Total staked: {totalStakedBadge} MIND{stakingShareLabel}
             </Badge>
           </div>

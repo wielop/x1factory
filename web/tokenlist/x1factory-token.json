@@ -1,0 +1,14 @@
+{
+  "name": "X1 Factory Token",
+  "symbol": "X1",
+  "mint": "DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT",
+  "decimals": 9,
+  "logoURI": "https://raw.githubusercontent.com/wielop/mining/main/web/public/x1factory-logo.png",
+  "tags": ["utility", "mining", "staking"],
+  "extensions": {
+    "website": "https://x1factory.xyz/",
+    "twitter": "https://twitter.com/x1factory",
+    "discord": "https://discord.gg/5n5ZQnx",
+    "maxSupply": "1000000"
+  }
+}

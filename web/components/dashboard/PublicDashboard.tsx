@@ -1364,10 +1364,9 @@ export function PublicDashboard() {
     mintDecimals != null ? formatRoundedToken(stakingRewardBalance, mintDecimals.xnt) : "-";
   const totalStakedBadge =
     mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
-  const excludedLpLabel = shortPk(EXCLUDED_MIND_LP_ADDRESS);
   const stakingShareLabel =
     stakingShareOfCirculating != null
-      ? ` (${stakingShareOfCirculating.toFixed(2)}% of circulating supply excl. ${excludedLpLabel})`
+      ? ` (${stakingShareOfCirculating.toFixed(2)}%)`
       : "";
   const totalStakedBase = config?.stakingTotalStakedMind ?? 0n;
   const leaderboardRowElements = leaderboardRows.map((row, idx) => {

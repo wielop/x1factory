@@ -118,6 +118,98 @@ const RIG_PLANS: RigPlan[] = [
   },
 ];
 
+const ACTIVE_STAKERS_SUMMARY = {
+  unique: 13,
+  totalStaked: "981.5273",
+  updated: 1767202006,
+};
+
+const ACTIVE_STAKERS: Array<{
+  owner: string;
+  staked: string;
+  share: string;
+  reward: string;
+}> = [
+  {
+    owner: "FPLV6bRcBj4i8sipkim2N7eZMsGJC2xfCsAgeoDsQhoD",
+    staked: "228.2656",
+    share: "23.25%",
+    reward: "5.0299",
+  },
+  {
+    owner: "2UQZkgiXwgRxvP4iYnGSnB97LnE9vwToQNCmZ5LtDLLx",
+    staked: "165.9883",
+    share: "16.91%",
+    reward: "3.6576",
+  },
+  {
+    owner: "AgxPPPEy4DAaUdCRuSpmXRirC9KXCA19vZA5gEmcVKaw",
+    staked: "163.0982",
+    share: "16.61%",
+    reward: "3.5939",
+  },
+  {
+    owner: "G1uYQXN4xTAxDqXgZoe4MonGv7icCz7BJStYFzNKzU72",
+    staked: "141.1287",
+    share: "14.37%",
+    reward: "3.1098",
+  },
+  {
+    owner: "HhqNYhvwU9X4ne3qHJKq8PPEYUEsk2g1LttyazEhL1Ld",
+    staked: "119.4153",
+    share: "12.16%",
+    reward: "2.6313",
+  },
+  {
+    owner: "BFrWAAd5yG1Lb4qaSKMZUm6wDzCoWCz69S5gkVtuyA1i",
+    staked: "66.1287",
+    share: "6.73%",
+    reward: "1.4571",
+  },
+  {
+    owner: "AYmTUbXhUA9gW6Q4QeqTPwKhniVPextiFR4YYCYi7SCK",
+    staked: "44.6869",
+    share: "4.55%",
+    reward: "0.9847",
+  },
+  {
+    owner: "BQ3ekHBPKEzxDpYXavSuctQLu6WqxgdEHvkXZqLTCi8m",
+    staked: "29.5055",
+    share: "3.00%",
+    reward: "0.6501",
+  },
+  {
+    owner: "97RSSwCMPrw2PCuRZk86oi33EFZYojtGxaUmpXnBgWAA",
+    staked: "7.1283",
+    share: "0.72%",
+    reward: "0.1570",
+  },
+  {
+    owner: "3365iM53o3btUUpZFh96Bgrehm8SE9smUfmZvgVb7RmY",
+    staked: "7.0726",
+    share: "0.72%",
+    reward: "0.1558",
+  },
+  {
+    owner: "BAavP6nxHDkVDowYXoyDaNDbc9CAgncfDPELAyjzoyTq",
+    staked: "4.0467",
+    share: "0.41%",
+    reward: "0.0891",
+  },
+  {
+    owner: "1f2kbCpezrEFUMgjjyruGQW6JeQnXXj8fJfYzdFmYgB",
+    staked: "2.6706",
+    share: "0.27%",
+    reward: "0.0588",
+  },
+  {
+    owner: "4Y2Pd7Uv8wRVFfMsNZbJ3Zb6YNYdG2iknb7QfQTS4Cxe",
+    staked: "2.3914",
+    share: "0.24%",
+    reward: "0.0526",
+  },
+];
+
 const RIG_PLAN_BY_TYPE: Record<RigType, RigPlan> = {
   starter: RIG_PLANS[0],
   pro: RIG_PLANS[1],
@@ -3001,6 +3093,36 @@ export function PublicDashboard() {
             </div>
             <div className="mt-5 text-xs text-zinc-500">
               Your stake: {stakeSummary} · Your share: {stakeShareRounded}
+            </div>
+          </Card>
+
+          <Card className="mt-6 border-emerald-400/20 bg-ink/90 p-6">
+            <div className="text-2xl font-semibold">Active stakers</div>
+            <div className="mt-1 text-xs text-zinc-400">
+              Unique addresses: {ACTIVE_STAKERS_SUMMARY.unique} | Total staked: {ACTIVE_STAKERS_SUMMARY.totalStaked} MIND | Updated{" "}
+              {ACTIVE_STAKERS_SUMMARY.updated}
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-xs text-zinc-300">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+                    <th className="pb-2 pr-4 font-normal">Address</th>
+                    <th className="pb-2 pr-4 font-normal">Staked (MIND)</th>
+                    <th className="pb-2 pr-4 font-normal">Share</th>
+                    <th className="pb-2 font-normal">Reward/day (XNT)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ACTIVE_STAKERS.map((staker) => (
+                    <tr key={staker.owner} className="border-b border-white/5">
+                      <td className="py-2 align-top font-mono text-[11px] text-white">{staker.owner}</td>
+                      <td className="py-2">{staker.staked}</td>
+                      <td className="py-2">{staker.share}</td>
+                      <td className="py-2">{staker.reward}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
         </section>

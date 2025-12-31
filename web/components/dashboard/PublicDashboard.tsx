@@ -6,6 +6,7 @@ import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapte
 import { BN } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram, Transaction, type AccountMeta } from "@solana/web3.js";
 import {
+  AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -178,6 +179,9 @@ const PLAYSTYLE_HINTS = [
 
 const RISK_HELPER_TEXT =
   "Shorter cycles = more clicking and more chances to optimize. Longer cycles = fewer decisions, more stability.";
+
+const EXCLUDED_MIND_LP_ADDRESS = "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z";
+const EXCLUDED_MIND_LP_OWNER = new PublicKey(EXCLUDED_MIND_LP_ADDRESS);
 
 const CONTRACTS = RIG_PLANS.map((plan, key) => ({
   key,
@@ -392,6 +396,7 @@ export function PublicDashboard() {
   const [mindBalance, setMindBalance] = useState<bigint>(0n);
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
   const [stakingMindBalance, setStakingMindBalance] = useState<bigint>(0n);
+  const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
   const [activeRigTotal, setActiveRigTotal] = useState(0);
@@ -498,6 +503,28 @@ export function PublicDashboard() {
       }
       if (isStale()) return;
       setMintDecimals({ xnt: xntDecimals, mind: mindMintInfo.decimals });
+      let sharePct: number | null = null;
+      try {
+        const excludedAccounts = await connection.getTokenAccountsByOwner(EXCLUDED_MIND_LP_OWNER, {
+          commitment: "confirmed",
+          mint: cfg.mindMint,
+          programId: TOKEN_PROGRAM_ID,
+        });
+        let excludedBalance = 0n;
+        for (const entry of excludedAccounts.value) {
+          const decoded = AccountLayout.decode(entry.account.data.slice(0, AccountLayout.span));
+          excludedBalance += decoded.amount;
+        }
+        const circulatingBalance =
+          mindMintInfo.supply > excludedBalance ? mindMintInfo.supply - excludedBalance : 0n;
+        if (circulatingBalance > 0n) {
+          sharePct = (Number(cfg.stakingTotalStakedMind) / Number(circulatingBalance)) * 100;
+        }
+      } catch (err) {
+        console.warn("Failed to compute circulating share excluding LP", err);
+      }
+      if (isStale()) return;
+      setStakingShareOfCirculating(sharePct);
       try {
         const pool = await fetchRipperStakePool(connection);
         if (isStale()) return;
@@ -1337,6 +1364,11 @@ export function PublicDashboard() {
     mintDecimals != null ? formatRoundedToken(stakingRewardBalance, mintDecimals.xnt) : "-";
   const totalStakedBadge =
     mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
+  const excludedLpLabel = shortPk(EXCLUDED_MIND_LP_ADDRESS);
+  const stakingShareLabel =
+    stakingShareOfCirculating != null
+      ? ` (${stakingShareOfCirculating.toFixed(2)}% of circulating supply excl. ${excludedLpLabel})`
+      : "";
   const totalStakedBase = config?.stakingTotalStakedMind ?? 0n;
   const leaderboardRowElements = leaderboardRows.map((row, idx) => {
     const medal = LEADER_MEDALS[idx];
@@ -2117,7 +2149,12 @@ export function PublicDashboard() {
               Active miners: Unique addresses: {activeMinerTotal} | Active rigs: {activeRigTotal}
             </Badge>
             <Badge variant="muted">Reward pool: {rewardPoolBadge} XNT</Badge>
-            <Badge variant="muted">Total staked: {totalStakedBadge} MIND</Badge>
+            <Badge
+              variant="muted"
+              title={`Circulating supply excludes tokens held by ${EXCLUDED_MIND_LP_ADDRESS} (LP).`}
+            >
+              Total staked: {totalStakedBadge} MIND{stakingShareLabel}
+            </Badge>
           </div>
         </div>
 

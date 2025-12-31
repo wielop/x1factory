@@ -48,6 +48,7 @@ import {
 import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
+import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
 import {
   RIPPER_POOL_ADDRESS,
   calcPoolTokensForDeposit,
@@ -913,9 +914,10 @@ export function PublicDashboard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const userLevel = Math.max(userProfile?.level ?? 1, 1);
-  const userXp = userProfile?.xp ?? 0n;
-  const lastXpUpdateTs = userProfile?.lastXpUpdateTs ?? 0;
+  const rawUserLevel = Math.max(userProfile?.level ?? 1, 1);
+  const userLevel = LEVELING_ENABLED ? rawUserLevel : 1;
+  const userXp = LEVELING_ENABLED ? userProfile?.xp ?? 0n : 0n;
+  const lastXpUpdateTs = LEVELING_ENABLED ? userProfile?.lastXpUpdateTs ?? 0 : 0;
   const profileHpScaled =
     userProfile == null
       ? 0n
@@ -924,6 +926,7 @@ export function PublicDashboard() {
       : userProfile.activeHp * HP_SCALE;
 
   useEffect(() => {
+    if (!LEVELING_ENABLED) return;
     if (!nowTs || !userProfile) return;
     if (lastXpUpdateTs > 0) {
       xpEstimateStartRef.current = null;
@@ -964,12 +967,19 @@ export function PublicDashboard() {
       }
     }
   }, [lastXpUpdateTs, nowTs, profileHpScaled, userProfile, xpEstimateKey]);
-  const levelIdx = Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1;
-  const levelBonusBps = LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
-  const nextLevelXp = userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
+  const levelIdx = LEVELING_ENABLED
+    ? Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1
+    : 0;
+  const levelBonusBps = LEVELING_ENABLED
+    ? LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1]
+    : 0;
+  const nextLevelXp = LEVELING_ENABLED && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
   const levelBonusBpsBig = BigInt(levelBonusBps);
   const xpEstimate = useMemo(() => {
+    if (!LEVELING_ENABLED) {
+      return { whole: 0n, hundredths: 0n };
+    }
     if (!nowTs || !userProfile) {
       return { whole: userXp, hundredths: userXp * 100n };
     }
@@ -1013,6 +1023,7 @@ export function PublicDashboard() {
   const hasMindForLevelUp =
     levelUpCostBase != null ? mindBalance >= levelUpCostBase : false;
   const canLevelUp =
+    LEVELING_ENABLED &&
     userProfile != null &&
     nextLevelXp != null &&
     xpDisplay >= nextLevelXp &&
@@ -1021,8 +1032,11 @@ export function PublicDashboard() {
   const missingXpLabel = formatFixed2(xpRemainingHundredths);
   const requiredMindLabel = levelUpCostTokens != null ? `${levelUpCostTokens}` : "0";
   const maxLevel = userLevel >= LEVEL_CAP || nextLevelXp == null;
-  const levelUpDisabled = !canTransact || !canLevelUp || busy != null || maxLevel;
-  const levelUpButtonLabel = maxLevel
+  const levelUpDisabled =
+    !LEVELING_ENABLED || !canTransact || !canLevelUp || busy != null || maxLevel;
+  const levelUpButtonLabel = !LEVELING_ENABLED
+    ? "Levels disabled"
+    : maxLevel
     ? "Max level reached"
     : canLevelUp
     ? "Level up"
@@ -1044,10 +1058,11 @@ export function PublicDashboard() {
       ? `≈ ${formatFixed2(xpPerHourHundredths)} XP/hour`
       : null;
   const bonusLine = `HP bonus: +${levelBonusPct}%`;
-  const progressionDescription =
-    "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs.";
+  const progressionDescription = LEVELING_ENABLED
+    ? "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs."
+    : LEVELING_DISABLED_MESSAGE;
   const xpEstimateNote =
-    lastXpUpdateTs <= 0 && profileHpScaled
+    LEVELING_ENABLED && lastXpUpdateTs <= 0 && profileHpScaled
       ? "XP is estimated until your next on-chain interaction (claim, buy, renew)."
       : null;
   const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(2)}%`;
@@ -1959,6 +1974,10 @@ export function PublicDashboard() {
   };
 
   const onLevelUp = async () => {
+    if (!LEVELING_ENABLED) {
+      setError(LEVELING_DISABLED_MESSAGE);
+      return;
+    }
     if (busy != null) return;
     if (!anchorWallet || !publicKey || !config || !userProfile) return;
     if (!canLevelUp) {
@@ -2035,9 +2054,11 @@ export function PublicDashboard() {
       ? "rXNT pool is unavailable right now."
       : "Claim rewards and optionally auto-stake to rXNT.";
 
+  const progressionLabel = LEVELING_ENABLED ? `LVL ${userLevel}` : "Levels paused";
+
   return (
     <div className="min-h-screen bg-ink text-white">
-      <TopBar progressionLabel={`LVL ${userLevel}`} />
+      <TopBar progressionLabel={progressionLabel} />
 
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-10">
         <div className="space-y-4">
@@ -3142,20 +3163,27 @@ export function PublicDashboard() {
         </section>
 
         <section className="mt-6">
-          <AccountProgressionPanel
-            level={userLevel}
-            xpLine={xpLine}
-            rateLine={xpRateLine}
-            bonusLine={bonusLine}
-            description={xpEstimateNote ? `${progressionDescription} ${xpEstimateNote}` : progressionDescription}
-            progressLabel={levelProgressLabel}
-            progressPct={levelProgressPct}
-            maxLevel={maxLevel}
-            buttonLabel={levelUpButtonLabel}
-            buttonDisabled={levelUpDisabled}
-            requirements={levelUpRequirements}
-            onLevelUp={onLevelUp}
-          />
+          {LEVELING_ENABLED ? (
+            <AccountProgressionPanel
+              level={userLevel}
+              xpLine={xpLine}
+              rateLine={xpRateLine}
+              bonusLine={bonusLine}
+              description={xpEstimateNote ? `${progressionDescription} ${xpEstimateNote}` : progressionDescription}
+              progressLabel={levelProgressLabel}
+              progressPct={levelProgressPct}
+              maxLevel={maxLevel}
+              buttonLabel={levelUpButtonLabel}
+              buttonDisabled={levelUpDisabled}
+              requirements={levelUpRequirements}
+              onLevelUp={onLevelUp}
+            />
+          ) : (
+            <Card className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
+              <div className="text-sm font-semibold">Account progression is paused</div>
+              <div className="mt-2 text-xs text-zinc-300">{LEVELING_DISABLED_MESSAGE}</div>
+            </Card>
+          )}
         </section>
 
         <section className="mt-10">

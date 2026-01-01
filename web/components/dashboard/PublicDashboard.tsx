@@ -630,7 +630,8 @@ export function PublicDashboard() {
         const circulatingBalance =
           mindMintInfo.supply > excludedBalance ? mindMintInfo.supply - excludedBalance : 0n;
         if (circulatingBalance > 0n) {
-          sharePct = (Number(cfg.stakingTotalStakedMind) / Number(circulatingBalance)) * 100;
+          const pctHundredths = (cfg.stakingTotalStakedMind * 10_000n) / circulatingBalance;
+          sharePct = Number(pctHundredths) / 100;
         }
       } catch (err) {
         console.warn("Failed to compute circulating share excluding LP", err);

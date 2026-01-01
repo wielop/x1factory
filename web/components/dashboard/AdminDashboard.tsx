@@ -43,6 +43,11 @@ const XNT_DECIMALS = 9;
 const NATIVE_VAULT_SPACE = 9;
 const BPS_DENOMINATOR = 10_000n;
 const HP_SCALE = 100n;
+const EMISSION_PER_DAY_MAX = 1000n;
+const EMISSION_JUMP_NUM = 12n; // 1.2x
+const EMISSION_JUMP_DEN = 10n;
+const SECONDS_PER_DAY_MIN = 82_000n;
+const SECONDS_PER_DAY_MAX = 90_000n;
 
 function formatHp(value: bigint) {
   const whole = value / HP_SCALE;
@@ -486,8 +491,14 @@ export function AdminDashboard() {
   const onUpdateConfig = async () => {
     if (!anchorWallet || !config || !mintDecimals) return;
     let emissionPerSec: bigint;
+    let perDayBase: bigint;
     try {
-      const perDayBase = parseUiAmountToBase(emissionPerDayUi, mintDecimals.mind);
+      perDayBase = parseUiAmountToBase(emissionPerDayUi, mintDecimals.mind);
+      const maxPerDayBase = EMISSION_PER_DAY_MAX * 10n ** BigInt(mintDecimals.mind);
+      if (perDayBase > maxPerDayBase) {
+        setError("Emission per day above allowed maximum (1000 MIND)");
+        return;
+      }
       emissionPerSec = perDayBase / DAY_SECONDS;
     } catch (e: unknown) {
       setError(formatError(e));
@@ -507,7 +518,24 @@ export function AdminDashboard() {
       setError("Invalid seconds per day value");
       return;
     }
-    if (emissionPerSec <= 0n || maxHp <= 0n || secondsPerDay <= 0n) return;
+    if (secondsPerDay < SECONDS_PER_DAY_MIN || secondsPerDay > SECONDS_PER_DAY_MAX) {
+      setError("Seconds per day out of allowed range");
+      return;
+    }
+    if (emissionPerSec <= 0n || maxHp <= 0n) return;
+    const currentEmission = BigInt(config.emissionPerSec.toString());
+    if (currentEmission > 0n) {
+      if (emissionPerSec * EMISSION_JUMP_DEN > currentEmission * EMISSION_JUMP_NUM) {
+        setError("Emission change too large (>1.2x)");
+        return;
+      }
+      if (emissionPerSec !== currentEmission) {
+        const ok = window.confirm(
+          `Change emission from ${emissionPerDayUi} MIND/day to ${perDayBase / DAY_SECONDS} base/sec?`
+        );
+        if (!ok) return;
+      }
+    }
     const program = getProgram(connection, anchorWallet);
     await withTx("Update config", async () => {
       const sig = await program.methods
@@ -879,6 +907,15 @@ export function AdminDashboard() {
         <section className="mt-8 grid gap-4 lg:grid-cols-2">
           <Card className="p-4">
             <div className="text-sm font-semibold">Update mining config</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Current: {config ? config.emissionPerSec.toString() : "-"} base/sec (~{" "}
+              {config && mintDecimals
+                ? (BigInt(config.emissionPerSec.toString()) * DAY_SECONDS) /
+                  10n ** BigInt(mintDecimals.mind)
+                : "-"}{" "}
+              MIND/day) | allowed ≤ {EMISSION_PER_DAY_MAX.toString()} MIND/day, jump ≤ 1.2×, seconds/day{" "}
+              {SECONDS_PER_DAY_MIN.toString()}–{SECONDS_PER_DAY_MAX.toString()}
+            </div>
             <div className="mt-3 text-xs text-zinc-400">Emission per day (MIND)</div>
             <Input value={emissionPerDayUi} onChange={setEmissionPerDayUi} />
             <div className="mt-3 text-xs text-zinc-400">Max effective HP</div>

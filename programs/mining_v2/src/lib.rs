@@ -24,6 +24,16 @@ const HP_SCALE: u128 = 100;
 const HP_SCALE_U64: u64 = 100;
 const HP_SCALED_MARKER: u64 = 1 << 63;
 const SECONDS_PER_DAY_DEFAULT: u64 = 86_400;
+const SECONDS_PER_DAY_MIN_ALLOWED: u64 = 82_000;
+const SECONDS_PER_DAY_MAX_ALLOWED: u64 = 90_000;
+const EMISSION_PER_DAY_MAX: u64 = 1_000;
+const EMISSION_PER_SEC_MAX: u64 = 11_574_074; // 1_000 MIND / day (base units)
+const EMISSION_JUMP_NUMERATOR: u64 = 12; // allow up to 1.2x jump
+const EMISSION_JUMP_DENOMINATOR: u64 = 10;
+const MAX_EFFECTIVE_HP_CAP: u64 = 1_000_000;
+const CLAIM_MAX_BASE_AMOUNT: u128 = 500 * MIND_DECIMALS as u128; // cap single claim to 500 MIND
+const MAX_MINING_DT_SECONDS: u64 = 86_400; // cap catch-up window to 1 day
+const MINING_ACC_DELTA_CAP_BPS: u64 = 5_000; // max +50% acc_mind_per_hp per update
 const RENEW_WINDOW_DAYS: u64 = 3;
 const STAKING_SHARE_BPS: u128 = 3_000; // 30%
 const BADGE_BONUS_CAP_BPS: u16 = 2_000; // 20%
@@ -758,6 +768,7 @@ pub mod mining_v2 {
         let (hp_effective, acc_used) = effective_hp_for_claim(&position, profile.level, cfg, now)?;
         let pending = pending_mind(hp_effective, acc_used, position.reward_debt)?;
         require!(pending > 0, ErrorCode::NothingToClaim);
+        require!(pending <= CLAIM_MAX_BASE_AMOUNT, ErrorCode::ClaimTooLarge);
         let reward = u64::try_from(pending).map_err(|_| ErrorCode::MathOverflow)?;
 
         let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[cfg.bumps.vault_authority]];
@@ -1223,13 +1234,57 @@ pub mod mining_v2 {
         seconds_per_day: u64,
     ) -> Result<()> {
         require!(emission_per_sec > 0, ErrorCode::InvalidAmount);
+        require!(emission_per_sec <= EMISSION_PER_SEC_MAX, ErrorCode::EmissionTooHigh);
         require!(max_effective_hp > 0, ErrorCode::InvalidAmount);
-        require!(seconds_per_day > 0, ErrorCode::InvalidAmount);
+        require!(max_effective_hp <= MAX_EFFECTIVE_HP_CAP, ErrorCode::MaxEffectiveHpExceeded);
+        require!(
+            seconds_per_day >= SECONDS_PER_DAY_MIN_ALLOWED && seconds_per_day <= SECONDS_PER_DAY_MAX_ALLOWED,
+            ErrorCode::SecondsPerDayOutOfRange
+        );
         let cfg = &mut ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        let now = Clock::get()?.unix_timestamp;
+        update_mining_global(cfg, now)?;
+        if cfg.emission_per_sec > 0 {
+            let allowed_jump = cfg
+                .emission_per_sec
+                .checked_mul(EMISSION_JUMP_NUMERATOR)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(EMISSION_JUMP_DENOMINATOR)
+                .ok_or(ErrorCode::MathOverflow)?;
+            require!(emission_per_sec <= allowed_jump, ErrorCode::EmissionJumpTooHigh);
+        }
         cfg.emission_per_sec = emission_per_sec;
         cfg.max_effective_hp = max_effective_hp;
         cfg.seconds_per_day = seconds_per_day;
+        cfg.last_update_ts = now;
+        Ok(())
+    }
+
+    pub fn admin_fix_accumulator(
+        ctx: Context<AdminFixAccumulator>,
+        new_acc_mind_per_hp: u128,
+    ) -> Result<()> {
+        require!(new_acc_mind_per_hp > 0, ErrorCode::InvalidAmount);
+        let now = Clock::get()?.unix_timestamp;
+        let cfg = &mut ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+
+        cfg.acc_mind_per_hp = new_acc_mind_per_hp;
+        cfg.last_update_ts = now;
+
+        for info in ctx.remaining_accounts.iter() {
+            require!(info.is_writable, ErrorCode::InvalidPositionSize);
+            let mut position = load_position_any(info)?;
+            require_keys_eq!(position.owner, ctx.accounts.user_profile.owner, ErrorCode::InvalidPositionOwner);
+            let rig_type = position_rig_type(&position, cfg)?;
+            let base_hp_scaled = position_base_hp_scaled(&position)?;
+            let buff_bps = position_buff_bps(&position, rig_type, now);
+            let hp_effective = effective_hp_scaled(base_hp_scaled, ctx.accounts.user_profile.level, buff_bps)?;
+            position.reward_debt = earned_per_hp(hp_effective, new_acc_mind_per_hp)?;
+            save_position(info, &position)?;
+        }
+
         Ok(())
     }
 
@@ -1916,6 +1971,25 @@ pub struct AdminUpdateConfig<'info> {
         bump = config.bumps.config
     )]
     pub config: Box<Account<'info, Config>>,
+}
+
+#[derive(Accounts)]
+pub struct AdminFixAccumulator<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config,
+        has_one = admin
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        mut,
+        seeds = [PROFILE_SEED, user_profile.owner.as_ref()],
+        bump = user_profile.bump
+    )]
+    pub user_profile: Box<Account<'info, UserMiningProfile>>,
 }
 
 #[derive(Accounts)]
@@ -2847,6 +2921,8 @@ fn update_mining_global(cfg: &mut Account<Config>, now: i64) -> Result<()> {
     let dt = now
         .checked_sub(cfg.last_update_ts)
         .ok_or(ErrorCode::MathOverflow)?;
+    let dt_u64 = u64::try_from(dt).map_err(|_| ErrorCode::MathOverflow)?;
+    require!(dt_u64 <= MAX_MINING_DT_SECONDS, ErrorCode::UpdateWindowExceeded);
     if cfg.network_hp_active == 0 {
         cfg.last_update_ts = now;
         return Ok(());
@@ -2859,6 +2935,15 @@ fn update_mining_global(cfg: &mut Account<Config>, now: i64) -> Result<()> {
         .ok_or(ErrorCode::MathOverflow)?
         .checked_div(cfg.network_hp_active as u128)
         .ok_or(ErrorCode::MathOverflow)?;
+    if cfg.acc_mind_per_hp > 0 {
+        let acc_cap = cfg
+            .acc_mind_per_hp
+            .checked_mul(MINING_ACC_DELTA_CAP_BPS as u128)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(BPS_DENOMINATOR)
+            .ok_or(ErrorCode::MathOverflow)?;
+        require!(delta <= acc_cap, ErrorCode::AccDeltaTooLarge);
+    }
     cfg.acc_mind_per_hp = cfg
         .acc_mind_per_hp
         .checked_add(delta)
@@ -3146,4 +3231,16 @@ pub enum ErrorCode {
     InsufficientBuffFunds,
     #[msg("Invalid rig buff positions")]
     InvalidRigBuffPositions,
+    #[msg("Emission per second too high")]
+    EmissionTooHigh,
+    #[msg("Emission change too large")]
+    EmissionJumpTooHigh,
+    #[msg("Seconds per day out of allowed range")]
+    SecondsPerDayOutOfRange,
+    #[msg("Mining update window exceeded")]
+    UpdateWindowExceeded,
+    #[msg("Accumulator delta too large")]
+    AccDeltaTooLarge,
+    #[msg("Claim exceeds single-claim limit")]
+    ClaimTooLarge,
 }

@@ -87,7 +87,10 @@ const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
 const RENEW_REMINDER_DAYS = 3;
 const TX_SIZE_LIMIT_BYTES = 1232;
-const LOOKUP_CHUNK_SIZE = 25;
+// Address-lookup extend instructions exceed the legacy size limit above ~24 keys; keep margin.
+const LOOKUP_CHUNK_SIZE = 32;
+// Solana v0 messages top out near 256 total accounts; leave headroom for ATA setup & program accounts.
+const LEVEL_UP_MAX_POSITIONS = 220;
 type RigType = "starter" | "pro" | "industrial";
 type LeaderboardRow = {
   owner: string;
@@ -2091,6 +2094,13 @@ export function PublicDashboard() {
       userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
     if (activeHp !== profileHpScaled) {
       setError("Active rig list out of sync. Refresh and try again.");
+      return;
+    }
+    if (activePositions.length > LEVEL_UP_MAX_POSITIONS) {
+      setError(
+        `Too many active rigs to level up at once (${activePositions.length}). ` +
+          `Limit is ~${LEVEL_UP_MAX_POSITIONS} due to transaction account caps. Let some rigs expire or renew later.`
+      );
       return;
     }
     await withTx("Level up", async () => {

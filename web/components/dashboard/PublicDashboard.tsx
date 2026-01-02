@@ -4,7 +4,16 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction, type AccountMeta } from "@solana/web3.js";
+import {
+  AddressLookupTableProgram,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  TransactionMessage,
+  VersionedTransaction,
+  type AccountMeta,
+} from "@solana/web3.js";
 import {
   AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -77,6 +86,8 @@ const NATIVE_VAULT_SPACE = 9;
 const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
 const RENEW_REMINDER_DAYS = 3;
+const TX_SIZE_LIMIT_BYTES = 1232;
+const LOOKUP_CHUNK_SIZE = 25;
 type RigType = "starter" | "pro" | "industrial";
 type LeaderboardRow = {
   owner: string;
@@ -477,9 +488,23 @@ function formatFullPrecisionToken(amountBase: bigint, decimals: number) {
   return formatTokenAmount(amountBase, decimals, decimals);
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function isTxTooLargeError(err: unknown) {
+  if (!(err instanceof Error)) return false;
+  return err.message.toLowerCase().includes("transaction too large");
+}
+
 export function PublicDashboard() {
   const { connection } = useConnection();
-  const { publicKey: walletPublicKey, signAllTransactions } = useWallet();
+  const { publicKey: walletPublicKey, signAllTransactions, signTransaction } = useWallet();
   const anchorWallet = useAnchorWallet();
   const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
@@ -2076,9 +2101,7 @@ export function PublicDashboard() {
         isWritable: true,
       }));
       const program = getProgram(connection, anchorWallet);
-      const tx = new Transaction();
-      if (ix) tx.add(ix);
-      const instruction = await program.methods
+      const levelUpIx = await program.methods
         .levelUp()
         .accounts({
           owner: publicKey,
@@ -2094,8 +2117,77 @@ export function PublicDashboard() {
         })
         .remainingAccounts(remainingAccounts)
         .instruction();
-      tx.add(instruction);
-      return await program.provider.sendAndConfirm(tx, []);
+      const instructions = ix ? [ix, levelUpIx] : [levelUpIx];
+
+      const sendLevelUpWithLookupTable = async () => {
+        const positionPubkeys = remainingAccounts.map((entry) => entry.pubkey);
+        const currentSlot = await connection.getSlot("confirmed");
+        const [createIx, lookupTableAddress] = AddressLookupTableProgram.createLookupTable({
+          authority: publicKey,
+          payer: publicKey,
+          recentSlot: currentSlot,
+        });
+        await program.provider.sendAndConfirm(new Transaction().add(createIx), []);
+        const addressChunks = chunkArray(positionPubkeys, LOOKUP_CHUNK_SIZE);
+        for (const chunk of addressChunks) {
+          const extendIx = AddressLookupTableProgram.extendLookupTable({
+            authority: publicKey,
+            payer: publicKey,
+            lookupTable: lookupTableAddress,
+            addresses: chunk,
+          });
+          await program.provider.sendAndConfirm(new Transaction().add(extendIx), []);
+        }
+        const lookupTableAccount = (
+          await connection.getAddressLookupTable(lookupTableAddress)
+        ).value;
+        if (!lookupTableAccount) {
+          throw new Error("Failed to load lookup table for level up.");
+        }
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+        const message = new TransactionMessage({
+          payerKey: publicKey,
+          recentBlockhash: blockhash,
+          instructions,
+        }).compileToV0Message([lookupTableAccount]);
+        const versionedTx = new VersionedTransaction(message);
+        let signed: VersionedTransaction;
+        if (signAllTransactions) {
+          const [first] = await signAllTransactions([versionedTx]);
+          signed = first as VersionedTransaction;
+        } else if (signTransaction) {
+          signed = (await signTransaction(versionedTx)) as VersionedTransaction;
+        } else {
+          throw new Error("Wallet does not support versioned transactions. Try another wallet.");
+        }
+        const sig = await connection.sendTransaction(signed, { skipPreflight: false });
+        await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+        return sig;
+      };
+
+      const { blockhash } = await connection.getLatestBlockhash("confirmed");
+      const legacyMessage = new TransactionMessage({
+        payerKey: publicKey,
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToLegacyMessage();
+      const legacyTxSize =
+        1 + 64 * legacyMessage.header.numRequiredSignatures + legacyMessage.serialize().length;
+
+      if (legacyTxSize <= TX_SIZE_LIMIT_BYTES) {
+        try {
+          const tx = new Transaction();
+          for (const ins of instructions) {
+            tx.add(ins);
+          }
+          return await program.provider.sendAndConfirm(tx, []);
+        } catch (err) {
+          if (!isTxTooLargeError(err)) {
+            throw err;
+          }
+        }
+      }
+      return await sendLevelUpWithLookupTable();
     });
   };
 

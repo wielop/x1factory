@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getMint } from "@solana/spl-token";
+import { createHash } from "crypto";
 import {
   decodeMinerPositionAccount,
   decodeUserMiningProfileAccount,
@@ -13,7 +14,7 @@ import {
   USER_STAKE_LEN,
 } from "@/lib/decoders";
 import { fetchConfig, fetchClockUnixTs, getProgramId, getRpcUrl } from "@/lib/solana";
-import type { AlertEntry, FlowStats, ProtocolSnapshot } from "@/lib/adminData";
+import type { AlertEntry, BurnStats, FlowStats, ProtocolSnapshot } from "@/lib/adminData";
 import { isAlertResolved } from "@/lib/adminAlertsStore";
 import { getErrorCount, getRpcStats, getTxStats, recordRpcSample } from "@/lib/adminMetricsStore";
 import { scoreEconomicHealth, scoreTechnicalHealth } from "@/lib/healthScoring";
@@ -25,6 +26,19 @@ const BPS_DENOMINATOR = 10_000n;
 const BUFFER_DAYS = 3;
 const WINDOW_15M = 15 * 60 * 1000;
 const WINDOW_10M = 10 * 60 * 1000;
+const BURN_BPS = 600n;
+const SIGNATURE_PAGE_LIMIT = 1000;
+const TX_BATCH_SIZE = 25;
+const BURN_CACHE_MS = 5 * 60 * 1000;
+const UNSTAKE_EVENT_DISCRIMINATOR = createHash("sha256")
+  .update("event:MindUnstaked")
+  .digest()
+  .subarray(0, 8);
+const UNSTAKE_EXCLUDED_OWNERS = [
+  "FPLV6bRcBj4i8sipkim2N7eZMsGJC2xfCsAgeoDsQhoD",
+  "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
+];
+let burnsCache: { ts: number; data: BurnStats } | null = null;
 
 const toUi = (amount: bigint, decimals: number) =>
   Number(amount) / Math.pow(10, decimals);
@@ -81,6 +95,115 @@ const rigBuffBps = (rigType: number, buffLevel: number) => {
   return 0;
 };
 
+const parseUnstakeEventsFromLogs = (logs: string[]) => {
+  const events: Array<{ owner: PublicKey; amount: bigint }> = [];
+  const prefix = "Program data: ";
+  for (const log of logs) {
+    if (!log.startsWith(prefix)) continue;
+    const raw = log.slice(prefix.length).trim();
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(raw, "base64");
+    } catch {
+      continue;
+    }
+    if (buf.length < 48) continue; // 8 disc + 32 pubkey + 8 amount
+    if (!buf.subarray(0, 8).equals(UNSTAKE_EVENT_DISCRIMINATOR)) continue;
+    const owner = new PublicKey(buf.subarray(8, 40));
+    const amount = buf.readBigUInt64LE(40);
+    events.push({ owner, amount });
+  }
+  return events;
+};
+
+const collectBurnStats = async (connection: Connection, mindDecimals: number): Promise<BurnStats> => {
+  if (burnsCache && Date.now() - burnsCache.ts < BURN_CACHE_MS) {
+    return burnsCache.data;
+  }
+  const programId = getProgramId();
+  const excluded = new Set(UNSTAKE_EXCLUDED_OWNERS);
+  const signatures: Array<{ signature: string; blockTime: number }> = [];
+  let before: string | undefined;
+  while (true) {
+    const batch = await connection.getSignaturesForAddress(programId, { before, limit: SIGNATURE_PAGE_LIMIT });
+    if (batch.length === 0) break;
+    for (const sig of batch) {
+      if (!sig.blockTime) continue;
+      signatures.push({ signature: sig.signature, blockTime: sig.blockTime });
+    }
+    const oldest = batch[batch.length - 1];
+    if (!oldest.blockTime || batch.length < SIGNATURE_PAGE_LIMIT) break;
+    before = oldest.signature;
+  }
+
+  const events: Array<{ owner: string; amountBase: bigint; burnBase: bigint; blockTime: number }> = [];
+  for (let i = 0; i < signatures.length; i += TX_BATCH_SIZE) {
+    const chunk = signatures.slice(i, i + TX_BATCH_SIZE).map((s) => s.signature);
+    const txs = await connection.getTransactions(chunk, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    txs.forEach((tx) => {
+      if (!tx?.meta?.logMessages || !tx.blockTime) return;
+      const parsed = parseUnstakeEventsFromLogs(tx.meta.logMessages);
+      parsed.forEach(({ owner, amount }) => {
+        if (excluded.has(owner.toBase58())) return;
+        const burnBase = (amount * BURN_BPS) / BPS_DENOMINATOR;
+        events.push({
+          owner: owner.toBase58(),
+          amountBase: amount,
+          burnBase,
+          blockTime: tx.blockTime!,
+        });
+      });
+    });
+  }
+
+  const perDay = new Map<
+    string,
+    {
+      unstaked: bigint;
+      burned: bigint;
+    }
+  >();
+  let totalUnstaked = 0n;
+  let totalBurned = 0n;
+  let latestBlockTime = 0;
+
+  events.forEach((evt) => {
+    const dayKey = new Date(evt.blockTime * 1000).toISOString().slice(0, 10);
+    const current = perDay.get(dayKey) ?? { unstaked: 0n, burned: 0n };
+    current.unstaked += evt.amountBase;
+    current.burned += evt.burnBase;
+    perDay.set(dayKey, current);
+    totalUnstaked += evt.amountBase;
+    totalBurned += evt.burnBase;
+    if (evt.blockTime > latestBlockTime) {
+      latestBlockTime = evt.blockTime;
+    }
+  });
+
+  const toTokens = (value: bigint) => Number(value) / Math.pow(10, mindDecimals);
+
+  const days = Array.from(perDay.entries())
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([date, agg]) => ({
+      date,
+      unstakedMind: toTokens(agg.unstaked),
+      burnedMind: toTokens(agg.burned),
+    }));
+
+  const result: BurnStats = {
+    days,
+    totalUnstakedMind: toTokens(totalUnstaked),
+    totalBurnedMind: toTokens(totalBurned),
+    latestEventAt: latestBlockTime ? new Date(latestBlockTime * 1000).toISOString() : null,
+    excludedOwners: Array.from(excluded),
+  };
+  burnsCache = { ts: Date.now(), data: result };
+  return result;
+};
+
 // Data Center API: aggregates on-chain state + simple alert rules.
 export async function GET() {
   const connection = new Connection(getRpcUrl(), "confirmed");
@@ -93,6 +216,7 @@ export async function GET() {
   const mindMintInfo = await getMint(connection, cfg.mindMint, "confirmed");
   const dailyEmissionBase = cfg.emissionPerSec * cfg.secondsPerDay;
   const totalMindMined = toUi(mindMintInfo.supply, mindMintInfo.decimals);
+  const burns = await collectBurnStats(connection, mindMintInfo.decimals ?? 9);
 
   const rentLamports = BigInt(
     await connection.getMinimumBalanceForRentExemption(NATIVE_VAULT_SPACE)
@@ -330,5 +454,5 @@ export async function GET() {
     appErrors,
   });
 
-  return NextResponse.json({ snapshot, flows, alerts, health: { economic, technical } });
+  return NextResponse.json({ snapshot, flows, alerts, burns, health: { economic, technical } });
 }

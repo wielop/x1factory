@@ -56,3 +56,17 @@ export type AlertEntry = {
   details?: string;
   resolved: boolean;
 };
+
+export type BurnDay = {
+  date: string; // YYYY-MM-DD
+  unstakedMind: number;
+  burnedMind: number;
+};
+
+export type BurnStats = {
+  days: BurnDay[];
+  totalUnstakedMind: number;
+  totalBurnedMind: number;
+  latestEventAt: string | null;
+  excludedOwners: string[];
+};

@@ -10,6 +10,7 @@ import { fetchConfig } from "@/lib/solana";
 import { formatError } from "@/lib/formatError";
 import type {
   AlertEntry,
+  BurnStats,
   EconomicHealth,
   FlowStats,
   ProtocolSnapshot,
@@ -21,6 +22,7 @@ type AdminState = {
   flows: FlowStats[];
   alerts: AlertEntry[];
   health: { economic: EconomicHealth; technical: TechnicalHealth };
+  burns: BurnStats;
 };
 
 const STAKING_SECONDS_PER_YEAR = 31_536_000;
@@ -41,6 +43,9 @@ const formatPercent = (value: number | null, digits = 2) =>
 
 const formatTimestamp = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "-";
+
+const formatDateOnly = (value: string | null) =>
+  value ? new Date(value).toLocaleDateString() : "-";
 
 const healthStyles = {
   GREEN: "border-emerald-400/40 bg-emerald-400/10 text-emerald-100",
@@ -304,6 +309,66 @@ export function AdminDataDashboard() {
                   <div>
                     XNT added to LP: {selectedFlow ? formatToken(selectedFlow.xntAddedToLp) : "-"}
                   </div>
+                </div>
+              </Card>
+            </section>
+
+            <section className="mt-8">
+              <Card className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      Spalone MIND (unstake)
+                    </div>
+                    <div className="mt-1 text-sm text-zinc-200">
+                      Wykluczone adresy: {state.burns.excludedOwners.join(", ")}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-zinc-500">
+                    Ostatnie zdarzenie: {formatTimestamp(state.burns.latestEventAt)}
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-1 text-sm text-zinc-200">
+                  <div>
+                    Łącznie unstake: {formatToken(state.burns.totalUnstakedMind, 3)} MIND
+                  </div>
+                  <div>
+                    Łącznie spalone: {formatToken(state.burns.totalBurnedMind, 3)} MIND
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      <tr className="border-b border-white/10">
+                        <th className="py-2">Dzień (UTC)</th>
+                        <th className="py-2">Unstake (MIND)</th>
+                        <th className="py-2">Spalone (MIND)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {state.burns.days.length === 0 ? (
+                        <tr>
+                          <td className="py-2 text-xs text-zinc-500" colSpan={3}>
+                            Brak zdarzeń unstake.
+                          </td>
+                        </tr>
+                      ) : (
+                        [...state.burns.days]
+                          .sort((a, b) => (a.date > b.date ? -1 : 1))
+                          .map((day) => (
+                            <tr key={day.date}>
+                              <td className="py-2 text-zinc-200">{formatDateOnly(day.date)}</td>
+                              <td className="py-2 text-zinc-100">
+                                {formatToken(day.unstakedMind, 3)}
+                              </td>
+                              <td className="py-2 text-emerald-200">
+                                {formatToken(day.burnedMind, 3)}
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </Card>
             </section>

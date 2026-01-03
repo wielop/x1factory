@@ -178,12 +178,6 @@ export function AdminDataDashboard() {
     const apr = (rewardPerSec * STAKING_SECONDS_PER_YEAR) / totalStaked;
     return apr * 100;
   }, [config, state]);
-  const stakingApyPct = useMemo(() => {
-    if (stakingAprPct == null) return null;
-    const aprRate = stakingAprPct / 100;
-    const apyRate = Math.pow(1 + aprRate / 365, 365) - 1;
-    return apyRate * 100;
-  }, [stakingAprPct]);
 
   const onResolve = async (id: string) => {
     try {
@@ -254,10 +248,9 @@ export function AdminDataDashboard() {
                     Total staked: {formatToken(state.snapshot.staking.totalStakedMind)} MIND
                   </div>
                   <div>
-                    Reward pool: {formatToken(state.snapshot.staking.rewardPoolXnt)} XNT
+                    Reward pool (current epoch): {formatToken(state.snapshot.staking.rewardPoolXnt)} XNT
                   </div>
                   <div>APR: {formatPercent(stakingAprPct)}</div>
-                  <div>APY: {formatPercent(stakingApyPct)}</div>
                   <div>Epoch ends: {formatTimestamp(state.snapshot.staking.epochEndsAt)}</div>
                 </div>
               </Card>

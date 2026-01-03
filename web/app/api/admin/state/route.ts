@@ -230,6 +230,12 @@ export async function GET() {
   const treasuryAvailable =
     treasuryLamports > rentLamports ? treasuryLamports - rentLamports : 0n;
 
+  const epochSeconds =
+    cfg.stakingEpochEndTs > cfg.stakingLastUpdateTs
+      ? BigInt(cfg.stakingEpochEndTs - cfg.stakingLastUpdateTs)
+      : 0n;
+  const currentEpochRewardBase = cfg.stakingRewardRateXntPerSec * epochSeconds;
+
   const snapshot: ProtocolSnapshot = {
     timestamp: new Date().toISOString(),
     mining: {
@@ -240,7 +246,7 @@ export async function GET() {
     },
     staking: {
       totalStakedMind: toUi(cfg.stakingTotalStakedMind, mindMintInfo.decimals),
-      rewardPoolXnt: toUi(rewardPoolAvailable, XNT_DECIMALS),
+      rewardPoolXnt: toUi(currentEpochRewardBase, XNT_DECIMALS),
       epochEndsAt: cfg.stakingEpochEndTs > 0 ? new Date(cfg.stakingEpochEndTs * 1000).toISOString() : null,
     },
     treasury: {

@@ -361,61 +361,6 @@ pub mod mining_v2 {
                 update_mining_global(cfg, now)?;
             }
 
-            let mut base_total_scaled_other: u128 = 0;
-            let mut buffed_total_scaled_other: u128 = 0;
-            for info in ctx.remaining_accounts.iter() {
-                let entry = load_position_any(info)?;
-                if entry.owner != profile.owner {
-                    continue;
-                }
-                if entry.deactivated || entry.expired || now >= entry.end_ts {
-                    continue;
-                }
-                if info.key == &ctx.accounts.position.key() {
-                    continue;
-                }
-                let rig_type = position_rig_type(&entry, cfg)?;
-                let base_hp_scaled = position_base_hp_scaled(&entry)?;
-                let buff_bps = position_buff_bps(&entry, rig_type, now);
-                base_total_scaled_other = base_total_scaled_other
-                    .checked_add(base_hp_scaled)
-                    .ok_or(ErrorCode::MathOverflow)?;
-                let buffed = apply_bps(base_hp_scaled, buff_bps)?;
-                buffed_total_scaled_other = buffed_total_scaled_other
-                    .checked_add(buffed)
-                    .ok_or(ErrorCode::MathOverflow)?;
-            }
-            let base_total_scaled = base_total_scaled_other;
-            let profile_hp_scaled = profile.active_hp as u128;
-            require!(
-                base_total_scaled == profile_hp_scaled,
-                ErrorCode::InvalidRigBuffPositions
-            );
-
-            let renewed_base_hp_scaled = base_hp_scaled as u128;
-            let renewed_buff_bps = rig_buff_bps(rig_type, new_buff_level);
-            let renewed_buffed_hp_scaled = apply_bps(renewed_base_hp_scaled, renewed_buff_bps)?;
-
-            let base_total_after = base_total_scaled_other
-                .checked_add(renewed_base_hp_scaled)
-                .ok_or(ErrorCode::MathOverflow)?;
-            let buffed_total_after = buffed_total_scaled_other
-                .checked_add(renewed_buffed_hp_scaled)
-                .ok_or(ErrorCode::MathOverflow)?;
-            if base_total_after > 0 {
-                let bonus_bps = buffed_total_after
-                    .checked_sub(base_total_after)
-                    .ok_or(ErrorCode::MathOverflow)?
-                    .checked_mul(BPS_DENOMINATOR)
-                    .ok_or(ErrorCode::MathOverflow)?
-                    .checked_div(base_total_after)
-                    .ok_or(ErrorCode::MathOverflow)?;
-                require!(
-                    bonus_bps <= RIG_BUFF_CAP_BPS as u128,
-                    ErrorCode::RigBuffCapExceeded
-                );
-            }
-
             let new_active_hp = profile
                 .active_hp
                 .checked_add(base_hp_scaled)
@@ -556,68 +501,6 @@ pub mod mining_v2 {
             expire_position(cfg, &mut position, &mut profile, now)?;
         } else {
             update_mining_global(cfg, now)?;
-        }
-
-        let mut base_total_scaled_other: u128 = 0;
-        let mut buffed_total_scaled_other: u128 = 0;
-        for info in ctx.remaining_accounts.iter() {
-            let entry = load_position_any(info)?;
-            if entry.owner != profile.owner {
-                continue;
-            }
-            if entry.deactivated || entry.expired || now >= entry.end_ts {
-                continue;
-            }
-            if info.key == &ctx.accounts.position.key() {
-                continue;
-            }
-            let rig_type = position_rig_type(&entry, cfg)?;
-            let base_hp_scaled = position_base_hp_scaled(&entry)?;
-            let buff_bps = position_buff_bps(&entry, rig_type, now);
-            base_total_scaled_other = base_total_scaled_other
-                .checked_add(base_hp_scaled)
-                .ok_or(ErrorCode::MathOverflow)?;
-            let buffed = apply_bps(base_hp_scaled, buff_bps)?;
-            buffed_total_scaled_other = buffed_total_scaled_other
-                .checked_add(buffed)
-                .ok_or(ErrorCode::MathOverflow)?;
-        }
-        let base_hp_scaled_current = position_base_hp_scaled(&position)?;
-        let base_total_scaled = if is_early {
-            base_total_scaled_other
-                .checked_add(base_hp_scaled_current)
-                .ok_or(ErrorCode::MathOverflow)?
-        } else {
-            base_total_scaled_other
-        };
-        let profile_hp_scaled = profile.active_hp as u128;
-        require!(
-            base_total_scaled == profile_hp_scaled,
-            ErrorCode::InvalidRigBuffPositions
-        );
-
-        let renewed_base_hp_scaled = base_hp_scaled as u128;
-        let renewed_buff_bps = rig_buff_bps(rig_type, new_buff_level);
-        let renewed_buffed_hp_scaled = apply_bps(renewed_base_hp_scaled, renewed_buff_bps)?;
-
-        let base_total_after = base_total_scaled_other
-            .checked_add(renewed_base_hp_scaled)
-            .ok_or(ErrorCode::MathOverflow)?;
-        let buffed_total_after = buffed_total_scaled_other
-            .checked_add(renewed_buffed_hp_scaled)
-            .ok_or(ErrorCode::MathOverflow)?;
-        if base_total_after > 0 {
-            let bonus_bps = buffed_total_after
-                .checked_sub(base_total_after)
-                .ok_or(ErrorCode::MathOverflow)?
-                .checked_mul(BPS_DENOMINATOR)
-                .ok_or(ErrorCode::MathOverflow)?
-                .checked_div(base_total_after)
-                .ok_or(ErrorCode::MathOverflow)?;
-            require!(
-                bonus_bps <= RIG_BUFF_CAP_BPS as u128,
-                ErrorCode::RigBuffCapExceeded
-            );
         }
 
         ensure_position_v2(

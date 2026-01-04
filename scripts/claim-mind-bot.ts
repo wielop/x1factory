@@ -7,8 +7,20 @@ import {
 } from "@solana/spl-token";
 import { PublicKey, Transaction } from "@solana/web3.js";
 
-import { getProgram, getProvider, PROGRAM_ID, deriveConfigPda, deriveProfilePda, deriveVaultPda } from "./v2-common";
-import { decodeMinerPositionAccount, MINER_POSITION_LEN } from "../web/lib/decoders";
+import {
+  getProgram,
+  getProvider,
+  PROGRAM_ID,
+  deriveConfigPda,
+  deriveProfilePda,
+  deriveVaultPda,
+} from "./v2-common";
+import {
+  decodeMinerPositionAccount,
+  MINER_POSITION_LEN_V1,
+  MINER_POSITION_LEN_V2,
+  MINER_POSITION_LEN_V3,
+} from "../web/lib/decoders";
 
 const ACC_SCALE = 1_000_000_000_000_000_000n;
 
@@ -50,13 +62,21 @@ async function main() {
   const config = await (program.account as any).config.fetch(deriveConfigPda());
   const accMindPerHp = BigInt(config.accMindPerHp.toString());
 
-  const positions = await connection.getProgramAccounts(PROGRAM_ID, {
-    commitment: "confirmed",
-    filters: [
-      { dataSize: MINER_POSITION_LEN },
-      { memcmp: { offset: 8, bytes: owner.toBase58() } },
-    ],
-  });
+  const baseFilters = [{ memcmp: { offset: 8, bytes: owner.toBase58() } }];
+  const positions = [
+    ...(await connection.getProgramAccounts(PROGRAM_ID, {
+      commitment: "confirmed",
+      filters: [{ dataSize: MINER_POSITION_LEN_V1 }, ...baseFilters],
+    })),
+    ...(await connection.getProgramAccounts(PROGRAM_ID, {
+      commitment: "confirmed",
+      filters: [{ dataSize: MINER_POSITION_LEN_V2 }, ...baseFilters],
+    })),
+    ...(await connection.getProgramAccounts(PROGRAM_ID, {
+      commitment: "confirmed",
+      filters: [{ dataSize: MINER_POSITION_LEN_V3 }, ...baseFilters],
+    })),
+  ];
 
   const decoded = positions.map((position) => ({
     pubkey: position.pubkey,

@@ -1,6 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
-import { decodeMinerPositionAccount, MINER_POSITION_LEN_V2 } from "../web/lib/decoders";
+import {
+  decodeMinerPositionAccount,
+  MINER_POSITION_LEN_V1,
+  MINER_POSITION_LEN_V2,
+  MINER_POSITION_LEN_V3,
+} from "../web/lib/decoders";
 import { deriveConfigPda, deriveProfilePda, getProgram, getProvider, PROGRAM_ID } from "./v2-common";
 
 /**
@@ -34,12 +39,18 @@ const main = async () => {
   const connection = provider.connection;
   const program = getProgram();
 
-  const filters = [
-    { dataSize: MINER_POSITION_LEN_V2 },
-    { memcmp: { offset: 8, bytes: owner.toBase58() } },
+  const baseFilters = [{ memcmp: { offset: 8, bytes: owner.toBase58() } }];
+  const positions = [
+    ...(await connection.getProgramAccounts(PROGRAM_ID, {
+      filters: [{ dataSize: MINER_POSITION_LEN_V1 }, ...baseFilters],
+    })),
+    ...(await connection.getProgramAccounts(PROGRAM_ID, {
+      filters: [{ dataSize: MINER_POSITION_LEN_V2 }, ...baseFilters],
+    })),
+    ...(await connection.getProgramAccounts(PROGRAM_ID, {
+      filters: [{ dataSize: MINER_POSITION_LEN_V3 }, ...baseFilters],
+    })),
   ];
-
-  const positions = await connection.getProgramAccounts(PROGRAM_ID, { filters });
   if (positions.length === 0) {
     throw new Error("No positions found for owner");
   }
@@ -70,6 +81,7 @@ const main = async () => {
         admin: provider.wallet.publicKey,
         config: deriveConfigPda(),
         userProfile: profilePda,
+        systemProgram: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(
         chunk.map((p) => ({ pubkey: p.pubkey, isWritable: true, isSigner: false }))

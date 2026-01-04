@@ -5,13 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
 import {
-  AddressLookupTableProgram,
   Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
-  TransactionMessage,
-  VersionedTransaction,
   type AccountMeta,
 } from "@solana/web3.js";
 import {
@@ -52,6 +49,7 @@ import {
   decodeUserStakeAccount,
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
+  MINER_POSITION_LEN_V3,
   USER_STAKE_LEN,
   tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
@@ -86,9 +84,6 @@ const NATIVE_VAULT_SPACE = 9;
 const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
 const RENEW_REMINDER_DAYS = 3;
-const TX_SIZE_LIMIT_BYTES = 1232;
-// Keep extend instructions safely under the packet limit (25+ keys overflows legacy tx size).
-const LOOKUP_CHUNK_SIZE = 32;
 // Solana caps account indexes at 256; leave headroom for program + ATA accounts.
 const LEVEL_UP_MAX_POSITIONS = 220;
 type RigType = "starter" | "pro" | "industrial";
@@ -773,10 +768,12 @@ export function PublicDashboard() {
       const [
         posGpaV1,
         posGpaV2,
+        posGpaV3,
         profileAcc,
         stakeAcc,
         allPositionsV1,
         allPositionsV2,
+        allPositionsV3,
         allStakes,
       ] = await Promise.all([
         connection.getProgramAccounts(programId, {
@@ -793,6 +790,13 @@ export function PublicDashboard() {
             { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
           ],
         }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [
+            { dataSize: MINER_POSITION_LEN_V3 },
+            { memcmp: { offset: 8, bytes: publicKey.toBase58() } },
+          ],
+        }),
         connection.getAccountInfo(deriveUserProfilePda(publicKey), "confirmed"),
         connection.getAccountInfo(deriveUserStakePda(publicKey), "confirmed"),
         connection.getProgramAccounts(programId, {
@@ -805,11 +809,15 @@ export function PublicDashboard() {
         }),
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
+          filters: [{ dataSize: MINER_POSITION_LEN_V3 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
           filters: [{ dataSize: USER_STAKE_LEN }],
         }),
       ]);
-      const posGpa = [...posGpaV1, ...posGpaV2];
-      const allPositions = [...allPositionsV1, ...allPositionsV2];
+      const posGpa = [...posGpaV1, ...posGpaV2, ...posGpaV3];
+      const allPositions = [...allPositionsV1, ...allPositionsV2, ...allPositionsV3];
       if (isStale()) return;
 
       const decodedPositions = posGpa
@@ -2065,32 +2073,49 @@ export function PublicDashboard() {
     const activePositions = positions.filter(
       (entry) => !entry.data.deactivated && nowTs != null && nowTs < entry.data.endTs
     );
-    if (activePositions.length === 0) {
-      setError("No active rigs found for leveling up.");
-      return;
-    }
-    const activeHp = activePositions.reduce((acc, entry) => acc + entry.data.hp, 0n);
-    const profileHpScaled =
-      userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
-    if (activeHp !== profileHpScaled) {
-      setError("Active rig list out of sync. Refresh and try again.");
-      return;
-    }
-    if (activePositions.length > LEVEL_UP_MAX_POSITIONS) {
-      setError(
-        `Too many active rigs to level up at once (${activePositions.length}). ` +
-          `Limit is ~${LEVEL_UP_MAX_POSITIONS} due to transaction account caps. Let some rigs expire or renew later.`
-      );
-      return;
+    const needsSync = userProfile.buffedHpSynced !== true;
+    if (needsSync) {
+      if (activePositions.length === 0) {
+        setError("No active rigs found to sync before leveling up.");
+        return;
+      }
+      const activeHp = activePositions.reduce((acc, entry) => acc + entry.data.hp, 0n);
+      const profileHpScaled =
+        userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
+      if (activeHp !== profileHpScaled) {
+        setError("Active rig list out of sync. Refresh and try again.");
+        return;
+      }
+      if (activePositions.length > LEVEL_UP_MAX_POSITIONS) {
+        setError(
+          `Too many active rigs to sync at once (${activePositions.length}). ` +
+            `Limit is ~${LEVEL_UP_MAX_POSITIONS}. Let some rigs expire or renew later.`
+        );
+        return;
+      }
     }
     await withTx("Level up", async () => {
-      const { ata, ix } = await ensureAta(publicKey, config.mindMint);
-      const remainingAccounts: AccountMeta[] = activePositions.map((entry) => ({
-        pubkey: new PublicKey(entry.pubkey),
-        isSigner: false,
-        isWritable: true,
-      }));
       const program = getProgram(connection, anchorWallet);
+      if (needsSync) {
+        const remainingAccounts: AccountMeta[] = activePositions.map((entry) => ({
+          pubkey: new PublicKey(entry.pubkey),
+          isSigner: false,
+          isWritable: false,
+        }));
+        const syncIx = await program.methods
+          .syncProfile()
+          .accounts({
+            owner: publicKey,
+            config: deriveConfigPda(),
+            userProfile: deriveUserProfilePda(publicKey),
+            systemProgram: SystemProgram.programId,
+          })
+          .remainingAccounts(remainingAccounts)
+          .instruction();
+        await program.provider.sendAndConfirm(new Transaction().add(syncIx), []);
+      }
+
+      const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const levelUpIx = await program.methods
         .levelUp()
         .accounts({
@@ -2105,87 +2130,11 @@ export function PublicDashboard() {
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .remainingAccounts(remainingAccounts)
         .instruction();
-      const instructions = ix ? [ix, levelUpIx] : [levelUpIx];
-
-      const sendLevelUpWithLookupTable = async () => {
-        const positionPubkeys = Array.from(
-          new Set(remainingAccounts.map((entry) => entry.pubkey.toBase58()))
-        ).map((value) => new PublicKey(value));
-        const currentSlot = await connection.getSlot("confirmed");
-        const [createIx, lookupTableAddress] = AddressLookupTableProgram.createLookupTable({
-          authority: publicKey,
-          payer: publicKey,
-          recentSlot: currentSlot,
-        });
-        await program.provider.sendAndConfirm(new Transaction().add(createIx), []);
-        const addressChunks = chunkArray(positionPubkeys, LOOKUP_CHUNK_SIZE);
-        for (const chunk of addressChunks) {
-          const extendIx = AddressLookupTableProgram.extendLookupTable({
-            authority: publicKey,
-            payer: publicKey,
-            lookupTable: lookupTableAddress,
-            addresses: chunk,
-          });
-          await program.provider.sendAndConfirm(new Transaction().add(extendIx), []);
-        }
-        const lookupTableAccount = (
-          await connection.getAddressLookupTable(lookupTableAddress)
-        ).value;
-        if (!lookupTableAccount) {
-          throw new Error("Failed to load lookup table for level up.");
-        }
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-        const message = new TransactionMessage({
-          payerKey: publicKey,
-          recentBlockhash: blockhash,
-          instructions,
-        }).compileToV0Message([lookupTableAccount]);
-        const versionedTx = new VersionedTransaction(message);
-        const versionedSize = versionedTx.serialize().length;
-        if (versionedSize > TX_SIZE_LIMIT_BYTES) {
-          throw new Error(
-            `Level up transaction is too large (${versionedSize} bytes). Let some rigs expire and try again.`
-          );
-        }
-        let signed: VersionedTransaction;
-        if (signAllTransactions) {
-          const [first] = await signAllTransactions([versionedTx]);
-          signed = first as VersionedTransaction;
-        } else if (signTransaction) {
-          signed = (await signTransaction(versionedTx)) as VersionedTransaction;
-        } else {
-          throw new Error("Wallet does not support versioned transactions. Try another wallet.");
-        }
-        const sig = await connection.sendTransaction(signed, { skipPreflight: false });
-        await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
-        return sig;
-      };
-
-      const { blockhash } = await connection.getLatestBlockhash("confirmed");
-      const legacyMessage = new TransactionMessage({
-        payerKey: publicKey,
-        recentBlockhash: blockhash,
-        instructions,
-      }).compileToLegacyMessage();
-      const legacyTxSize =
-        1 + 64 * legacyMessage.header.numRequiredSignatures + legacyMessage.serialize().length;
-
-      if (legacyTxSize <= TX_SIZE_LIMIT_BYTES) {
-        try {
-          const tx = new Transaction();
-          for (const ins of instructions) {
-            tx.add(ins);
-          }
-          return await program.provider.sendAndConfirm(tx, []);
-        } catch (err) {
-          if (!isTxTooLargeError(err)) {
-            throw err;
-          }
-        }
-      }
-      return await sendLevelUpWithLookupTable();
+      const tx = new Transaction();
+      if (ix) tx.add(ix);
+      tx.add(levelUpIx);
+      return await program.provider.sendAndConfirm(tx, []);
     });
   };
 

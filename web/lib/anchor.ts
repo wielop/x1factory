@@ -74,6 +74,21 @@ const normalizeDiscriminator = (name: string, discriminator: unknown) => {
   return instructionDiscriminator(name);
 };
 const normalizedIdl = normalizeIdl(idl);
+if (Array.isArray(normalizedIdl.instructions)) {
+  const hasSyncProfile = normalizedIdl.instructions.some((ix) => ix.name === "syncProfile");
+  if (!hasSyncProfile) {
+    normalizedIdl.instructions.push({
+      name: "syncProfile",
+      accounts: [
+        { name: "owner", writable: true, signer: true },
+        { name: "config", writable: false, signer: false },
+        { name: "userProfile", writable: true, signer: false },
+        { name: "systemProgram", writable: false, signer: false },
+      ],
+      args: [],
+    });
+  }
+}
 const idlForClient = {
   ...normalizedIdl,
   // Ensure the Program ID matches the runtime config.

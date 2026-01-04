@@ -702,6 +702,11 @@
           "name": "userProfile",
           "isMut": true,
           "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
         }
       ],
       "args": [
@@ -1146,6 +1151,14 @@
             "type": "u64"
           },
           {
+            "name": "buffedHp",
+            "type": "u64"
+          },
+          {
+            "name": "buffedHpSynced",
+            "type": "bool"
+          },
+          {
             "name": "xp",
             "type": "u64"
           },
@@ -1172,6 +1185,15 @@
           {
             "name": "hpScaled",
             "type": "bool"
+          },
+          {
+            "name": "levelAccSnapshots",
+            "type": {
+              "array": [
+                "u128",
+                7
+              ]
+            }
           }
         ]
       }
@@ -1232,6 +1254,10 @@
           {
             "name": "buffAppliedFromCycle",
             "type": "u64"
+          },
+          {
+            "name": "lastLevelApplied",
+            "type": "u8"
           }
         ]
       }
@@ -1794,6 +1820,16 @@
       "code": 6040,
       "name": "ClaimTooLarge",
       "msg": "Claim exceeds single-claim limit"
+    },
+    {
+      "code": 6041,
+      "name": "ProfileSyncRequired",
+      "msg": "Profile sync required"
+    },
+    {
+      "code": 6042,
+      "name": "InvalidSyncPositions",
+      "msg": "Invalid sync positions"
     }
   ]
 }

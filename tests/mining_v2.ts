@@ -955,13 +955,6 @@ describe("mining_v2", () => {
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .remainingAccounts([
-          {
-            pubkey: positionPda(user.publicKey, 0),
-            isSigner: false,
-            isWritable: true,
-          },
-        ])
         .signers([user])
         .rpc();
       expect.fail("Expected level up to fail without XP");
@@ -1036,13 +1029,6 @@ describe("mining_v2", () => {
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
-      .remainingAccounts([
-        {
-          pubkey: positionPda(user.publicKey, 1),
-          isSigner: false,
-          isWritable: true,
-        },
-      ])
         .signers([user])
         .rpc();
       expect.fail("Expected level up to fail without MIND");
@@ -1119,13 +1105,6 @@ describe("mining_v2", () => {
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
-      .remainingAccounts([
-        {
-          pubkey: positionPda(levelUser.publicKey, 1),
-          isSigner: false,
-          isWritable: true,
-        },
-      ])
       .signers([levelUser])
       .rpc();
 

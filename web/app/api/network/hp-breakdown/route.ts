@@ -4,6 +4,7 @@ import {
   decodeMinerPositionAccount,
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
+  MINER_POSITION_LEN_V3,
 } from "@/lib/decoders";
 import { fetchClockUnixTs, fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 
@@ -65,7 +66,7 @@ export async function GET() {
     const nowTs = await fetchClockUnixTs(connection);
     const programId = getProgramId();
 
-    const [positionsV1, positionsV2] = await Promise.all([
+    const [positionsV1, positionsV2, positionsV3] = await Promise.all([
       connection.getProgramAccounts(programId, {
         commitment: "confirmed",
         filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
@@ -74,13 +75,17 @@ export async function GET() {
         commitment: "confirmed",
         filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
       }),
+      connection.getProgramAccounts(programId, {
+        commitment: "confirmed",
+        filters: [{ dataSize: MINER_POSITION_LEN_V3 }],
+      }),
     ]);
 
     const secondsPerDay = Number(cfg.secondsPerDay);
     let totalBaseHp = 0n;
     let totalBuffedHp = 0n;
 
-    for (const entry of [...positionsV1, ...positionsV2]) {
+    for (const entry of [...positionsV1, ...positionsV2, ...positionsV3]) {
       const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
       if (decoded.deactivated || decoded.expired || decoded.endTs <= nowTs) continue;
       const rigType = decoded.hpScaled

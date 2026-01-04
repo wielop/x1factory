@@ -3,9 +3,13 @@ import { PublicKey } from "@solana/web3.js";
 import {
   decodeMinerPositionAccount,
   decodeUserMiningProfileAccount,
-  MINER_POSITION_LEN,
+  MINER_POSITION_LEN_V1,
+  MINER_POSITION_LEN_V2,
+  MINER_POSITION_LEN_V3,
   USER_PROFILE_LEN_V1,
   USER_PROFILE_LEN_V2,
+  USER_PROFILE_LEN_V3,
+  USER_PROFILE_LEN_V4,
 } from "../web/lib/decoders";
 import { deriveConfigPda, getProgram, getProvider } from "./v2-common";
 
@@ -46,10 +50,19 @@ const main = async () => {
 
   const programId = program.programId;
 
-  const [positions, profilesV1, profilesV2] = await Promise.all([
+  const [positionsV1, positionsV2, positionsV3, profilesV1, profilesV2, profilesV3, profilesV4] =
+    await Promise.all([
     connection.getProgramAccounts(programId, {
       commitment: "confirmed",
-      filters: [{ dataSize: MINER_POSITION_LEN }],
+      filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
+    }),
+    connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
+    }),
+    connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: MINER_POSITION_LEN_V3 }],
     }),
     connection.getProgramAccounts(programId, {
       commitment: "confirmed",
@@ -58,6 +71,14 @@ const main = async () => {
     connection.getProgramAccounts(programId, {
       commitment: "confirmed",
       filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
+    }),
+    connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
+    }),
+    connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: USER_PROFILE_LEN_V4 }],
     }),
   ]);
 
@@ -69,7 +90,10 @@ const main = async () => {
   };
   profilesV1.forEach(loadProfile);
   profilesV2.forEach(loadProfile);
+  profilesV3.forEach(loadProfile);
+  profilesV4.forEach(loadProfile);
 
+  const positions = [...positionsV1, ...positionsV2, ...positionsV3];
   const ownerBaseHp = new Map<string, bigint>();
   for (const entry of positions) {
     const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));

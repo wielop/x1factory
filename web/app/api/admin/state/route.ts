@@ -8,9 +8,11 @@ import {
   decodeUserStakeAccount,
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
+  MINER_POSITION_LEN_V3,
   USER_PROFILE_LEN_V1,
   USER_PROFILE_LEN_V2,
   USER_PROFILE_LEN_V3,
+  USER_PROFILE_LEN_V4,
   USER_STAKE_LEN,
 } from "@/lib/decoders";
 import { fetchConfig, fetchClockUnixTs, getProgramId, getRpcUrl } from "@/lib/solana";
@@ -333,7 +335,7 @@ export async function GET(request: NextRequest) {
   }
 
   const programId = getProgramId();
-  const [positionsV1, positionsV2, stakes, profilesV1, profilesV2, profilesV3] = await Promise.all([
+  const [positionsV1, positionsV2, positionsV3, stakes, profilesV1, profilesV2, profilesV3, profilesV4] = await Promise.all([
     connection.getProgramAccounts(programId, {
       commitment: "confirmed",
       filters: [{ dataSize: MINER_POSITION_LEN_V1 }],
@@ -341,6 +343,10 @@ export async function GET(request: NextRequest) {
     connection.getProgramAccounts(programId, {
       commitment: "confirmed",
       filters: [{ dataSize: MINER_POSITION_LEN_V2 }],
+    }),
+    connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: MINER_POSITION_LEN_V3 }],
     }),
     connection.getProgramAccounts(programId, {
       commitment: "confirmed",
@@ -358,6 +364,10 @@ export async function GET(request: NextRequest) {
       commitment: "confirmed",
       filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
     }),
+    connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: USER_PROFILE_LEN_V4 }],
+    }),
   ]);
   const levels = new Map<string, number>();
   const loadProfile = (entry: (typeof profilesV1)[number]) => {
@@ -368,8 +378,9 @@ export async function GET(request: NextRequest) {
   profilesV1.forEach(loadProfile);
   profilesV2.forEach(loadProfile);
   profilesV3.forEach(loadProfile);
+  profilesV4.forEach(loadProfile);
 
-  const positions = [...positionsV1, ...positionsV2];
+  const positions = [...positionsV1, ...positionsV2, ...positionsV3];
   const secondsPerDay = Number(cfg.secondsPerDay);
   const buffedHpByOwner = new Map<string, bigint>();
   for (const entry of positions) {

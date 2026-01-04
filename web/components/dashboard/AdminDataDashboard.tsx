@@ -116,6 +116,7 @@ export function AdminDataDashboard() {
   const [window, setWindow] = useState<FlowStats["window"]>("24h");
   const [mindPriceXnt, setMindPriceXnt] = useState<string>("1");
   const [mindPriceApplied, setMindPriceApplied] = useState<number | null>(1);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchState = useCallback(async () => {
     try {
@@ -192,6 +193,15 @@ export function AdminDataDashboard() {
       setError(formatError(err));
     }
   };
+
+  const refreshNow = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      await fetchState();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchState]);
 
   if (!isAdmin) {
     return (
@@ -355,8 +365,11 @@ export function AdminDataDashboard() {
                       Wykluczone adresy: {state.burns.excludedOwners.join(", ")}
                     </div>
                   </div>
-                  <div className="text-[11px] text-zinc-500">
-                    Ostatnie zdarzenie: {formatTimestamp(state.burns.latestEventAt)}
+                  <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+                    <div>Ostatnie zdarzenie: {formatTimestamp(state.burns.latestEventAt)}</div>
+                    <Button size="sm" variant="secondary" onClick={refreshNow} disabled={refreshing}>
+                      {refreshing ? "Odświeżanie..." : "Odśwież teraz"}
+                    </Button>
                   </div>
                 </div>
                 <div className="mt-3 grid gap-1 text-sm text-zinc-200">

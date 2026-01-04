@@ -4,7 +4,7 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, type AccountMeta } from "@solana/web3.js";
 import {
   AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,

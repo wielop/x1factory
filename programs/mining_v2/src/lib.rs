@@ -1303,6 +1303,27 @@ pub mod mining_v2 {
         save_user_profile(&ctx.accounts.user_profile, &profile)?;
         Ok(())
     }
+
+    pub fn admin_add_xp(ctx: Context<AdminAddXp>, amount: u64) -> Result<()> {
+        require!(amount > 0, ErrorCode::InvalidAmount);
+        let cfg = &ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        let now = Clock::get()?.unix_timestamp;
+        let bump = *ctx.bumps.get("user_profile").unwrap();
+        let mut profile = ensure_user_profile_v2(
+            &ctx.accounts.user_profile,
+            &ctx.accounts.admin.to_account_info(),
+            &ctx.accounts.system_program,
+            ctx.accounts.admin.key(),
+            bump,
+            now,
+        )?;
+        require_keys_eq!(profile.owner, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        update_user_xp(&mut profile, now)?;
+        profile.xp = profile.xp.checked_add(amount).ok_or(ErrorCode::MathOverflow)?;
+        save_user_profile(&ctx.accounts.user_profile, &profile)?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -1999,6 +2020,26 @@ pub struct AdminSetBadge<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct AdminAddXp<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        mut,
+        seeds = [PROFILE_SEED, admin.key().as_ref()],
+        bump
+    )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
+    pub user_profile: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct NativeVault {
@@ -2219,11 +2260,11 @@ fn level_threshold(level: u8) -> u64 {
 
 fn level_up_cost(level: u8) -> u64 {
     match level {
-        1 => 150_u64 * MIND_DECIMALS,
-        2 => 350_u64 * MIND_DECIMALS,
-        3 => 900_u64 * MIND_DECIMALS,
-        4 => 2_000_u64 * MIND_DECIMALS,
-        5 => 4_000_u64 * MIND_DECIMALS,
+        1 => 75_u64 * MIND_DECIMALS,
+        2 => 175_u64 * MIND_DECIMALS,
+        3 => 450_u64 * MIND_DECIMALS,
+        4 => 1_000_u64 * MIND_DECIMALS,
+        5 => 2_000_u64 * MIND_DECIMALS,
         _ => 0,
     }
 }

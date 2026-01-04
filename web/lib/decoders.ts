@@ -26,6 +26,7 @@ export type DecodedUserMiningProfile = {
   level: number;
   lastXpUpdateTs: number;
   hpScaled: boolean;
+  levelAccSnapshots?: bigint[];
 };
 
 export type DecodedUserStake = {
@@ -150,6 +151,7 @@ export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningP
   let level = 1;
   let lastXpUpdateTs = 0;
   let hpScaled = false;
+  let levelAccSnapshots: bigint[] | undefined;
   if (data.length >= USER_PROFILE_LEN_V2) {
     level = data.readUInt8(offset);
     offset += 1;
@@ -162,7 +164,11 @@ export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningP
   } else if (data.length >= USER_PROFILE_LEN_V4) {
     hpScaled = data.readUInt8(offset) !== 0;
     offset += 1;
-    offset += 112;
+    levelAccSnapshots = [];
+    for (let i = 0; i < 7; i += 1) {
+      levelAccSnapshots.push(readU128LE(data, offset));
+      offset += 16;
+    }
   }
   return {
     owner,
@@ -176,6 +182,7 @@ export function decodeUserMiningProfileAccount(data: Buffer): DecodedUserMiningP
     level,
     lastXpUpdateTs,
     hpScaled,
+    levelAccSnapshots,
   };
 }
 

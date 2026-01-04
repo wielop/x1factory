@@ -1287,10 +1287,16 @@ export function PublicDashboard() {
   const extraAccSinceRefresh = accrualPerSecond * elapsedSinceRefreshBig;
 
   const pendingPositions = useMemo(() => {
-    const bonusMultiplier = BPS_DENOMINATOR + levelBonusBpsBig;
     const secondsPerDay = config ? Number(config.secondsPerDay) : 0;
     const levelAccSnapshots = userProfile?.levelAccSnapshots;
     const hasSnapshots = Array.isArray(levelAccSnapshots);
+    const accPerSec =
+      config && config.networkHpActive > 0n
+        ? (config.emissionPerSec * ACC_SCALE) / config.networkHpActive
+        : 0n;
+    const lastUpdateTs = config ? BigInt(config.lastUpdateTs) : 0n;
+    const applyBps = (value: bigint, bps: number | bigint) =>
+      (value * (BPS_DENOMINATOR + BigInt(bps))) / BPS_DENOMINATOR;
     return positions.map((p) => {
       if (!config) {
         return { position: p, pending: 0n, livePending: 0n };
@@ -1298,6 +1304,7 @@ export function PublicDashboard() {
       const rigType = p.data.hpScaled
         ? p.data.rigType
         : rigTypeFromDuration(p.data.startTs, p.data.endTs, secondsPerDay);
+      const baseHp = p.data.hp;
       const buffBpsBase = rigBuffBps(rigType, p.data.buffLevel);
       const buffApplied =
         p.data.buffLevel > 0 &&
@@ -1305,7 +1312,11 @@ export function PublicDashboard() {
           nowTs == null ||
           BigInt(nowTs) >= p.data.buffAppliedFromCycle);
       const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
-      const baseHp = p.data.hp;
+      const levelForCalc = p.data.expired
+        ? Math.max(p.data.lastLevelApplied ?? userLevel, 1)
+        : userLevel;
+      const bonusMultiplier =
+        BPS_DENOMINATOR + BigInt(levelBonusFor(levelForCalc));
       const hpWithBuff = p.data.deactivated
         ? baseHp
         : (baseHp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
@@ -1332,6 +1343,32 @@ export function PublicDashboard() {
           }
         }
       }
+      if (
+        !p.data.deactivated &&
+        !p.data.expired &&
+        p.data.buffAppliedFromCycle > 0n &&
+        nowTs != null &&
+        BigInt(nowTs) >= p.data.buffAppliedFromCycle &&
+        p.data.buffLevel > 0
+      ) {
+        const prevLevel = Math.max(0, p.data.buffLevel - 1);
+        const prevBps = rigBuffBps(rigType, prevLevel);
+        const newBps = rigBuffBps(rigType, p.data.buffLevel);
+        if (prevBps !== newBps) {
+          let accAtApply = config.accMindPerHp;
+          if (accPerSec > 0n && p.data.buffAppliedFromCycle > lastUpdateTs) {
+            const delta = p.data.buffAppliedFromCycle - lastUpdateTs;
+            accAtApply = config.accMindPerHp + accPerSec * delta;
+          }
+          const levelBps = levelBonusFor(userLevel);
+          const hpPrev = applyBps(applyBps(baseHp, prevBps), levelBps);
+          const hpNew = applyBps(applyBps(baseHp, newBps), levelBps);
+          const earnedOld = (hpPrev * accAtApply) / ACC_SCALE;
+          const pendingBefore = earnedOld > rewardDebt ? earnedOld - rewardDebt : 0n;
+          const earnedNew = (hpNew * accAtApply) / ACC_SCALE;
+          rewardDebt = earnedNew > pendingBefore ? earnedNew - pendingBefore : 0n;
+        }
+      }
       const earned = (hpEffective * acc) / ACC_SCALE;
       const pending = earned > rewardDebt ? earned - rewardDebt : 0n;
       const livePending =
@@ -1340,7 +1377,7 @@ export function PublicDashboard() {
           : pending + (hpEffective * extraAccSinceRefresh) / ACC_SCALE;
       return { position: p, pending, livePending };
     });
-  }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig, nowTs, userLevel, userProfile, levelBonusFor]);
+  }, [positions, config, extraAccSinceRefresh, nowTs, userLevel, userProfile, levelBonusFor]);
 
   const visiblePositions = useMemo(() => {
     if (nowTs == null) return pendingPositions;

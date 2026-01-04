@@ -1757,7 +1757,7 @@ export function PublicDashboard() {
     if (!anchorWallet || !publicKey || !config) {
       return { executed: false, failedPositions: [] as string[] };
     }
-    const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
+    const claimTargets = pendingPositions.filter((entry) => entry.pending > 0n);
     if (claimTargets.length === 0) {
       return { executed: false, failedPositions: [] as string[] };
     }

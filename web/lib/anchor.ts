@@ -86,6 +86,7 @@ if (Array.isArray(normalizedIdl.instructions)) {
         { name: "systemProgram", writable: false, signer: false },
       ],
       args: [],
+      discriminator: normalizeDiscriminator("syncProfile", undefined),
     });
   }
 }

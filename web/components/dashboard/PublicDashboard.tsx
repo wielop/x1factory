@@ -2070,25 +2070,25 @@ export function PublicDashboard() {
       setError("Leveling is not available yet. Ask an admin to initialize level config.");
       return;
     }
-    const activePositions = positions.filter(
-      (entry) => !entry.data.deactivated && nowTs != null && nowTs < entry.data.endTs
+    const syncPositions = positions.filter(
+      (entry) => !entry.data.deactivated && !entry.data.expired
     );
     const needsSync = userProfile.buffedHpSynced !== true;
     if (needsSync) {
-      if (activePositions.length === 0) {
+      if (syncPositions.length === 0) {
         setError("No active rigs found to sync before leveling up.");
         return;
       }
-      const activeHp = activePositions.reduce((acc, entry) => acc + entry.data.hp, 0n);
+      const activeHp = syncPositions.reduce((acc, entry) => acc + entry.data.hp, 0n);
       const profileHpScaled =
         userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
       if (activeHp !== profileHpScaled) {
         setError("Active rig list out of sync. Refresh and try again.");
         return;
       }
-      if (activePositions.length > LEVEL_UP_MAX_POSITIONS) {
+      if (syncPositions.length > LEVEL_UP_MAX_POSITIONS) {
         setError(
-          `Too many active rigs to sync at once (${activePositions.length}). ` +
+          `Too many active rigs to sync at once (${syncPositions.length}). ` +
             `Limit is ~${LEVEL_UP_MAX_POSITIONS}. Let some rigs expire or renew later.`
         );
         return;
@@ -2097,7 +2097,7 @@ export function PublicDashboard() {
     await withTx("Level up", async () => {
       const program = getProgram(connection, anchorWallet);
       if (needsSync) {
-        const remainingAccounts: AccountMeta[] = activePositions.map((entry) => ({
+        const remainingAccounts: AccountMeta[] = syncPositions.map((entry) => ({
           pubkey: new PublicKey(entry.pubkey),
           isSigner: false,
           isWritable: false,

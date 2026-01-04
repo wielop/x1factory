@@ -770,10 +770,6 @@ pub mod mining_v2 {
 
         update_user_xp(&mut profile, now)?;
 
-        if !profile.buffed_hp_synced && profile.active_hp > 0 {
-            return Err(ErrorCode::ProfileSyncRequired.into());
-        }
-
         require!(profile.level < 6, ErrorCode::MaxLevelReached);
         let next_level = profile
             .level
@@ -788,7 +784,7 @@ pub mod mining_v2 {
             ctx.accounts.owner_mind_ata.amount >= cost,
             ErrorCode::InsufficientLevelUpFunds
         );
-        let buffed_total_scaled = profile.buffed_hp as u128;
+        let buffed_total_scaled = profile.active_hp as u128;
         let old_bonus = level_bonus_bps(profile.level);
         let new_bonus = level_bonus_bps(next_level);
         let effective_before = apply_bps(buffed_total_scaled, old_bonus)?;

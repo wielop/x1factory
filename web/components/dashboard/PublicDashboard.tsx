@@ -4,13 +4,7 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import {
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  type AccountMeta,
-} from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import {
   AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -84,8 +78,6 @@ const NATIVE_VAULT_SPACE = 9;
 const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
 const RENEW_REMINDER_DAYS = 3;
-// Solana caps account indexes at 256; leave headroom for program + ATA accounts.
-const LEVEL_UP_MAX_POSITIONS = 220;
 type RigType = "starter" | "pro" | "industrial";
 type LeaderboardRow = {
   owner: string;
@@ -2070,51 +2062,8 @@ export function PublicDashboard() {
       setError("Leveling is not available yet. Ask an admin to initialize level config.");
       return;
     }
-    const syncPositions = positions.filter(
-      (entry) => !entry.data.deactivated && !entry.data.expired
-    );
-    const needsSync = userProfile.buffedHpSynced !== true;
-    if (needsSync) {
-      if (syncPositions.length === 0) {
-        setError("No active rigs found to sync before leveling up.");
-        return;
-      }
-      const activeHp = syncPositions.reduce((acc, entry) => acc + entry.data.hp, 0n);
-      const profileHpScaled =
-        userProfile.hpScaled ? userProfile.activeHp : userProfile.activeHp * HP_SCALE;
-      if (activeHp !== profileHpScaled) {
-        setError("Active rig list out of sync. Refresh and try again.");
-        return;
-      }
-      if (syncPositions.length > LEVEL_UP_MAX_POSITIONS) {
-        setError(
-          `Too many active rigs to sync at once (${syncPositions.length}). ` +
-            `Limit is ~${LEVEL_UP_MAX_POSITIONS}. Let some rigs expire or renew later.`
-        );
-        return;
-      }
-    }
     await withTx("Level up", async () => {
       const program = getProgram(connection, anchorWallet);
-      if (needsSync) {
-        const remainingAccounts: AccountMeta[] = syncPositions.map((entry) => ({
-          pubkey: new PublicKey(entry.pubkey),
-          isSigner: false,
-          isWritable: false,
-        }));
-        const syncIx = await program.methods
-          .syncProfile()
-          .accounts({
-            owner: publicKey,
-            config: deriveConfigPda(),
-            userProfile: deriveUserProfilePda(publicKey),
-            systemProgram: SystemProgram.programId,
-          })
-          .remainingAccounts(remainingAccounts)
-          .instruction();
-        await program.provider.sendAndConfirm(new Transaction().add(syncIx), []);
-      }
-
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const levelUpIx = await program.methods
         .levelUp()

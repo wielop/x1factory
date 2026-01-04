@@ -535,6 +535,9 @@ export function PublicDashboard() {
   });
   const [activeStakers, setActiveStakers] = useState<ActiveStaker[]>(ACTIVE_STAKERS);
 
+  const isAdmin = Boolean(publicKey && config && publicKey.equals(config.admin));
+  const levelingEnabled = LEVELING_ENABLED || isAdmin;
+
   const [selectedContract, setSelectedContract] = useState<number>(1);
   const [openRigDetails, setOpenRigDetails] = useState<RigType | null>(null);
   const [showRigInfoModal, setShowRigInfoModal] = useState(false);
@@ -1011,9 +1014,9 @@ export function PublicDashboard() {
   }, [refresh]);
 
   const rawUserLevel = Math.max(userProfile?.level ?? 1, 1);
-  const userLevel = LEVELING_ENABLED ? rawUserLevel : 1;
-  const userXp = LEVELING_ENABLED ? userProfile?.xp ?? 0n : 0n;
-  const lastXpUpdateTs = LEVELING_ENABLED ? userProfile?.lastXpUpdateTs ?? 0 : 0;
+  const userLevel = levelingEnabled ? rawUserLevel : 1;
+  const userXp = levelingEnabled ? userProfile?.xp ?? 0n : 0n;
+  const lastXpUpdateTs = levelingEnabled ? userProfile?.lastXpUpdateTs ?? 0 : 0;
   const profileHpScaled =
     userProfile == null
       ? 0n
@@ -1022,7 +1025,7 @@ export function PublicDashboard() {
       : userProfile.activeHp * HP_SCALE;
 
   useEffect(() => {
-    if (!LEVELING_ENABLED) return;
+    if (!levelingEnabled) return;
     if (!nowTs || !userProfile) return;
     if (lastXpUpdateTs > 0) {
       xpEstimateStartRef.current = null;
@@ -1063,10 +1066,10 @@ export function PublicDashboard() {
       }
     }
   }, [lastXpUpdateTs, nowTs, profileHpScaled, userProfile, xpEstimateKey]);
-  const levelIdx = LEVELING_ENABLED
+  const levelIdx = levelingEnabled
     ? Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1
     : 0;
-  const levelBonusBps = LEVELING_ENABLED
+  const levelBonusBps = levelingEnabled
     ? LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1]
     : 0;
   const levelBonusFor = useCallback(
@@ -1076,11 +1079,11 @@ export function PublicDashboard() {
     },
     []
   );
-  const nextLevelXp = LEVELING_ENABLED && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
+  const nextLevelXp = levelingEnabled && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
   const levelBonusBpsBig = BigInt(levelBonusBps);
   const xpEstimate = useMemo(() => {
-    if (!LEVELING_ENABLED) {
+    if (!levelingEnabled) {
       return { whole: 0n, hundredths: 0n };
     }
     if (!nowTs || !userProfile) {
@@ -1126,7 +1129,7 @@ export function PublicDashboard() {
   const hasMindForLevelUp =
     levelUpCostBase != null ? mindBalance >= levelUpCostBase : false;
   const canLevelUp =
-    LEVELING_ENABLED &&
+    levelingEnabled &&
     userProfile != null &&
     nextLevelXp != null &&
     xpDisplay >= nextLevelXp &&
@@ -1136,8 +1139,8 @@ export function PublicDashboard() {
   const requiredMindLabel = levelUpCostTokens != null ? `${levelUpCostTokens}` : "0";
   const maxLevel = userLevel >= LEVEL_CAP || nextLevelXp == null;
   const levelUpDisabled =
-    !LEVELING_ENABLED || !canTransact || !canLevelUp || busy != null || maxLevel;
-  const levelUpButtonLabel = !LEVELING_ENABLED
+    !levelingEnabled || !canTransact || !canLevelUp || busy != null || maxLevel;
+  const levelUpButtonLabel = !levelingEnabled
     ? "Levels disabled"
     : maxLevel
     ? "Max level reached"
@@ -1161,11 +1164,11 @@ export function PublicDashboard() {
       ? `≈ ${formatFixed2(xpPerHourHundredths)} XP/hour`
       : null;
   const bonusLine = `HP bonus: +${levelBonusPct}%`;
-  const progressionDescription = LEVELING_ENABLED
+  const progressionDescription = levelingEnabled
     ? "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs."
     : LEVELING_DISABLED_MESSAGE;
   const xpEstimateNote =
-    LEVELING_ENABLED && lastXpUpdateTs <= 0 && profileHpScaled
+    levelingEnabled && lastXpUpdateTs <= 0 && profileHpScaled
       ? "XP is estimated until your next on-chain interaction (claim, buy, renew)."
       : null;
   const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(2)}%`;
@@ -2145,7 +2148,7 @@ export function PublicDashboard() {
   };
 
   const onLevelUp = async () => {
-    if (!LEVELING_ENABLED) {
+    if (!levelingEnabled) {
       setError(LEVELING_DISABLED_MESSAGE);
       return;
     }
@@ -2204,7 +2207,7 @@ export function PublicDashboard() {
       ? "rXNT pool is unavailable right now."
       : "Claim rewards and optionally auto-stake to rXNT.";
 
-  const progressionLabel = LEVELING_ENABLED ? `LVL ${userLevel}` : "Levels paused";
+  const progressionLabel = levelingEnabled ? `LVL ${userLevel}` : "Levels paused";
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -3312,7 +3315,7 @@ export function PublicDashboard() {
         </section>
 
         <section className="mt-6">
-          {LEVELING_ENABLED ? (
+          {levelingEnabled ? (
             <AccountProgressionPanel
               level={userLevel}
               xpLine={xpLine}

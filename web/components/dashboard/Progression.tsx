@@ -4,22 +4,23 @@ import { useEffect, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Card } from "@/components/ui/card";
 import { TopBar } from "@/components/shared/TopBar";
-import { deriveUserProfilePda } from "@/lib/solana";
+import { deriveUserProfilePda, fetchConfig, type DecodedConfig } from "@/lib/solana";
 import { decodeUserMiningProfileAccount } from "@/lib/decoders";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
 
 const LEVEL_ROWS = [
   { level: "Level 1", xp: "0 XP", bonus: "0.0%", cost: "-" },
-  { level: "Level 2", xp: "500 XP", bonus: "+1.6%", cost: "150 MIND" },
-  { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%", cost: "350 MIND" },
-  { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%", cost: "900 MIND" },
-  { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%", cost: "2,000 MIND" },
-  { level: "Level 6", xp: "16,000 XP", bonus: "+10.0% (cap)", cost: "4,000 MIND" },
+  { level: "Level 2", xp: "500 XP", bonus: "+1.6%", cost: "75 MIND" },
+  { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%", cost: "175 MIND" },
+  { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%", cost: "450 MIND" },
+  { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%", cost: "1,000 MIND" },
+  { level: "Level 6", xp: "16,000 XP", bonus: "+10.0% (cap)", cost: "2,000 MIND" },
 ] as const;
 
 export function Progression() {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
+  const [config, setConfig] = useState<DecodedConfig | null>(null);
   const [userLevel, setUserLevel] = useState(1);
 
   useEffect(() => {
@@ -47,14 +48,31 @@ export function Progression() {
     };
   }, [connection, publicKey]);
 
-  const progressionLabel = LEVELING_ENABLED ? `LVL ${userLevel}` : "Levels paused";
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const cfg = await fetchConfig(connection);
+        if (active) setConfig(cfg);
+      } catch {
+        if (active) setConfig(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [connection]);
+
+  const isAdmin = Boolean(publicKey && config && publicKey.equals(config.admin));
+  const levelingEnabled = LEVELING_ENABLED || isAdmin;
+  const progressionLabel = levelingEnabled ? `LVL ${userLevel}` : "Levels paused";
 
   return (
     <div className="min-h-screen bg-ink text-white">
       <TopBar progressionLabel={progressionLabel} />
 
       <main className="mx-auto max-w-5xl px-4 pb-20 pt-10">
-        {LEVELING_ENABLED ? (
+        {levelingEnabled ? (
           <div className="space-y-4">
             <Card className="border-cyan-400/20 bg-ink/90 p-6">
               <div className="text-2xl font-semibold text-white">Account Level & XP</div>

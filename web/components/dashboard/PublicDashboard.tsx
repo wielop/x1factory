@@ -546,6 +546,7 @@ export function PublicDashboard() {
   const [loading, setLoading] = useState<boolean>(false);
   const [lastClaimAmount, setLastClaimAmount] = useState<bigint | null>(null);
   const [lastClaimTs, setLastClaimTs] = useState<number | null>(null);
+  const [lastClaimFailures, setLastClaimFailures] = useState<string[]>([]);
   const refreshIdRef = useRef(0);
   const rigCardsRef = useRef<HTMLDivElement | null>(null);
   const xpEstimateStartRef = useRef<number | null>(null);
@@ -1752,15 +1753,21 @@ export function PublicDashboard() {
   };
 
   const onClaimAll = useCallback(async () => {
-    if (busy != null) return false;
-    if (!anchorWallet || !publicKey || !config) return false;
+    if (busy != null) return { executed: false, failedPositions: [] as string[] };
+    if (!anchorWallet || !publicKey || !config) {
+      return { executed: false, failedPositions: [] as string[] };
+    }
     const claimTargets = pendingPositions.filter((entry) => entry.livePending > 0n);
-    if (claimTargets.length === 0) return false;
+    if (claimTargets.length === 0) {
+      return { executed: false, failedPositions: [] as string[] };
+    }
+    const failedPositions: string[] = [];
+    let hadSuccess = false;
     await withTx("Claim all rigs", async () => {
       const { ata, ix } = await ensureAta(publicKey, config.mindMint);
       const program = getProgram(connection, anchorWallet);
       const MAX_INSTRUCTIONS = 6;
-      const txs: Transaction[] = [];
+      const claimChunks: Array<{ tx: Transaction; positions: string[] }> = [];
       for (let i = 0; i < claimTargets.length; i += MAX_INSTRUCTIONS) {
         const chunk = claimTargets.slice(i, i + MAX_INSTRUCTIONS);
         const tx = new Transaction();
@@ -1782,35 +1789,52 @@ export function PublicDashboard() {
             .instruction();
           tx.add(instruction);
         }
-        txs.push(tx);
+        claimChunks.push({ tx, positions: chunk.map((entry) => entry.position.pubkey) });
       }
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      for (const tx of txs) {
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = publicKey;
-      }
-      if (signAllTransactions) {
-        const signed = await signAllTransactions(txs);
-        const sigs = await Promise.all(
-          signed.map((signedTx) =>
-            connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false })
-          )
-        );
-        await Promise.all(
-          sigs.map((sig) =>
-            connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight })
-          )
-        );
-        return sigs[sigs.length - 1] ?? "";
+      for (const chunk of claimChunks) {
+        chunk.tx.recentBlockhash = blockhash;
+        chunk.tx.feePayer = publicKey;
       }
       let sentSig = "";
-      for (const tx of txs) {
-        sentSig = await program.provider.sendAndConfirm(tx, []);
+      if (signAllTransactions) {
+        const signed = await signAllTransactions(claimChunks.map((entry) => entry.tx));
+        for (let i = 0; i < signed.length; i++) {
+          try {
+            const sig = await connection.sendRawTransaction(signed[i].serialize(), {
+              skipPreflight: false,
+            });
+            await connection.confirmTransaction({
+              signature: sig,
+              blockhash,
+              lastValidBlockHeight,
+            });
+            hadSuccess = true;
+            sentSig = sig;
+          } catch (err) {
+            const failed = claimChunks[i]?.positions ?? [];
+            failedPositions.push(...failed);
+            console.warn("Claim failed for rigs", failed, err);
+          }
+        }
+      } else {
+        for (const chunk of claimChunks) {
+          try {
+            sentSig = await program.provider.sendAndConfirm(chunk.tx, []);
+            hadSuccess = true;
+          } catch (err) {
+            failedPositions.push(...chunk.positions);
+            console.warn("Claim failed for rigs", chunk.positions, err);
+          }
+        }
+      }
+      if (!hadSuccess) {
+        throw new Error("Claim failed for all rigs.");
       }
       return sentSig;
     });
-    return true;
-  }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, withTx]);
+    return { executed: hadSuccess, failedPositions };
+  }, [anchorWallet, busy, connection, config, pendingPositions, publicKey, signAllTransactions, withTx]);
 
   const handleClaimToggle = useCallback(async () => {
     if (!config || !publicKey) return;
@@ -1819,7 +1843,18 @@ export function PublicDashboard() {
       .getTokenAccountBalance(ata, "confirmed")
       .then((b) => BigInt(b.value.amount || "0"))
       .catch(() => 0n);
-    const executed = await onClaimAll();
+    const { executed, failedPositions } = await onClaimAll();
+    if (failedPositions.length > 0) {
+      setLastClaimFailures(failedPositions);
+      if (executed) {
+        pushToast({
+          title: "Claimed with warnings",
+          description: `${failedPositions.length} rig(s) failed to claim.`,
+        });
+      }
+    } else if (executed) {
+      setLastClaimFailures([]);
+    }
     if (executed) {
       const after = await connection
         .getTokenAccountBalance(ata, "confirmed")
@@ -1838,8 +1873,9 @@ export function PublicDashboard() {
           );
         }
       }
+      await refresh();
     }
-  }, [config, connection, nowTs, onClaimAll, publicKey]);
+  }, [config, connection, nowTs, onClaimAll, publicKey, pushToast, refresh]);
   const onRenewWithBuff = async (posPubkey: string) => {
     if (busy != null) return;
     if (!anchorWallet || !config || !publicKey || !rigBuffConfig) return;
@@ -2654,6 +2690,14 @@ export function PublicDashboard() {
                 </Button>
               </div>
             </div>
+            {lastClaimFailures.length > 0 ? (
+              <div
+                className="mt-2 text-[11px] text-amber-200"
+                title={lastClaimFailures.join(", ")}
+              >
+                Failed to claim: {lastClaimFailures.map((pk) => shortPk(pk, 4)).join(", ")}
+              </div>
+            ) : null}
             <div className="mt-4 grid max-h-[260px] gap-3 overflow-y-auto pr-2 sm:max-h-[440px]">
               {visiblePositions.length === 0 ? (
                 <div className="text-xs text-zinc-500">No positions yet.</div>
@@ -2836,6 +2880,15 @@ export function PublicDashboard() {
                           positionRateHp) /
                         networkHpHundredths
                       : null;
+                  const pendingNow = entry.livePending;
+                  const pendingLabel =
+                    mintDecimals != null
+                      ? formatRoundedToken(pendingNow, mintDecimals.mind, 6)
+                      : "-";
+                  const pendingFull =
+                    mintDecimals != null
+                      ? formatFullPrecisionToken(pendingNow, mintDecimals.mind)
+                      : "-";
                   return (
                     <div key={p.pubkey} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2918,8 +2971,14 @@ export function PublicDashboard() {
                               </div>
                             </>
                           ) : (
-                            "Rate unavailable"
+                            <div>Rate unavailable</div>
                           )}
+                          <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
+                            <span>Claimable now</span>
+                            <span className="text-zinc-200" title={`${pendingFull} MIND`}>
+                              {pendingLabel} MIND
+                            </span>
+                          </div>
                         </div>
                       ) : null}
                       {showRenew ? (

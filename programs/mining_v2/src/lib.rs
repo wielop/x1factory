@@ -990,10 +990,7 @@ pub mod mining_v2 {
             let position = load_position_any(info)?;
             require_keys_eq!(position.owner, profile.owner, ErrorCode::Unauthorized);
             require!(!position.deactivated, ErrorCode::InvalidSyncPositions);
-            require!(
-                !position.expired && now < position.end_ts,
-                ErrorCode::InvalidSyncPositions
-            );
+            require!(!position.expired, ErrorCode::InvalidSyncPositions);
             let rig_type = position_rig_type(&position, cfg)?;
             let base_hp_scaled = position_base_hp_scaled(&position)?;
             let buff_bps = position_buff_bps(&position, rig_type, now);

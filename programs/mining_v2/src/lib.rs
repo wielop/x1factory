@@ -462,10 +462,11 @@ pub mod mining_v2 {
                 .ok_or(ErrorCode::MathOverflow)?;
         }
 
+        let system_program = ctx.accounts.system_program.to_account_info();
         ensure_position_v2(
             &ctx.accounts.position,
             &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.system_program,
+            &system_program,
         )?;
 
         let staking_share = (cost_base as u128)
@@ -627,10 +628,11 @@ pub mod mining_v2 {
             );
         }
 
+        let system_program = ctx.accounts.system_program.to_account_info();
         ensure_position_v2(
             &ctx.accounts.position,
             &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.system_program,
+            &system_program,
         )?;
 
         let buff_applied_from_cycle = if new_buff_level > position.buff_level {
@@ -798,10 +800,11 @@ pub mod mining_v2 {
 
         position.reward_debt = earned_per_hp(hp_effective, acc_used)?;
         position.last_level_applied = profile.level;
+        let system_program = ctx.accounts.system_program.to_account_info();
         ensure_position_v2(
             &ctx.accounts.position,
             &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.system_program,
+            &system_program,
         )?;
         save_position(&ctx.accounts.position, &position)?;
         save_user_profile(&ctx.accounts.user_profile, &profile)?;
@@ -852,10 +855,11 @@ pub mod mining_v2 {
         }
 
         finalize_position(cfg, &mut position, &mut profile, now)?;
+        let system_program = ctx.accounts.system_program.to_account_info();
         ensure_position_v2(
             &ctx.accounts.position,
             &ctx.accounts.owner.to_account_info(),
-            &ctx.accounts.system_program,
+            &system_program,
         )?;
         save_position(&ctx.accounts.position, &position)?;
         save_user_profile(&ctx.accounts.user_profile, &profile)?;
@@ -1332,7 +1336,6 @@ pub mod mining_v2 {
             let hp_effective = effective_hp_scaled(base_hp_scaled, ctx.accounts.user_profile.level, buff_bps)?;
             position.reward_debt = earned_per_hp(hp_effective, new_acc_mind_per_hp)?;
             position.last_level_applied = ctx.accounts.user_profile.level;
-            ensure_position_v2(info, &ctx.accounts.admin.to_account_info(), &ctx.accounts.system_program)?;
             save_position(info, &position)?;
         }
 
@@ -2899,6 +2902,8 @@ fn load_position_any(info: &AccountInfo) -> Result<PositionData> {
 fn save_position(info: &AccountInfo, position: &PositionData) -> Result<()> {
     let mut data = info.try_borrow_mut_data()?;
     let v3_size = 8 + MinerPosition::INIT_SPACE;
+    let v2_size = 8 + MinerPositionV2Legacy::INIT_SPACE;
+    let v1_size = 8 + MinerPositionV1::INIT_SPACE;
     if data.len() >= v3_size {
         let upgraded = MinerPosition {
             owner: position.owner,
@@ -2920,13 +2925,52 @@ fn save_position(info: &AccountInfo, position: &PositionData) -> Result<()> {
         upgraded.try_serialize(&mut cursor)?;
         return Ok(());
     }
+    if data.len() == v2_size {
+        let legacy = MinerPositionV2Legacy {
+            owner: position.owner,
+            hp: position.hp,
+            start_ts: position.start_ts,
+            end_ts: position.end_ts,
+            reward_debt: position.reward_debt,
+            final_acc_mind_per_hp: position.final_acc_mind_per_hp,
+            deactivated: position.deactivated,
+            bump: position.bump,
+            rig_type: position.rig_type,
+            buff_level: position.buff_level,
+            hp_scaled: position.hp_scaled,
+            expired: position.expired,
+            buff_applied_from_cycle: position.buff_applied_from_cycle,
+        };
+        data[..8].copy_from_slice(&MinerPosition::DISCRIMINATOR);
+        let mut cursor: &mut [u8] = &mut data[8..];
+        return legacy
+            .serialize(&mut cursor)
+            .map_err(|_| ErrorCode::InvalidPositionSize.into());
+    }
+    if data.len() == v1_size {
+        let legacy = MinerPositionV1 {
+            owner: position.owner,
+            hp: position.hp,
+            start_ts: position.start_ts,
+            end_ts: position.end_ts,
+            reward_debt: position.reward_debt,
+            final_acc_mind_per_hp: position.final_acc_mind_per_hp,
+            deactivated: position.deactivated,
+            bump: position.bump,
+        };
+        data[..8].copy_from_slice(&MinerPosition::DISCRIMINATOR);
+        let mut cursor: &mut [u8] = &mut data[8..];
+        return legacy
+            .serialize(&mut cursor)
+            .map_err(|_| ErrorCode::InvalidPositionSize.into());
+    }
     Err(ErrorCode::InvalidPositionSize.into())
 }
 
 fn ensure_position_v2<'info>(
     info: &AccountInfo<'info>,
     payer: &AccountInfo<'info>,
-    system_program: &Program<'info, System>,
+    system_program: &AccountInfo<'info>,
 ) -> Result<()> {
     let new_size = 8 + MinerPosition::INIT_SPACE;
     if info.data_len() >= new_size {
@@ -2939,7 +2983,7 @@ fn ensure_position_v2<'info>(
         let diff = needed.checked_sub(current).ok_or(ErrorCode::MathOverflow)?;
         system_program::transfer(
             CpiContext::new(
-                system_program.to_account_info(),
+                system_program.clone(),
                 SystemTransfer {
                     from: payer.clone(),
                     to: info.clone(),

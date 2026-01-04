@@ -148,6 +148,7 @@ export function AdminDashboard() {
   const [badgeUser, setBadgeUser] = useState<string>("");
   const [badgeTier, setBadgeTier] = useState<string>("0");
   const [badgeBonusBps, setBadgeBonusBps] = useState<string>("0");
+  const [adminXpAmount, setAdminXpAmount] = useState<string>("");
   const [rewardTopUpUi, setRewardTopUpUi] = useState<string>("");
   const [treasuryWithdrawUi, setTreasuryWithdrawUi] = useState<string>("3.8");
   const [stakingWithdrawUi, setStakingWithdrawUi] = useState<string>("1");
@@ -452,6 +453,8 @@ export function AdminDashboard() {
         return "roll_epoch";
       case "Set badge":
         return "admin_set_badge";
+      case "Add XP":
+        return "admin_add_xp";
       case "Fund reward vault":
         return "admin_fund_reward";
       case "Withdraw treasury":
@@ -612,6 +615,47 @@ export function AdminDashboard() {
           config: deriveConfigPda(),
           user: userPk,
           userProfile: deriveUserProfilePda(userPk),
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      return sig;
+    });
+  };
+
+  const onAddXp = async () => {
+    if (!anchorWallet || !config || !publicKey) return;
+    const raw = adminXpAmount.trim();
+    if (!raw) {
+      setError("Enter an XP amount.");
+      return;
+    }
+    if (!/^\d+$/.test(raw)) {
+      setError("XP must be a whole number.");
+      return;
+    }
+    let amount: bigint;
+    try {
+      amount = BigInt(raw);
+    } catch {
+      setError("Invalid XP amount.");
+      return;
+    }
+    if (amount <= 0n) {
+      setError("XP amount must be greater than zero.");
+      return;
+    }
+    if (amount > 18_446_744_073_709_551_615n) {
+      setError("XP amount exceeds max u64.");
+      return;
+    }
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Add XP", async () => {
+      const sig = await program.methods
+        .adminAddXp(new BN(amount.toString()))
+        .accounts({
+          admin: publicKey,
+          config: deriveConfigPda(),
+          userProfile: deriveUserProfilePda(publicKey),
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -1030,6 +1074,18 @@ export function AdminDashboard() {
             <Input value={badgeBonusBps} onChange={setBadgeBonusBps} />
             <Button className="mt-4" onClick={() => void onSetBadge()} disabled={!isAdmin || busy != null}>
               {busy === "Set badge" ? "Submitting..." : "Set Badge"}
+            </Button>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Add XP (admin)</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Adds XP to the admin profile only.
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">Amount (XP)</div>
+            <Input value={adminXpAmount} onChange={setAdminXpAmount} />
+            <Button className="mt-4" onClick={() => void onAddXp()} disabled={!isAdmin || busy != null}>
+              {busy === "Add XP" ? "Submitting..." : "Add XP"}
             </Button>
           </Card>
         </section>

@@ -1068,6 +1068,13 @@ export function PublicDashboard() {
   const levelBonusBps = LEVELING_ENABLED
     ? LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1]
     : 0;
+  const levelBonusFor = useCallback(
+    (level: number) => {
+      const idx = Math.min(Math.max(level, 1), LEVEL_CAP) - 1;
+      return LEVEL_BONUS_BPS[idx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
+    },
+    []
+  );
   const nextLevelXp = LEVELING_ENABLED && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
   const levelBonusBpsBig = BigInt(levelBonusBps);
@@ -1281,6 +1288,8 @@ export function PublicDashboard() {
   const pendingPositions = useMemo(() => {
     const bonusMultiplier = BPS_DENOMINATOR + levelBonusBpsBig;
     const secondsPerDay = config ? Number(config.secondsPerDay) : 0;
+    const levelAccSnapshots = userProfile?.levelAccSnapshots;
+    const hasSnapshots = Array.isArray(levelAccSnapshots);
     return positions.map((p) => {
       if (!config) {
         return { position: p, pending: 0n, livePending: 0n };
@@ -1304,15 +1313,33 @@ export function PublicDashboard() {
         : (hpWithBuff * bonusMultiplier) / BPS_DENOMINATOR;
       const acc =
         p.data.deactivated || p.data.expired ? p.data.finalAccMindPerHp : config.accMindPerHp;
+      let rewardDebt = p.data.rewardDebt;
+      if (!p.data.deactivated && !p.data.expired && hasSnapshots) {
+        const appliedLevel = Math.max(p.data.lastLevelApplied ?? 1, 1);
+        if (userLevel > appliedLevel) {
+          let prevLevel = appliedLevel;
+          while (prevLevel < userLevel) {
+            const nextLevel = prevLevel + 1;
+            const bonusPrev = BigInt(levelBonusFor(prevLevel));
+            const bonusNext = BigInt(levelBonusFor(nextLevel));
+            const hpPrev = (hpWithBuff * (BPS_DENOMINATOR + bonusPrev)) / BPS_DENOMINATOR;
+            const hpNext = (hpWithBuff * (BPS_DENOMINATOR + bonusNext)) / BPS_DENOMINATOR;
+            const deltaHp = hpNext > hpPrev ? hpNext - hpPrev : 0n;
+            const snapAcc = levelAccSnapshots?.[nextLevel] ?? 0n;
+            rewardDebt += (deltaHp * snapAcc) / ACC_SCALE;
+            prevLevel = nextLevel;
+          }
+        }
+      }
       const earned = (hpEffective * acc) / ACC_SCALE;
-      const pending = earned > p.data.rewardDebt ? earned - p.data.rewardDebt : 0n;
+      const pending = earned > rewardDebt ? earned - rewardDebt : 0n;
       const livePending =
         p.data.deactivated || p.data.expired
           ? pending
           : pending + (hpEffective * extraAccSinceRefresh) / ACC_SCALE;
       return { position: p, pending, livePending };
     });
-  }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig, nowTs]);
+  }, [positions, config, extraAccSinceRefresh, levelBonusBpsBig, nowTs, userLevel, userProfile, levelBonusFor]);
 
   const visiblePositions = useMemo(() => {
     if (nowTs == null) return pendingPositions;

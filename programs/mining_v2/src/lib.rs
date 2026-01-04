@@ -2144,6 +2144,20 @@ pub struct UserMiningProfileV2Legacy {
     pub last_xp_update_ts: i64,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+pub struct UserMiningProfileV3Legacy {
+    pub owner: Pubkey,
+    pub next_position_index: u64,
+    pub active_hp: u64,
+    pub xp: u64,
+    pub badge_tier: u8,
+    pub badge_bonus_bps: u16,
+    pub bump: u8,
+    pub level: u8,
+    pub last_xp_update_ts: i64,
+    pub hp_scaled: bool,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Config {
@@ -2637,6 +2651,26 @@ fn load_user_profile_any(info: &AccountInfo) -> Result<UserMiningProfile> {
         let mut slice: &[u8] = &data;
         return UserMiningProfile::try_deserialize(&mut slice);
     }
+    if data.len() == 8 + UserMiningProfileV3Legacy::INIT_SPACE {
+        let mut slice: &[u8] = &data[8..];
+        let legacy = UserMiningProfileV3Legacy::deserialize(&mut slice)
+            .map_err(|_| ErrorCode::InvalidUserProfileSize)?;
+        return Ok(UserMiningProfile {
+            owner: legacy.owner,
+            next_position_index: legacy.next_position_index,
+            active_hp: legacy.active_hp,
+            buffed_hp: legacy.active_hp,
+            buffed_hp_synced: false,
+            xp: legacy.xp,
+            badge_tier: legacy.badge_tier,
+            badge_bonus_bps: legacy.badge_bonus_bps,
+            bump: legacy.bump,
+            level: legacy.level,
+            last_xp_update_ts: legacy.last_xp_update_ts,
+            hp_scaled: legacy.hp_scaled,
+            level_acc_snapshots: [0; 7],
+        });
+    }
     if data.len() == 8 + UserMiningProfileV2Legacy::INIT_SPACE {
         let mut slice: &[u8] = &data[8..];
         let legacy = UserMiningProfileV2Legacy::deserialize(&mut slice)
@@ -2688,7 +2722,25 @@ fn save_user_profile(info: &AccountInfo, profile: &UserMiningProfile) -> Result<
         profile.try_serialize(&mut cursor)?;
         return Ok(());
     }
-    if len == 8 + UserMiningProfileV2Legacy::INIT_SPACE {
+    if len == 8 + UserMiningProfileV3Legacy::INIT_SPACE {
+        let legacy = UserMiningProfileV3Legacy {
+            owner: profile.owner,
+            next_position_index: profile.next_position_index,
+            active_hp: profile.active_hp,
+            xp: profile.xp,
+            badge_tier: profile.badge_tier,
+            badge_bonus_bps: profile.badge_bonus_bps,
+            bump: profile.bump,
+            level: profile.level,
+            last_xp_update_ts: profile.last_xp_update_ts,
+            hp_scaled: profile.hp_scaled,
+        };
+        data[..8].copy_from_slice(&UserMiningProfile::DISCRIMINATOR);
+        let mut cursor: &mut [u8] = &mut data[8..];
+        legacy
+            .serialize(&mut cursor)
+            .map_err(|_| ErrorCode::InvalidUserProfileSize.into())
+    } else if len == 8 + UserMiningProfileV2Legacy::INIT_SPACE {
         let legacy = UserMiningProfileV2Legacy {
             owner: profile.owner,
             next_position_index: profile.next_position_index,

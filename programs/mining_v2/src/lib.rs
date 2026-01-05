@@ -2369,8 +2369,8 @@ fn level_threshold(level: u8) -> u64 {
 
 fn level_up_cost(level: u8) -> u64 {
     match level {
-        1 => 75_u64 * MIND_DECIMALS,
-        2 => 175_u64 * MIND_DECIMALS,
+        1 => 100_u64 * MIND_DECIMALS,
+        2 => 200_u64 * MIND_DECIMALS,
         3 => 450_u64 * MIND_DECIMALS,
         4 => 1_000_u64 * MIND_DECIMALS,
         5 => 2_000_u64 * MIND_DECIMALS,

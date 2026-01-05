@@ -10,8 +10,8 @@ import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
 
 const LEVEL_ROWS = [
   { level: "Level 1", xp: "0 XP", bonus: "0.0%", cost: "-" },
-  { level: "Level 2", xp: "500 XP", bonus: "+1.6%", cost: "75 MIND" },
-  { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%", cost: "175 MIND" },
+  { level: "Level 2", xp: "500 XP", bonus: "+1.6%", cost: "100 MIND" },
+  { level: "Level 3", xp: "2,000 XP", bonus: "+3.4%", cost: "200 MIND" },
   { level: "Level 4", xp: "5,000 XP", bonus: "+5.5%", cost: "450 MIND" },
   { level: "Level 5", xp: "10,000 XP", bonus: "+7.8%", cost: "1,000 MIND" },
   { level: "Level 6", xp: "16,000 XP", bonus: "+10.0% (cap)", cost: "2,000 MIND" },

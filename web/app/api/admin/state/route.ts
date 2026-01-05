@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { getMint } from "@solana/spl-token";
+import { getMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash } from "crypto";
+import bs58 from "bs58";
 import {
   decodeMinerPositionAccount,
   decodeUserMiningProfileAccount,
@@ -37,6 +38,7 @@ const UNSTAKE_EVENT_DISCRIMINATOR = createHash("sha256")
   .update("event:MindUnstaked")
   .digest()
   .subarray(0, 8);
+const LEVEL_UP_LOG_HINTS = ["Instruction: LevelUp", "Instruction: level_up"];
 const UNSTAKE_EXCLUDED_OWNERS = [
   "FPLV6bRcBj4i8sipkim2N7eZMsGJC2xfCsAgeoDsQhoD",
   "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
@@ -98,6 +100,26 @@ const rigBuffBps = (rigType: number, buffLevel: number) => {
   return 0;
 };
 
+const decodeInstructionData = (data: string) => {
+  try {
+    return Buffer.from(bs58.decode(data));
+  } catch {
+    try {
+      return Buffer.from(data, "base64");
+    } catch {
+      return null;
+    }
+  }
+};
+
+const hasLevelUpLog = (logs: string[]) =>
+  logs.some((log) => LEVEL_UP_LOG_HINTS.some((hint) => log.includes(hint)));
+
+const getAccountKey = (keys: Array<PublicKey | string>, index: number) => {
+  const key = keys[index];
+  return typeof key === "string" ? new PublicKey(key) : key;
+};
+
 const parseUnstakeEventsFromLogs = (logs: string[]) => {
   const events: Array<{ owner: PublicKey; amount: bigint }> = [];
   const prefix = "Program data: ";
@@ -119,8 +141,33 @@ const parseUnstakeEventsFromLogs = (logs: string[]) => {
   return events;
 };
 
+const parseLevelUpBurnsFromTx = (tx: any, mindMint: PublicKey) => {
+  const burns: Array<{ amount: bigint }> = [];
+  const inner = tx?.meta?.innerInstructions;
+  if (!inner) return burns;
+  const accountKeys = tx.transaction.message.accountKeys as Array<PublicKey | string>;
+  inner.forEach((group: any) => {
+    group.instructions.forEach((ix: any) => {
+      const programId = getAccountKey(accountKeys, ix.programIdIndex);
+      if (!programId.equals(TOKEN_PROGRAM_ID)) return;
+      const data = decodeInstructionData(ix.data);
+      if (!data || data.length < 9) return;
+      const instruction = data[0];
+      if (instruction !== 8 && instruction !== 15) return;
+      const mintIndex = ix.accounts?.[1];
+      if (mintIndex == null) return;
+      const mint = getAccountKey(accountKeys, mintIndex);
+      if (!mint.equals(mindMint)) return;
+      const amount = data.readBigUInt64LE(1);
+      burns.push({ amount });
+    });
+  });
+  return burns;
+};
+
 const collectBurnStats = async (
   connection: Connection,
+  mindMint: PublicKey,
   mindDecimals: number,
   forceRefresh = false
 ): Promise<BurnStats> => {
@@ -144,6 +191,7 @@ const collectBurnStats = async (
   }
 
   const events: Array<{ owner: string; amountBase: bigint; burnBase: bigint; blockTime: number }> = [];
+  const levelUpBurns: Array<{ amountBase: bigint; blockTime: number }> = [];
   for (let i = 0; i < signatures.length; i += TX_BATCH_SIZE) {
     const chunk = signatures.slice(i, i + TX_BATCH_SIZE).map((s) => s.signature);
     const txs = await connection.getTransactions(chunk, {
@@ -152,7 +200,14 @@ const collectBurnStats = async (
     });
     txs.forEach((tx) => {
       if (!tx?.meta?.logMessages || !tx.blockTime) return;
-      const parsed = parseUnstakeEventsFromLogs(tx.meta.logMessages);
+      const logs = tx.meta.logMessages;
+      if (hasLevelUpLog(logs)) {
+        const burns = parseLevelUpBurnsFromTx(tx, mindMint);
+        burns.forEach((burn) => {
+          levelUpBurns.push({ amountBase: burn.amount, blockTime: tx.blockTime! });
+        });
+      }
+      const parsed = parseUnstakeEventsFromLogs(logs);
       parsed.forEach(({ owner, amount }) => {
         if (excluded.has(owner.toBase58())) return;
         const burnBase = (amount * BURN_BPS) / BPS_DENOMINATOR;
@@ -175,7 +230,9 @@ const collectBurnStats = async (
   >();
   let totalUnstaked = 0n;
   let totalBurned = 0n;
+  let totalLevelUpBurned = 0n;
   let latestBlockTime = 0;
+  let latestLevelUpBlockTime = 0;
 
   events.forEach((evt) => {
     const dayKey = new Date(evt.blockTime * 1000).toISOString().slice(0, 10);
@@ -187,6 +244,13 @@ const collectBurnStats = async (
     totalBurned += evt.burnBase;
     if (evt.blockTime > latestBlockTime) {
       latestBlockTime = evt.blockTime;
+    }
+  });
+
+  levelUpBurns.forEach((evt) => {
+    totalLevelUpBurned += evt.amountBase;
+    if (evt.blockTime > latestLevelUpBlockTime) {
+      latestLevelUpBlockTime = evt.blockTime;
     }
   });
 
@@ -204,6 +268,10 @@ const collectBurnStats = async (
     days,
     totalUnstakedMind: toTokens(totalUnstaked),
     totalBurnedMind: toTokens(totalBurned),
+    totalLevelUpBurnedMind: toTokens(totalLevelUpBurned),
+    latestLevelUpEventAt: latestLevelUpBlockTime
+      ? new Date(latestLevelUpBlockTime * 1000).toISOString()
+      : null,
     latestEventAt: latestBlockTime ? new Date(latestBlockTime * 1000).toISOString() : null,
     excludedOwners: Array.from(excluded),
   };
@@ -224,7 +292,12 @@ export async function GET(request: NextRequest) {
   const dailyEmissionBase = cfg.emissionPerSec * cfg.secondsPerDay;
   const totalMindMined = toUi(mindMintInfo.supply, mindMintInfo.decimals);
   const forceBurnRefresh = request.nextUrl.searchParams.get("forceBurnRefresh") === "1";
-  const burns = await collectBurnStats(connection, mindMintInfo.decimals ?? 9, forceBurnRefresh);
+  const burns = await collectBurnStats(
+    connection,
+    cfg.mindMint,
+    mindMintInfo.decimals ?? 9,
+    forceBurnRefresh
+  );
 
   const rentLamports = BigInt(
     await connection.getMinimumBalanceForRentExemption(NATIVE_VAULT_SPACE)

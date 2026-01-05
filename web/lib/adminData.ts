@@ -68,6 +68,8 @@ export type BurnStats = {
   days: BurnDay[];
   totalUnstakedMind: number;
   totalBurnedMind: number;
+  totalLevelUpBurnedMind: number;
+  latestLevelUpEventAt: string | null;
   latestEventAt: string | null;
   excludedOwners: string[];
 };

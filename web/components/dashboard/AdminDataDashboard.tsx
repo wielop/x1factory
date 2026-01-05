@@ -368,6 +368,7 @@ export function AdminDataDashboard() {
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-zinc-500">
                     <div>Ostatnie zdarzenie: {formatTimestamp(state.burns.latestEventAt)}</div>
+                    <div>Ostatni level up: {formatTimestamp(state.burns.latestLevelUpEventAt)}</div>
                     <Button size="sm" variant="secondary" onClick={refreshNow} disabled={refreshing}>
                       {refreshing ? "Odświeżanie..." : "Odśwież teraz"}
                     </Button>
@@ -379,6 +380,10 @@ export function AdminDataDashboard() {
                   </div>
                   <div>
                     Łącznie spalone: {formatToken(state.burns.totalBurnedMind, 3)} MIND
+                  </div>
+                  <div>
+                    Łącznie spalone (level up):{" "}
+                    {formatToken(state.burns.totalLevelUpBurnedMind, 3)} MIND
                   </div>
                 </div>
                 <div className="mt-4 overflow-x-auto">

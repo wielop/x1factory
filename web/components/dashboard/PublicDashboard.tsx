@@ -1716,7 +1716,9 @@ export function PublicDashboard() {
       <div className="text-center font-mono text-sm">{medal ?? ""}</div>
       <div className="font-mono" title={row.owner}>
         <span>{shortPk(row.owner, 4)}</span>
-        <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level ?? 1}</span>
+        {row.level > 1 ? (
+          <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
+        ) : null}
       </div>
       <div className="text-right text-white">{formatFixed2(row.hp)}</div>
       <div className="text-right text-zinc-300">{stakedLabel}</div>

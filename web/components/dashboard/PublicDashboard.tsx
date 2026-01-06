@@ -91,6 +91,8 @@ type LeaderboardRow = {
   activeRigs: number;
   level: number;
 };
+type SortColumn = "wallet" | "hp" | "bonus" | "staked";
+type SortOrder = "asc" | "desc";
 
 interface RigPlan {
   type: RigType;
@@ -530,7 +532,10 @@ export function PublicDashboard() {
   const [activeRigTotal, setActiveRigTotal] = useState(0);
   const [networkBreakdown, setNetworkBreakdown] = useState<NetworkHpBreakdown | null>(null);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
-  const [burnedByOwner, setBurnedByOwner] = useState<Record<string, string>>({});
+  const [leaderboardSort, setLeaderboardSort] = useState<{
+    column: SortColumn;
+    direction: SortOrder;
+  }>({ column: "hp", direction: "desc" });
   const [activeStakersSummary, setActiveStakersSummary] = useState<{
     unique: number;
     totalStaked: string;
@@ -1015,40 +1020,6 @@ export function PublicDashboard() {
     void refresh();
   }, [refresh]);
 
-  const leaderboardOwners = useMemo(
-    () => leaderboardRows.map((row) => row.owner).join(","),
-    [leaderboardRows]
-  );
-
-  useEffect(() => {
-    let active = true;
-    const loadBurns = async () => {
-      if (!leaderboardOwners) {
-        if (active) setBurnedByOwner({});
-        return;
-      }
-      try {
-        const res = await fetch(
-          `/api/network/burns?owners=${encodeURIComponent(leaderboardOwners)}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok) return;
-        const data = (await res.json()) as { burnedByOwner?: Record<string, string> };
-        if (!active) return;
-        setBurnedByOwner(data.burnedByOwner ?? {});
-      } catch (err) {
-        if (active) {
-          console.warn("Failed to load burn totals", err);
-          setBurnedByOwner({});
-        }
-      }
-    };
-    void loadBurns();
-    return () => {
-      active = false;
-    };
-  }, [leaderboardOwners]);
-
   useEffect(() => {
     let active = true;
     const loadBreakdown = async () => {
@@ -1183,6 +1154,15 @@ export function PublicDashboard() {
       return LEVEL_BONUS_BPS[idx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1];
     },
     []
+  );
+  const computeLevelBonusHp = useCallback(
+    (row: LeaderboardRow) => {
+      const bonusBps = levelBonusFor(row.level);
+      if (bonusBps <= 0) return 0n;
+      const base = row.buffedHp ?? row.hp;
+      return (base * BigInt(bonusBps)) / BPS_DENOMINATOR;
+    },
+    [levelBonusFor]
   );
   const nextLevelXp = levelingEnabled && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
@@ -1746,7 +1726,74 @@ export function PublicDashboard() {
       ? ` (${stakingShareOfCirculating.toFixed(2)}%)`
       : "";
   const totalStakedBase = config?.stakingTotalStakedMind ?? 0n;
-  const leaderboardRowElements = leaderboardRows.map((row, idx) => {
+
+  const leaderboardSortLabels: Record<SortColumn, string> = {
+    wallet: "Wallet",
+    hp: "HP",
+    bonus: "HP (bonus)",
+    staked: "Staked MIND",
+  };
+
+  const compareBigInt = (a: bigint, b: bigint) => (a === b ? 0 : a > b ? 1 : -1);
+
+  const sortedLeaderboardRows = useMemo(() => {
+    if (leaderboardRows.length === 0) return [];
+    const rows = [...leaderboardRows];
+    const direction = leaderboardSort.direction === "asc" ? 1 : -1;
+    rows.sort((a, b) => {
+      let result = 0;
+      switch (leaderboardSort.column) {
+        case "wallet":
+          result = a.owner.localeCompare(b.owner);
+          break;
+        case "hp":
+          result = compareBigInt(a.hp, b.hp);
+          break;
+        case "bonus":
+          result = compareBigInt(computeLevelBonusHp(a), computeLevelBonusHp(b));
+          break;
+        case "staked":
+          result = compareBigInt(a.stakedMind, b.stakedMind);
+          break;
+        default:
+          result = 0;
+      }
+      if (result === 0) {
+        result = a.owner.localeCompare(b.owner);
+      }
+      return result * direction;
+    });
+    return rows;
+  }, [leaderboardRows, leaderboardSort, computeLevelBonusHp]);
+
+  const handleLeaderboardSort = (column: SortColumn) => {
+    setLeaderboardSort((prev) => {
+      if (prev.column === column) {
+        return { column, direction: prev.direction === "asc" ? "desc" : "asc" };
+      }
+      return { column, direction: "desc" };
+    });
+  };
+
+  const renderSortableHeader = (column: SortColumn, alignRight = false) => (
+    <button
+      type="button"
+      onClick={() => handleLeaderboardSort(column)}
+      className={`flex w-full items-center gap-1 text-[10px] uppercase tracking-[0.2em] ${
+        alignRight ? "justify-end" : "justify-start"
+      } text-zinc-400`}
+      aria-label={`Sort by ${leaderboardSortLabels[column]}`}
+    >
+      <span>{leaderboardSortLabels[column]}</span>
+      {leaderboardSort.column === column ? (
+        <span className="text-[10px] text-emerald-200">
+          {leaderboardSort.direction === "asc" ? "▲" : "▼"}
+        </span>
+      ) : null}
+    </button>
+  );
+
+  const leaderboardRowElements = sortedLeaderboardRows.map((row, idx) => {
     const medal = LEADER_MEDALS[idx];
     const sharePct =
       totalStakedBase > 0n
@@ -1757,41 +1804,31 @@ export function PublicDashboard() {
       mintDecimals != null
         ? `${formatRoundedToken(row.stakedMind, mintDecimals.mind, 2)}${shareLabel}`
         : "-";
-    const levelBonusBpsRow = levelBonusFor(row.level);
-    const baseForBonus = row.buffedHp ?? row.hp;
-    const levelBonusHp =
-      levelBonusBpsRow > 0 ? (baseForBonus * BigInt(levelBonusBpsRow)) / BPS_DENOMINATOR : 0n;
+    const levelBonusHp = computeLevelBonusHp(row);
     const levelBonusLabel = levelBonusHp > 0n ? `(+${formatFixed2(levelBonusHp)})` : null;
-    const burnedBase = burnedByOwner[row.owner];
-    const burnedLabel =
-      burnedBase && burnedBase !== "0" && mintDecimals
-        ? formatRoundedToken(BigInt(burnedBase), mintDecimals.mind, 2)
-        : "-";
-    const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     return (
-    <div
-      key={row.owner}
-      className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] items-center text-xs text-zinc-200"
-    >
-      <div className="text-zinc-500">{idx + 1}</div>
-      <div className="text-center font-mono text-sm">{medal ?? ""}</div>
-      <div className="font-mono" title={row.owner}>
-        <span>{shortPk(row.owner, 4)}</span>
-        {row.level > 1 ? (
-          <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
-        ) : null}
-      </div>
-      <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
       <div
-        className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
+        key={row.owner}
+        className="grid grid-cols-[32px_32px_1fr_120px_110px_140px] items-center text-xs text-zinc-200"
       >
-        {levelBonusLabel ?? "—"}
+        <div className="text-zinc-500">{idx + 1}</div>
+        <div className="text-center font-mono text-sm">{medal ?? ""}</div>
+        <div className="font-mono" title={row.owner}>
+          <span>{shortPk(row.owner, 4)}</span>
+          {row.level > 1 ? (
+            <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
+          ) : null}
+        </div>
+        <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
+        <div
+          className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
+        >
+          {levelBonusLabel ?? "—"}
+        </div>
+        <div className="text-right text-zinc-300">{stakedLabel}</div>
       </div>
-      <div className={`text-right tabular-nums ${burnedClass}`}>{burnedLabel}</div>
-      <div className="text-right text-zinc-300">{stakedLabel}</div>
-    </div>
-  );
-});
+    );
+  });
   const stakingAprDisplay = formatPercent(stakingAprPct);
   const stakingApyDisplay = formatPercent(stakingApyPct);
   const lastClaimRounded =
@@ -3487,14 +3524,13 @@ export function PublicDashboard() {
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
             <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              <div className="grid grid-cols-[32px_32px_1fr_120px_110px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                 <div>#</div>
                 <div></div>
-                <div>Wallet</div>
-                <div className="text-right">HP</div>
-                <div className="text-right">HP (bonus)</div>
-                <div className="text-right">Burned</div>
-                <div className="text-right">Staked MIND</div>
+                <div>{renderSortableHeader("wallet")}</div>
+                <div className="text-right">{renderSortableHeader("hp", true)}</div>
+                <div className="text-right">{renderSortableHeader("bonus", true)}</div>
+                <div className="text-right">{renderSortableHeader("staked", true)}</div>
               </div>
               {leaderboardRows.length === 0 ? (
                 <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>

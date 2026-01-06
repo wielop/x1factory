@@ -530,6 +530,7 @@ export function PublicDashboard() {
   const [activeRigTotal, setActiveRigTotal] = useState(0);
   const [networkBreakdown, setNetworkBreakdown] = useState<NetworkHpBreakdown | null>(null);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
+  const [burnedByOwner, setBurnedByOwner] = useState<Record<string, string>>({});
   const [activeStakersSummary, setActiveStakersSummary] = useState<{
     unique: number;
     totalStaked: string;
@@ -1013,6 +1014,40 @@ export function PublicDashboard() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const leaderboardOwners = useMemo(
+    () => leaderboardRows.map((row) => row.owner).join(","),
+    [leaderboardRows]
+  );
+
+  useEffect(() => {
+    let active = true;
+    const loadBurns = async () => {
+      if (!leaderboardOwners) {
+        if (active) setBurnedByOwner({});
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/network/burns?owners=${encodeURIComponent(leaderboardOwners)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { burnedByOwner?: Record<string, string> };
+        if (!active) return;
+        setBurnedByOwner(data.burnedByOwner ?? {});
+      } catch (err) {
+        if (active) {
+          console.warn("Failed to load burn totals", err);
+          setBurnedByOwner({});
+        }
+      }
+    };
+    void loadBurns();
+    return () => {
+      active = false;
+    };
+  }, [leaderboardOwners]);
 
   useEffect(() => {
     let active = true;
@@ -1726,11 +1761,17 @@ export function PublicDashboard() {
     const baseForBonus = row.buffedHp ?? row.hp;
     const levelBonusHp =
       levelBonusBpsRow > 0 ? (baseForBonus * BigInt(levelBonusBpsRow)) / BPS_DENOMINATOR : 0n;
-    const levelBonusLabel = levelBonusHp > 0n ? formatFixed2(levelBonusHp) : null;
+    const levelBonusLabel = levelBonusHp > 0n ? `(+${formatFixed2(levelBonusHp)})` : null;
+    const burnedBase = burnedByOwner[row.owner];
+    const burnedLabel =
+      burnedBase && burnedBase !== "0" && mintDecimals
+        ? formatRoundedToken(BigInt(burnedBase), mintDecimals.mind, 2)
+        : "-";
+    const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     return (
     <div
       key={row.owner}
-      className="grid grid-cols-[32px_32px_1fr_120px_140px] items-center text-xs text-zinc-200"
+      className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] items-center text-xs text-zinc-200"
     >
       <div className="text-zinc-500">{idx + 1}</div>
       <div className="text-center font-mono text-sm">{medal ?? ""}</div>
@@ -1740,15 +1781,13 @@ export function PublicDashboard() {
           <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
         ) : null}
       </div>
-      <div className="relative pr-16 text-right text-white tabular-nums">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">HP</div>
-        <div>{formatFixed2(row.hp)}</div>
-        {levelBonusLabel ? (
-          <span className="absolute right-0 bottom-0 text-emerald-200">
-            (+{levelBonusLabel})
-          </span>
-        ) : null}
+      <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
+      <div
+        className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
+      >
+        {levelBonusLabel ?? "—"}
       </div>
+      <div className={`text-right tabular-nums ${burnedClass}`}>{burnedLabel}</div>
       <div className="text-right text-zinc-300">{stakedLabel}</div>
     </div>
   );
@@ -3448,13 +3487,15 @@ export function PublicDashboard() {
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
             <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
-                <div className="grid grid-cols-[32px_32px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                  <div>#</div>
-                  <div></div>
-                  <div>Wallet</div>
-                  <div className="text-right">(Bonuses)</div>
-                  <div className="text-right">Staked MIND</div>
-                </div>
+              <div className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                <div>#</div>
+                <div></div>
+                <div>Wallet</div>
+                <div className="text-right">HP</div>
+                <div className="text-right">HP (bonus)</div>
+                <div className="text-right">Burned</div>
+                <div className="text-right">Staked MIND</div>
+              </div>
               {leaderboardRows.length === 0 ? (
                 <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
               ) : (

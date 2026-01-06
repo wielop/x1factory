@@ -2548,9 +2548,23 @@ export function PublicDashboard() {
               <div className="mt-3 text-xs text-zinc-500" title={hashpowerTooltip}>
                 Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
                 <Button size="lg" className="h-12" onClick={() => void onBuy()} disabled={buyDisabled}>
                   {busy === "Buy contract" ? "Submitting..." : "Start mining"}
+                </Button>
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className="h-12"
+                  onClick={() => {
+                    window.open(
+                      "https://app.xdex.xyz/swap?fromTokenAddress=111111111111111111111111111111111111111111&toTokenAddress=DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT",
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }}
+                >
+                  Buy MIND
                 </Button>
               </div>
             </div>

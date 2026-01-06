@@ -86,6 +86,7 @@ type RigType = "starter" | "pro" | "industrial";
 type LeaderboardRow = {
   owner: string;
   hp: bigint;
+  buffedHp: bigint;
   stakedMind: bigint;
   activeRigs: number;
   level: number;
@@ -863,6 +864,7 @@ export function PublicDashboard() {
         let rigs = 0;
         const leaderboardMap = new Map<string, LeaderboardRow>();
         const levelByOwner = new Map<string, number>();
+        const secondsPerDay = config ? Number(config.secondsPerDay) : 0;
         for (const entry of allProfiles) {
           try {
             const decoded = decodeUserMiningProfileAccount(Buffer.from(entry.account.data));
@@ -884,6 +886,7 @@ export function PublicDashboard() {
             {
               owner: ownerKey,
               hp: 0n,
+              buffedHp: 0n,
               stakedMind: 0n,
               activeRigs: 0,
               level: levelByOwner.get(ownerKey) ?? 1,
@@ -891,7 +894,18 @@ export function PublicDashboard() {
           if (!current.level) {
             current.level = levelByOwner.get(ownerKey) ?? 1;
           }
+          const rigType = decoded.hpScaled
+            ? decoded.rigType
+            : rigTypeFromDuration(decoded.startTs, decoded.endTs, secondsPerDay);
+          const buffBpsBase = rigBuffBps(rigType, decoded.buffLevel);
+          const buffApplied =
+            decoded.buffLevel > 0 &&
+            (decoded.buffAppliedFromCycle === 0n ||
+              BigInt(now) >= decoded.buffAppliedFromCycle);
+          const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
+          const buffedHp = (decoded.hp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
           current.hp += decoded.hp;
+          current.buffedHp += buffedHp;
           current.activeRigs += 1;
           leaderboardMap.set(ownerKey, current);
         }
@@ -907,6 +921,7 @@ export function PublicDashboard() {
             {
               owner: ownerKey,
               hp: 0n,
+              buffedHp: 0n,
               stakedMind: 0n,
               activeRigs: 0,
               level: levelByOwner.get(ownerKey) ?? 1,
@@ -1707,6 +1722,11 @@ export function PublicDashboard() {
       mintDecimals != null
         ? `${formatRoundedToken(row.stakedMind, mintDecimals.mind, 2)}${shareLabel}`
         : "-";
+    const levelBonusBpsRow = levelBonusFor(row.level);
+    const baseForBonus = row.buffedHp ?? row.hp;
+    const levelBonusHp =
+      levelBonusBpsRow > 0 ? (baseForBonus * BigInt(levelBonusBpsRow)) / BPS_DENOMINATOR : 0n;
+    const levelBonusLabel = levelBonusHp > 0n ? formatFixed2(levelBonusHp) : null;
     return (
     <div
       key={row.owner}
@@ -1720,7 +1740,12 @@ export function PublicDashboard() {
           <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
         ) : null}
       </div>
-      <div className="text-right text-white">{formatFixed2(row.hp)}</div>
+      <div className="text-right text-white">
+        {formatFixed2(row.hp)}
+        {levelBonusLabel ? (
+          <span className="ml-1 text-emerald-200">(+{levelBonusLabel})</span>
+        ) : null}
+      </div>
       <div className="text-right text-zinc-300">{stakedLabel}</div>
     </div>
   );

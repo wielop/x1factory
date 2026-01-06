@@ -44,6 +44,10 @@ import {
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
   MINER_POSITION_LEN_V3,
+  USER_PROFILE_LEN_V1,
+  USER_PROFILE_LEN_V2,
+  USER_PROFILE_LEN_V3,
+  USER_PROFILE_LEN_V4,
   USER_STAKE_LEN,
   tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
@@ -84,6 +88,7 @@ type LeaderboardRow = {
   hp: bigint;
   stakedMind: bigint;
   activeRigs: number;
+  level: number;
 };
 
 interface RigPlan {
@@ -770,6 +775,10 @@ export function PublicDashboard() {
         allPositionsV1,
         allPositionsV2,
         allPositionsV3,
+        allProfilesV1,
+        allProfilesV2,
+        allProfilesV3,
+        allProfilesV4,
         allStakes,
       ] = await Promise.all([
         connection.getProgramAccounts(programId, {
@@ -809,11 +818,28 @@ export function PublicDashboard() {
         }),
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V1 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: USER_PROFILE_LEN_V4 }],
+        }),
+        connection.getProgramAccounts(programId, {
+          commitment: "confirmed",
           filters: [{ dataSize: USER_STAKE_LEN }],
         }),
       ]);
       const posGpa = [...posGpaV1, ...posGpaV2, ...posGpaV3];
       const allPositions = [...allPositionsV1, ...allPositionsV2, ...allPositionsV3];
+      const allProfiles = [...allProfilesV1, ...allProfilesV2, ...allProfilesV3, ...allProfilesV4];
       if (isStale()) return;
 
       const decodedPositions = posGpa
@@ -836,6 +862,17 @@ export function PublicDashboard() {
         const unique = new Set<string>();
         let rigs = 0;
         const leaderboardMap = new Map<string, LeaderboardRow>();
+        const levelByOwner = new Map<string, number>();
+        for (const entry of allProfiles) {
+          try {
+            const decoded = decodeUserMiningProfileAccount(Buffer.from(entry.account.data));
+            const ownerKey = new PublicKey(decoded.owner).toBase58();
+            const level = Math.max(decoded.level ?? 1, 1);
+            levelByOwner.set(ownerKey, level);
+          } catch {
+            // ignore malformed profile accounts
+          }
+        }
         for (const entry of allPositions) {
           const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
           if (decoded.deactivated || decoded.expired || decoded.endTs <= now) continue;
@@ -844,7 +881,16 @@ export function PublicDashboard() {
           rigs += 1;
           const current =
             leaderboardMap.get(ownerKey) ??
-            { owner: ownerKey, hp: 0n, stakedMind: 0n, activeRigs: 0 };
+            {
+              owner: ownerKey,
+              hp: 0n,
+              stakedMind: 0n,
+              activeRigs: 0,
+              level: levelByOwner.get(ownerKey) ?? 1,
+            };
+          if (!current.level) {
+            current.level = levelByOwner.get(ownerKey) ?? 1;
+          }
           current.hp += decoded.hp;
           current.activeRigs += 1;
           leaderboardMap.set(ownerKey, current);
@@ -858,7 +904,16 @@ export function PublicDashboard() {
           const ownerKey = new PublicKey(decoded.owner).toBase58();
           const current =
             leaderboardMap.get(ownerKey) ??
-            { owner: ownerKey, hp: 0n, stakedMind: 0n, activeRigs: 0 };
+            {
+              owner: ownerKey,
+              hp: 0n,
+              stakedMind: 0n,
+              activeRigs: 0,
+              level: levelByOwner.get(ownerKey) ?? 1,
+            };
+          if (!current.level) {
+            current.level = levelByOwner.get(ownerKey) ?? 1;
+          }
           current.stakedMind = decoded.stakedMind;
           leaderboardMap.set(ownerKey, current);
         }
@@ -1660,7 +1715,8 @@ export function PublicDashboard() {
       <div className="text-zinc-500">{idx + 1}</div>
       <div className="text-center font-mono text-sm">{medal ?? ""}</div>
       <div className="font-mono" title={row.owner}>
-        {shortPk(row.owner, 4)}
+        <span>{shortPk(row.owner, 4)}</span>
+        <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level ?? 1}</span>
       </div>
       <div className="text-right text-white">{formatFixed2(row.hp)}</div>
       <div className="text-right text-zinc-300">{stakedLabel}</div>

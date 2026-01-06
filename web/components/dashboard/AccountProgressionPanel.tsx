@@ -55,9 +55,20 @@ export function AccountProgressionPanel({
             </div>
           </div>
           <div className="mt-4">
-            <Button size="sm" onClick={onLevelUp} disabled={buttonDisabled}>
-              {buttonLabel}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={onLevelUp} disabled={buttonDisabled}>
+                {buttonLabel}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  window.location.assign("https://x1factory.xyz/progression");
+                }}
+              >
+                Costs &amp; bonuses
+              </Button>
+            </div>
             {requirements ? (
               <div className="mt-3 text-xs text-zinc-400">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">

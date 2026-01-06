@@ -1740,11 +1740,14 @@ export function PublicDashboard() {
           <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
         ) : null}
       </div>
-      <div className="relative pr-20 text-right text-white tabular-nums">
-        {formatFixed2(row.hp)}
-        <span className="absolute right-0 top-0 text-emerald-200">
-          {levelBonusLabel ? `(+${levelBonusLabel})` : ""}
-        </span>
+      <div className="relative pr-16 text-right text-white tabular-nums">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">HP</div>
+        <div>{formatFixed2(row.hp)}</div>
+        {levelBonusLabel ? (
+          <span className="absolute right-0 bottom-0 text-emerald-200">
+            (+{levelBonusLabel})
+          </span>
+        ) : null}
       </div>
       <div className="text-right text-zinc-300">{stakedLabel}</div>
     </div>
@@ -3445,13 +3448,13 @@ export function PublicDashboard() {
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
             <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-[32px_32px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                <div>#</div>
-                <div></div>
-                <div>Wallet</div>
-                <div className="text-right">HP</div>
-                <div className="text-right">Staked MIND</div>
-              </div>
+                <div className="grid grid-cols-[32px_32px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                  <div>#</div>
+                  <div></div>
+                  <div>Wallet</div>
+                  <div className="text-right">(Bonuses)</div>
+                  <div className="text-right">Staked MIND</div>
+                </div>
               {leaderboardRows.length === 0 ? (
                 <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
               ) : (

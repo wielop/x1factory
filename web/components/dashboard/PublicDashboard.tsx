@@ -1740,11 +1740,11 @@ export function PublicDashboard() {
           <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
         ) : null}
       </div>
-      <div className="text-right text-white">
+      <div className="relative pr-20 text-right text-white tabular-nums">
         {formatFixed2(row.hp)}
-        {levelBonusLabel ? (
-          <span className="ml-1 text-emerald-200">(+{levelBonusLabel})</span>
-        ) : null}
+        <span className="absolute right-0 top-0 text-emerald-200">
+          {levelBonusLabel ? `(+${levelBonusLabel})` : ""}
+        </span>
       </div>
       <div className="text-right text-zinc-300">{stakedLabel}</div>
     </div>

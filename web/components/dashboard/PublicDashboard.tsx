@@ -1806,6 +1806,22 @@ export function PublicDashboard() {
         : "-";
     const levelBonusHp = computeLevelBonusHp(row);
     const levelBonusLabel = levelBonusHp > 0n ? `(+${formatFixed2(levelBonusHp)})` : null;
+    const levelLabel =
+      row.level === 2
+        ? "BRONZE Miner"
+        : row.level === 3
+          ? "SILVER Miner"
+          : row.level === 4
+            ? "GOLD Miner"
+            : `LVL ${row.level}`;
+    const levelClassName =
+      row.level === 2
+        ? "text-[#b87333]"
+        : row.level === 3
+          ? "text-[#c0c0c0]"
+          : row.level === 4
+            ? "text-[#d4af37]"
+            : "text-emerald-200";
     return (
       <div
         key={row.owner}
@@ -1816,7 +1832,7 @@ export function PublicDashboard() {
         <div className="font-mono" title={row.owner}>
           <span>{shortPk(row.owner, 4)}</span>
           {row.level > 1 ? (
-            <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
+            <span className={`ml-2 text-[10px] ${levelClassName}`}>{levelLabel}</span>
           ) : null}
         </div>
         <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>

@@ -1794,7 +1794,7 @@ export function PublicDashboard() {
         <div className="font-mono" title={row.owner}>
           <span>{shortPk(row.owner, 4)}</span>
           {row.level > 1 ? (
-            <span className={`ml-2 text-[10px] font-semibold tracking-wide ${levelClassName}`}>
+            <span className={`ml-2 text-[12px] font-semibold tracking-wide ${levelClassName}`}>
               {levelLabel}
             </span>
           ) : null}

@@ -1768,28 +1768,44 @@ export function PublicDashboard() {
         ? formatRoundedToken(BigInt(burnedBase), mintDecimals.mind, 2)
         : "-";
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
+    const levelLabel =
+      row.level === 2
+        ? "BRONZE Miner"
+        : row.level === 3
+          ? "SILVER Miner"
+          : row.level === 4
+            ? "GOLD Miner"
+            : `LVL ${row.level}`;
+    const levelClassName =
+      row.level === 2
+        ? "text-[#b87333]"
+        : row.level === 3
+          ? "text-[#c0c0c0]"
+          : row.level === 4
+            ? "text-[#d4af37]"
+            : "text-emerald-200";
     return (
-    <div
-      key={row.owner}
-      className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] items-center text-xs text-zinc-200"
-    >
-      <div className="text-zinc-500">{idx + 1}</div>
-      <div className="text-center font-mono text-sm">{medal ?? ""}</div>
-      <div className="font-mono" title={row.owner}>
-        <span>{shortPk(row.owner, 4)}</span>
-        {row.level > 1 ? (
-          <span className="ml-2 text-[10px] text-emerald-200">LVL {row.level}</span>
-        ) : null}
-      </div>
-      <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
       <div
-        className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
+        key={row.owner}
+        className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] items-center text-xs text-zinc-200"
       >
-        {levelBonusLabel ?? "—"}
+        <div className="text-zinc-500">{idx + 1}</div>
+        <div className="text-center font-mono text-sm">{medal ?? ""}</div>
+        <div className="font-mono" title={row.owner}>
+          <span>{shortPk(row.owner, 4)}</span>
+          {row.level > 1 ? (
+            <span className={`ml-2 text-[10px] ${levelClassName}`}>{levelLabel}</span>
+          ) : null}
+        </div>
+        <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
+        <div
+          className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
+        >
+          {levelBonusLabel ?? "—"}
+        </div>
+        <div className={`text-right tabular-nums ${burnedClass}`}>{burnedLabel}</div>
+        <div className="text-right text-zinc-300">{stakedLabel}</div>
       </div>
-      <div className={`text-right tabular-nums ${burnedClass}`}>{burnedLabel}</div>
-      <div className="text-right text-zinc-300">{stakedLabel}</div>
-    </div>
   );
 });
   const stakingAprDisplay = formatPercent(stakingAprPct);

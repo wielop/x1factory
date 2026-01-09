@@ -1770,19 +1770,19 @@ export function PublicDashboard() {
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     const levelLabel =
       row.level === 2
-        ? "BRONZE Miner"
+        ? "BRONZE Miner - LVL 2"
         : row.level === 3
-          ? "SILVER Miner"
+          ? "SILVER Miner - LVL 3"
           : row.level === 4
-            ? "GOLD Miner"
+            ? "GOLD Miner - LVL 4"
             : `LVL ${row.level}`;
     const levelClassName =
       row.level === 2
-        ? "text-[#b87333]"
+        ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b87333] via-[#ffd39b] to-[#b87333] drop-shadow-[0_0_6px_rgba(184,115,51,0.7)]"
         : row.level === 3
-          ? "text-[#c0c0c0]"
+          ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b9bcc3] via-[#ffffff] to-[#8e9096] drop-shadow-[0_0_6px_rgba(192,192,192,0.8)]"
           : row.level === 4
-            ? "text-[#d4af37]"
+            ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b8860b] via-[#fff1a8] to-[#d4af37] drop-shadow-[0_0_6px_rgba(212,175,55,0.8)]"
             : "text-emerald-200";
     return (
       <div
@@ -1794,7 +1794,9 @@ export function PublicDashboard() {
         <div className="font-mono" title={row.owner}>
           <span>{shortPk(row.owner, 4)}</span>
           {row.level > 1 ? (
-            <span className={`ml-2 text-[10px] ${levelClassName}`}>{levelLabel}</span>
+            <span className={`ml-2 text-[10px] font-semibold tracking-wide ${levelClassName}`}>
+              {levelLabel}
+            </span>
           ) : null}
         </div>
         <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>

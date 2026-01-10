@@ -21,6 +21,12 @@ test("computeEstWeeklyXnt adjusts when no holders at level", () => {
   assert.equal(estimate.toFixed(2), "47.62");
 });
 
+test("computeEstWeeklyXnt returns full pool for first holder", () => {
+  const estimate = computeEstWeeklyXnt(2, 0, 50, 0);
+  assert.ok(estimate != null);
+  assert.equal(estimate.toFixed(2), "50.00");
+});
+
 test("computeEstWeeklyXnt returns null for empty totals or LVL1", () => {
   assert.equal(computeEstWeeklyXnt(2, 0, 50), null);
   assert.equal(computeEstWeeklyXnt(1, 100, 50), null);

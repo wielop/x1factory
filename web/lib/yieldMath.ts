@@ -46,10 +46,15 @@ export function computeEstWeeklyXnt(
   weeklyPoolXnt: number,
   countAtLevel?: number
 ) {
-  if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
   if (!Number.isFinite(weeklyPoolXnt) || weeklyPoolXnt <= 0) return null;
   const weight = LEVEL_WEIGHTS[level as Level] ?? 0;
   if (!weight) return null;
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+    if (countAtLevel === 0) {
+      return (weight / weight) * weeklyPoolXnt;
+    }
+    return null;
+  }
   const adjustedTotal = countAtLevel === 0 ? totalWeight + weight : totalWeight;
   return (weight / adjustedTotal) * weeklyPoolXnt;
 }

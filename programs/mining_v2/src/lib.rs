@@ -1,8 +1,11 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::program::{invoke, invoke_signed};
 use anchor_lang::system_program::{self, Transfer as SystemTransfer};
 use anchor_lang::Discriminator;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
+use borsh::BorshSerialize;
 use solana_program::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
+use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::program_option::COption;
 
 declare_id!("uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw");
@@ -17,6 +20,132 @@ const STAKE_SEED: &[u8] = b"stake";
 const LEVEL_CONFIG_SEED: &[u8] = b"level_config";
 const HP_SCALE_SEED: &[u8] = b"hp_scale";
 const RIG_BUFF_CONFIG_SEED: &[u8] = b"rig_buff";
+const METADATA_NAME_MAX: usize = 32;
+const METADATA_SYMBOL_MAX: usize = 10;
+const METADATA_URI_MAX: usize = 200;
+const METADATA_MAX_SELLER_FEE_BPS: u16 = 10_000;
+const METADATA_CREATE_V3_DISCRIMINANT: u8 = 33;
+const METADATA_UPDATE_V2_DISCRIMINANT: u8 = 15;
+const METADATA_PROGRAM_ID: Pubkey =
+    solana_program::pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+#[derive(BorshSerialize, Clone)]
+struct MetadataCreator {
+    address: Pubkey,
+    verified: bool,
+    share: u8,
+}
+
+#[derive(BorshSerialize, Clone)]
+struct MetadataCollection {
+    verified: bool,
+    key: Pubkey,
+}
+
+#[derive(BorshSerialize, Clone)]
+enum MetadataUseMethod {
+    Burn,
+    Multiple,
+    Single,
+}
+
+#[derive(BorshSerialize, Clone)]
+struct MetadataUses {
+    use_method: MetadataUseMethod,
+    remaining: u64,
+    total: u64,
+}
+
+#[derive(BorshSerialize, Clone)]
+enum MetadataCollectionDetails {
+    V1 { size: u64 },
+}
+
+#[derive(BorshSerialize, Clone)]
+struct MetadataDataV2 {
+    name: String,
+    symbol: String,
+    uri: String,
+    seller_fee_basis_points: u16,
+    creators: Option<Vec<MetadataCreator>>,
+    collection: Option<MetadataCollection>,
+    uses: Option<MetadataUses>,
+}
+
+#[derive(BorshSerialize, Clone)]
+struct CreateMetadataAccountArgsV3 {
+    data: MetadataDataV2,
+    is_mutable: bool,
+    collection_details: Option<MetadataCollectionDetails>,
+}
+
+#[derive(BorshSerialize, Clone)]
+struct UpdateMetadataAccountArgsV2 {
+    data: Option<MetadataDataV2>,
+    update_authority: Option<Pubkey>,
+    primary_sale_happened: Option<bool>,
+    is_mutable: Option<bool>,
+}
+
+fn build_create_metadata_accounts_v3_ix(
+    metadata: Pubkey,
+    mint: Pubkey,
+    mint_authority: Pubkey,
+    payer: Pubkey,
+    update_authority: Pubkey,
+    data: MetadataDataV2,
+    is_mutable: bool,
+) -> Result<Instruction> {
+    let args = CreateMetadataAccountArgsV3 {
+        data,
+        is_mutable,
+        collection_details: None,
+    };
+    let mut ix_data = vec![METADATA_CREATE_V3_DISCRIMINANT];
+    ix_data.extend(
+        args.try_to_vec()
+            .map_err(|_| ErrorCode::MetadataSerializationFailed)?,
+    );
+    Ok(Instruction {
+        program_id: METADATA_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(metadata, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(mint_authority, true),
+            AccountMeta::new(payer, true),
+            AccountMeta::new_readonly(update_authority, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: ix_data,
+    })
+}
+
+fn build_update_metadata_accounts_v2_ix(
+    metadata: Pubkey,
+    update_authority: Pubkey,
+    data: MetadataDataV2,
+) -> Result<Instruction> {
+    let args = UpdateMetadataAccountArgsV2 {
+        data: Some(data),
+        update_authority: None,
+        primary_sale_happened: None,
+        is_mutable: None,
+    };
+    let mut ix_data = vec![METADATA_UPDATE_V2_DISCRIMINANT];
+    ix_data.extend(
+        args.try_to_vec()
+            .map_err(|_| ErrorCode::MetadataSerializationFailed)?,
+    );
+    Ok(Instruction {
+        program_id: METADATA_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(metadata, false),
+            AccountMeta::new_readonly(update_authority, true),
+        ],
+        data: ix_data,
+    })
+}
 
 const BPS_DENOMINATOR: u128 = 10_000;
 const ACC_SCALE: u128 = 1_000_000_000_000_000_000;
@@ -1283,6 +1412,108 @@ pub mod mining_v2 {
         Ok(())
     }
 
+    pub fn admin_set_metadata(
+        ctx: Context<AdminSetMetadata>,
+        params: MetadataParams,
+    ) -> Result<()> {
+        let cfg = &ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        require_keys_eq!(
+            cfg.mind_mint,
+            ctx.accounts.mind_mint.key(),
+            ErrorCode::InvalidMint
+        );
+        require!(
+            ctx.accounts.mind_mint.mint_authority
+                == COption::Some(ctx.accounts.vault_authority.key()),
+            ErrorCode::InvalidMintAuthority
+        );
+
+        let (expected_metadata, _) = Pubkey::find_program_address(
+            &[
+                b"metadata",
+                METADATA_PROGRAM_ID.as_ref(),
+                ctx.accounts.mind_mint.key().as_ref(),
+            ],
+            &METADATA_PROGRAM_ID,
+        );
+        require_keys_eq!(
+            expected_metadata,
+            ctx.accounts.metadata.key(),
+            ErrorCode::InvalidMetadataPda
+        );
+
+        require!(
+            params.name.len() <= METADATA_NAME_MAX,
+            ErrorCode::MetadataFieldTooLong
+        );
+        require!(
+            params.symbol.len() <= METADATA_SYMBOL_MAX,
+            ErrorCode::MetadataFieldTooLong
+        );
+        require!(
+            params.uri.len() <= METADATA_URI_MAX,
+            ErrorCode::MetadataFieldTooLong
+        );
+        require!(
+            params.seller_fee_basis_points <= METADATA_MAX_SELLER_FEE_BPS,
+            ErrorCode::InvalidSellerFeeBps
+        );
+
+        let data = MetadataDataV2 {
+            name: params.name,
+            symbol: params.symbol,
+            uri: params.uri,
+            seller_fee_basis_points: params.seller_fee_basis_points,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
+
+        if ctx.accounts.metadata.data_is_empty() {
+            let ix = build_create_metadata_accounts_v3_ix(
+                ctx.accounts.metadata.key(),
+                ctx.accounts.mind_mint.key(),
+                ctx.accounts.vault_authority.key(),
+                ctx.accounts.admin.key(),
+                ctx.accounts.admin.key(),
+                data,
+                true,
+            )?;
+            let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[cfg.bumps.vault_authority]];
+            invoke_signed(
+                &ix,
+                &[
+                    ctx.accounts.metadata.to_account_info(),
+                    ctx.accounts.mind_mint.to_account_info(),
+                    ctx.accounts.vault_authority.to_account_info(),
+                    ctx.accounts.admin.to_account_info(),
+                    ctx.accounts.admin.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                    ctx.accounts.rent.to_account_info(),
+                    ctx.accounts.metadata_program.to_account_info(),
+                ],
+                &[signer_seeds],
+            )?;
+        } else {
+            let ix = build_update_metadata_accounts_v2_ix(
+                ctx.accounts.metadata.key(),
+                ctx.accounts.admin.key(),
+                data,
+            )?;
+            invoke(
+                &ix,
+                &[
+                    ctx.accounts.metadata.to_account_info(),
+                    ctx.accounts.admin.to_account_info(),
+                    ctx.accounts.metadata_program.to_account_info(),
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
+
     pub fn admin_withdraw_staking_rewards(
         ctx: Context<AdminWithdrawStakingRewards>,
         amount: u64,
@@ -1445,6 +1676,14 @@ pub struct InitRigBuffConfigParams {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct UpdateRigBuffConfigParams {
     pub mind_per_hp_per_day: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct MetadataParams {
+    pub name: String,
+    pub symbol: String,
+    pub uri: String,
+    pub seller_fee_basis_points: u16,
 }
 
 #[derive(Accounts)]
@@ -2030,6 +2269,32 @@ pub struct AdminUseNativeXnt<'info> {
     )]
     pub treasury_vault: Account<'info, NativeVault>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AdminSetMetadata<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(seeds = [VAULT_SEED], bump = config.bumps.vault_authority)]
+    /// CHECK: PDA used as mint authority signer for metadata creation.
+    pub vault_authority: UncheckedAccount<'info>,
+    #[account(
+        constraint = mind_mint.key() == config.mind_mint
+    )]
+    pub mind_mint: Account<'info, Mint>,
+    #[account(mut)]
+    /// CHECK: Metaplex metadata PDA for the MIND mint.
+    pub metadata: UncheckedAccount<'info>,
+    #[account(address = METADATA_PROGRAM_ID)]
+    /// CHECK: Metaplex token metadata program.
+    pub metadata_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
 #[derive(Accounts)]
@@ -3426,6 +3691,14 @@ pub enum ErrorCode {
     InvalidContractType,
     #[msg("Invalid mint")]
     InvalidMint,
+    #[msg("Invalid metadata PDA")]
+    InvalidMetadataPda,
+    #[msg("Metadata field too long")]
+    MetadataFieldTooLong,
+    #[msg("Invalid seller fee basis points")]
+    InvalidSellerFeeBps,
+    #[msg("Metadata serialization failed")]
+    MetadataSerializationFailed,
     #[msg("Invalid program data")]
     InvalidProgramData,
     #[msg("Invalid user profile owner")]

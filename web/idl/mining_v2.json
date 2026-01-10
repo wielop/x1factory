@@ -488,6 +488,32 @@
       "args": []
     },
     {
+      "name": "syncProfile",
+      "accounts": [
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userProfile",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "stakeMind",
       "accounts": [
         {
@@ -795,6 +821,59 @@
       "args": []
     },
     {
+      "name": "adminSetMetadata",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "vaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "metadata",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "metadataProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": "MetadataParams"
+          }
+        }
+      ]
+    },
+    {
       "name": "adminWithdrawStakingRewards",
       "accounts": [
         {
@@ -926,32 +1005,6 @@
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "syncProfile",
-      "accounts": [
-        {
-          "name": "owner",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "config",
-          "isMut": false,
-          "isSigner": false
-        },
-        {
-          "name": "userProfile",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "systemProgram",
-          "isMut": false,
-          "isSigner": false
-        }
-      ],
-      "args": []
     }
   ],
   "accounts": [
@@ -1337,6 +1390,30 @@
       }
     },
     {
+      "name": "MetadataParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          },
+          {
+            "name": "sellerFeeBasisPoints",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
       "name": "UserMiningProfileV1",
       "type": {
         "kind": "struct",
@@ -1417,6 +1494,54 @@
       }
     },
     {
+      "name": "UserMiningProfileV3Legacy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "nextPositionIndex",
+            "type": "u64"
+          },
+          {
+            "name": "activeHp",
+            "type": "u64"
+          },
+          {
+            "name": "xp",
+            "type": "u64"
+          },
+          {
+            "name": "badgeTier",
+            "type": "u8"
+          },
+          {
+            "name": "badgeBonusBps",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "level",
+            "type": "u8"
+          },
+          {
+            "name": "lastXpUpdateTs",
+            "type": "i64"
+          },
+          {
+            "name": "hpScaled",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
       "name": "ConfigBumps",
       "type": {
         "kind": "struct",
@@ -1468,6 +1593,66 @@
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MinerPositionV2Legacy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "hp",
+            "type": "u64"
+          },
+          {
+            "name": "startTs",
+            "type": "i64"
+          },
+          {
+            "name": "endTs",
+            "type": "i64"
+          },
+          {
+            "name": "rewardDebt",
+            "type": "u128"
+          },
+          {
+            "name": "finalAccMindPerHp",
+            "type": "u128"
+          },
+          {
+            "name": "deactivated",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "rigType",
+            "type": "u8"
+          },
+          {
+            "name": "buffLevel",
+            "type": "u8"
+          },
+          {
+            "name": "hpScaled",
+            "type": "bool"
+          },
+          {
+            "name": "expired",
+            "type": "bool"
+          },
+          {
+            "name": "buffAppliedFromCycle",
+            "type": "u64"
           }
         ]
       }
@@ -1688,146 +1873,166 @@
     },
     {
       "code": 6014,
+      "name": "InvalidMetadataPda",
+      "msg": "Invalid metadata PDA"
+    },
+    {
+      "code": 6015,
+      "name": "MetadataFieldTooLong",
+      "msg": "Metadata field too long"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidSellerFeeBps",
+      "msg": "Invalid seller fee basis points"
+    },
+    {
+      "code": 6017,
+      "name": "MetadataSerializationFailed",
+      "msg": "Metadata serialization failed"
+    },
+    {
+      "code": 6018,
       "name": "InvalidProgramData",
       "msg": "Invalid program data"
     },
     {
-      "code": 6015,
+      "code": 6019,
       "name": "InvalidUserProfileOwner",
       "msg": "Invalid user profile owner"
     },
     {
-      "code": 6016,
+      "code": 6020,
       "name": "InvalidUserProfileDiscriminator",
       "msg": "Invalid user profile discriminator"
     },
     {
-      "code": 6017,
+      "code": 6021,
       "name": "InvalidUserProfileSize",
       "msg": "Invalid user profile size"
     },
     {
-      "code": 6018,
+      "code": 6022,
       "name": "MaxLevelReached",
       "msg": "Max level reached"
     },
     {
-      "code": 6019,
+      "code": 6023,
       "name": "LevelsDisabled",
       "msg": "Account levels are disabled"
     },
     {
-      "code": 6020,
+      "code": 6024,
       "name": "InsufficientXp",
       "msg": "Insufficient XP"
     },
     {
-      "code": 6021,
+      "code": 6025,
       "name": "InsufficientLevelUpFunds",
       "msg": "Insufficient MIND for level up"
     },
     {
-      "code": 6022,
+      "code": 6026,
       "name": "HpScaleAlreadyEnabled",
       "msg": "HP scaling already enabled"
     },
     {
-      "code": 6023,
+      "code": 6027,
       "name": "InvalidLevel",
       "msg": "Invalid level"
     },
     {
-      "code": 6024,
+      "code": 6028,
       "name": "InvalidLevelUpPositions",
       "msg": "Invalid level up positions"
     },
     {
-      "code": 6025,
+      "code": 6029,
       "name": "InvalidPositionOwner",
       "msg": "Invalid position owner"
     },
     {
-      "code": 6026,
+      "code": 6030,
       "name": "InvalidPositionDiscriminator",
       "msg": "Invalid position discriminator"
     },
     {
-      "code": 6027,
+      "code": 6031,
       "name": "InvalidPositionSize",
       "msg": "Invalid position size"
     },
     {
-      "code": 6028,
+      "code": 6032,
       "name": "InvalidRigDuration",
       "msg": "Invalid rig duration"
     },
     {
-      "code": 6029,
+      "code": 6033,
       "name": "PositionInGrace",
       "msg": "Position still in grace period"
     },
     {
-      "code": 6030,
+      "code": 6034,
       "name": "PositionGraceExpired",
       "msg": "Position grace period expired"
     },
     {
-      "code": 6031,
+      "code": 6035,
       "name": "InvalidEpochSeconds",
       "msg": "Invalid epoch seconds"
     },
     {
-      "code": 6032,
+      "code": 6036,
       "name": "RigBuffCapExceeded",
       "msg": "Rig buff cap exceeded"
     },
     {
-      "code": 6033,
+      "code": 6037,
       "name": "InsufficientBuffFunds",
       "msg": "Insufficient MIND for rig buff"
     },
     {
-      "code": 6034,
+      "code": 6038,
       "name": "InvalidRigBuffPositions",
       "msg": "Invalid rig buff positions"
     },
     {
-      "code": 6035,
+      "code": 6039,
       "name": "EmissionTooHigh",
       "msg": "Emission per second too high"
     },
     {
-      "code": 6036,
+      "code": 6040,
       "name": "EmissionJumpTooHigh",
       "msg": "Emission change too large"
     },
     {
-      "code": 6037,
+      "code": 6041,
       "name": "SecondsPerDayOutOfRange",
       "msg": "Seconds per day out of allowed range"
     },
     {
-      "code": 6038,
+      "code": 6042,
       "name": "UpdateWindowExceeded",
       "msg": "Mining update window exceeded"
     },
     {
-      "code": 6039,
+      "code": 6043,
       "name": "AccDeltaTooLarge",
       "msg": "Accumulator delta too large"
     },
     {
-      "code": 6040,
+      "code": 6044,
       "name": "ClaimTooLarge",
       "msg": "Claim exceeds single-claim limit"
     },
     {
-      "code": 6041,
+      "code": 6045,
       "name": "ProfileSyncRequired",
       "msg": "Profile sync required"
     },
     {
-      "code": 6042,
+      "code": 6046,
       "name": "InvalidSyncPositions",
       "msg": "Invalid sync positions"
     }

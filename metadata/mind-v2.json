@@ -2,14 +2,14 @@
   "name": "MIND Token",
   "symbol": "MIND",
   "description": "Mine - Stake - Earn XNT",
-  "image": "https://chatgpt.com/s/m_6954f388ed848191a4b70e9c85510758",
+  "image": "https://raw.githubusercontent.com/wielop/x1factory/main/metadata/mind-logo.png",
   "seller_fee_basis_points": 0,
-  "external_url": "https://x1.xyz",
+  "external_url": "https://x1factory.xyz",
   "attributes": [],
   "properties": {
     "files": [
       {
-        "uri": "https://chatgpt.com/s/m_6954f388ed848191a4b70e9c85510758",
+        "uri": "https://raw.githubusercontent.com/wielop/x1factory/main/metadata/mind-logo.png",
         "type": "image/png"
       }
     ],

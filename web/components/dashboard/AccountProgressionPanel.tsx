@@ -8,6 +8,8 @@ export function AccountProgressionPanel({
   xpLine,
   rateLine,
   bonusLine,
+  yieldLine,
+  yieldLinkHref,
   description,
   progressLabel,
   progressPct,
@@ -21,6 +23,8 @@ export function AccountProgressionPanel({
   xpLine: string;
   rateLine?: string | null;
   bonusLine: string;
+  yieldLine?: string | null;
+  yieldLinkHref?: string | null;
   description: string;
   progressLabel: string;
   progressPct: number;
@@ -39,6 +43,15 @@ export function AccountProgressionPanel({
           <div className="mt-2 text-sm text-zinc-300">{xpLine}</div>
           {rateLine ? <div className="mt-1 text-sm text-zinc-300">{rateLine}</div> : null}
           <div className="mt-1 text-sm text-zinc-300">{bonusLine}</div>
+          {yieldLine ? <div className="mt-1 text-sm text-zinc-300">{yieldLine}</div> : null}
+          {yieldLinkHref ? (
+            <a
+              href={yieldLinkHref}
+              className="mt-2 inline-flex text-xs font-semibold text-emerald-200 hover:text-emerald-100"
+            >
+              View yield details
+            </a>
+          ) : null}
           <div className="mt-3 text-xs text-zinc-500">{description}</div>
         </div>
         <div>

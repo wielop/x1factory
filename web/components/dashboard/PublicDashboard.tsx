@@ -1083,7 +1083,14 @@ export function PublicDashboard() {
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
   const weeklyPoolXnt = yieldSummary?.poolXnt ?? getWeeklyPoolXnt();
   const yieldTotalWeight = yieldSummary?.totalWeight ?? 0;
-  const personalYieldEst = computeEstWeeklyXnt(userLevel, yieldTotalWeight, weeklyPoolXnt);
+  const personalCountAtLevel =
+    yieldSummary?.countsByLevel?.[userLevel as 2 | 3 | 4 | 5 | 6];
+  const personalYieldEst = computeEstWeeklyXnt(
+    userLevel,
+    yieldTotalWeight,
+    weeklyPoolXnt,
+    personalCountAtLevel
+  );
   const personalYieldLine = walletPublicKey
     ? `Est. weekly XNT (LVL yield): ${
         personalYieldEst != null ? `${personalYieldEst.toFixed(2)} XNT` : "—"

@@ -14,6 +14,13 @@ test("computeEstWeeklyXnt returns proportional estimate", () => {
   assert.equal(estimate.toFixed(2), "20.00");
 });
 
+test("computeEstWeeklyXnt adjusts when no holders at level", () => {
+  const totalWeight = computeTotalWeight({ 2: 1 });
+  const estimate = computeEstWeeklyXnt(6, totalWeight, 50, 0);
+  assert.ok(estimate != null);
+  assert.equal(estimate.toFixed(2), "47.62");
+});
+
 test("computeEstWeeklyXnt returns null for empty totals or LVL1", () => {
   assert.equal(computeEstWeeklyXnt(2, 0, 50), null);
   assert.equal(computeEstWeeklyXnt(1, 100, 50), null);

@@ -62,8 +62,10 @@ export function Progression() {
   }, [poolOverride, yieldSummary]);
   const totalWeight = yieldSummary?.totalWeight ?? 0;
 
+  const countsByLevel = yieldSummary?.countsByLevel ?? {};
   const formatEstXnt = (levelNumber: number) => {
-    const est = computeEstWeeklyXnt(levelNumber, totalWeight, weeklyPoolXnt);
+    const countAtLevel = countsByLevel[levelNumber as 2 | 3 | 4 | 5 | 6];
+    const est = computeEstWeeklyXnt(levelNumber, totalWeight, weeklyPoolXnt, countAtLevel);
     if (!est) return "—";
     return `${est.toFixed(2)} XNT`;
   };

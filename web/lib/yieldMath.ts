@@ -41,11 +41,13 @@ export function computeTotalWeight(countsByLevel: CountsByLevel) {
 export function computeEstWeeklyXnt(
   level: number,
   totalWeight: number,
-  weeklyPoolXnt: number
+  weeklyPoolXnt: number,
+  countAtLevel?: number
 ) {
   if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
   if (!Number.isFinite(weeklyPoolXnt) || weeklyPoolXnt <= 0) return null;
   const weight = LEVEL_WEIGHTS[level as Level] ?? 0;
   if (!weight) return null;
-  return (weight / totalWeight) * weeklyPoolXnt;
+  const adjustedTotal = countAtLevel === 0 ? totalWeight + weight : totalWeight;
+  return (weight / adjustedTotal) * weeklyPoolXnt;
 }

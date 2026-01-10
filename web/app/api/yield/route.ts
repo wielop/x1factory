@@ -12,11 +12,11 @@ import {
 import { getProgramId, getRpcUrl } from "@/lib/solana";
 import {
   computeTotalWeight,
-  getWeeklyPoolXnt,
   LEVELS,
   type CountsByLevel,
   type YieldSummary,
 } from "@/lib/yieldMath";
+import { getYieldPoolConfig } from "@/lib/yieldPoolStore";
 
 const CACHE_TTL_MS = 60_000;
 let cached: { at: number; value: YieldSummary } | null = null;
@@ -62,8 +62,9 @@ async function loadYieldSummary(): Promise<YieldSummary> {
   }
 
   const totalWeight = computeTotalWeight(counts);
+  const poolConfig = getYieldPoolConfig();
   return {
-    poolXnt: getWeeklyPoolXnt(),
+    poolXnt: poolConfig.currentPoolXnt,
     totalWeight,
     countsByLevel: counts,
     updatedAt: Date.now(),
@@ -72,7 +73,12 @@ async function loadYieldSummary(): Promise<YieldSummary> {
 
 export async function GET() {
   const now = Date.now();
-  if (cached && now - cached.at < CACHE_TTL_MS) {
+  const poolConfig = getYieldPoolConfig();
+  if (
+    cached &&
+    now - cached.at < CACHE_TTL_MS &&
+    cached.value.poolXnt === poolConfig.currentPoolXnt
+  ) {
     return NextResponse.json(cached.value, {
       headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=30" },
     });

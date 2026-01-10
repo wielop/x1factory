@@ -152,6 +152,12 @@ export function AdminDashboard() {
   const [rewardTopUpUi, setRewardTopUpUi] = useState<string>("");
   const [treasuryWithdrawUi, setTreasuryWithdrawUi] = useState<string>("3.8");
   const [stakingWithdrawUi, setStakingWithdrawUi] = useState<string>("1");
+  const [yieldPoolCurrentUi, setYieldPoolCurrentUi] = useState<string>("");
+  const [yieldPoolNextUi, setYieldPoolNextUi] = useState<string>("");
+  const [yieldPoolUpdatedAt, setYieldPoolUpdatedAt] = useState<number | null>(null);
+  const [yieldPoolSource, setYieldPoolSource] = useState<"env" | "admin" | null>(null);
+  const [yieldPoolBusy, setYieldPoolBusy] = useState(false);
+  const [yieldPoolError, setYieldPoolError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
@@ -421,6 +427,68 @@ export function AdminDashboard() {
     }
   }, [connection]);
 
+  const loadYieldPool = useCallback(async () => {
+    setYieldPoolError(null);
+    try {
+      const res = await fetch("/api/admin/yield-pool", { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error("fetch failed");
+      }
+      const json = (await res.json()) as {
+        currentPoolXnt: number;
+        nextPoolXnt: number;
+        updatedAt: number | null;
+        source?: "env" | "admin";
+      };
+      setYieldPoolCurrentUi(
+        Number.isFinite(json.currentPoolXnt) ? json.currentPoolXnt.toString() : ""
+      );
+      setYieldPoolNextUi(Number.isFinite(json.nextPoolXnt) ? json.nextPoolXnt.toString() : "");
+      setYieldPoolUpdatedAt(json.updatedAt ?? null);
+      setYieldPoolSource(json.source ?? null);
+    } catch (err) {
+      setYieldPoolError("Unable to load yield pool settings.");
+    }
+  }, []);
+
+  const saveYieldPool = useCallback(async () => {
+    const current = Number(yieldPoolCurrentUi);
+    const next = Number(yieldPoolNextUi);
+    if (!Number.isFinite(current) || current < 0 || !Number.isFinite(next) || next < 0) {
+      setYieldPoolError("Enter valid pool amounts.");
+      return;
+    }
+    setYieldPoolError(null);
+    setYieldPoolBusy(true);
+    try {
+      const res = await fetch("/api/admin/yield-pool", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPoolXnt: current, nextPoolXnt: next }),
+      });
+      if (!res.ok) {
+        throw new Error("save failed");
+      }
+      const json = (await res.json()) as {
+        currentPoolXnt: number;
+        nextPoolXnt: number;
+        updatedAt: number | null;
+        source?: "env" | "admin";
+      };
+      setYieldPoolCurrentUi(
+        Number.isFinite(json.currentPoolXnt) ? json.currentPoolXnt.toString() : ""
+      );
+      setYieldPoolNextUi(Number.isFinite(json.nextPoolXnt) ? json.nextPoolXnt.toString() : "");
+      setYieldPoolUpdatedAt(json.updatedAt ?? null);
+      setYieldPoolSource(json.source ?? null);
+      pushToast({ title: "Yield pool saved", description: "Values applied to estimates." });
+    } catch (err) {
+      setYieldPoolError("Unable to save yield pool settings.");
+    } finally {
+      setYieldPoolBusy(false);
+    }
+  }, [yieldPoolCurrentUi, yieldPoolNextUi, pushToast]);
+
   const isAdmin = useMemo(() => {
     if (!publicKey || !config) return false;
     return publicKey.equals(config.admin);
@@ -430,6 +498,11 @@ export function AdminDashboard() {
     if (!isAdmin) return;
     void refresh();
   }, [refresh, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void loadYieldPool();
+  }, [isAdmin, loadYieldPool]);
 
 
   if (!isAdmin) {
@@ -969,6 +1042,33 @@ export function AdminDashboard() {
         </Card>
 
         <section className="mt-8 grid gap-4 lg:grid-cols-2">
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Proof-of-Burn Yield Pool</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Sets the weekly XNT pool used for LVL yield estimates. Current applies now, next is
+              for the upcoming snapshot.
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">Current pool (XNT)</div>
+            <Input value={yieldPoolCurrentUi} onChange={setYieldPoolCurrentUi} />
+            <div className="mt-3 text-xs text-zinc-400">Next pool (XNT)</div>
+            <Input value={yieldPoolNextUi} onChange={setYieldPoolNextUi} />
+            <div className="mt-2 text-[11px] text-zinc-500">
+              {yieldPoolSource === "admin" && yieldPoolUpdatedAt
+                ? `Saved ${new Date(yieldPoolUpdatedAt).toLocaleString()}`
+                : "Using env defaults"}
+            </div>
+            {yieldPoolError ? (
+              <div className="mt-2 text-xs text-amber-200">{yieldPoolError}</div>
+            ) : null}
+            <Button
+              className="mt-4"
+              onClick={() => void saveYieldPool()}
+              disabled={!isAdmin || yieldPoolBusy}
+            >
+              {yieldPoolBusy ? "Saving..." : "Save yield pool"}
+            </Button>
+          </Card>
+
           <Card className="p-4">
             <div className="text-sm font-semibold">Update mining config</div>
             <div className="mt-2 text-xs text-zinc-400">

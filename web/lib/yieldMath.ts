@@ -9,7 +9,7 @@ export const LEVEL_WEIGHTS: Record<Level, number> = {
   6: 1340,
 };
 
-const DEFAULT_WEEKLY_POOL_XNT = 50;
+export const DEFAULT_WEEKLY_POOL_XNT = 50;
 
 export type CountsByLevel = Partial<Record<Level, number>>;
 

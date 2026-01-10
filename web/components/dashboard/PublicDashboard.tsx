@@ -1085,6 +1085,11 @@ export function PublicDashboard() {
   const nextLevelXp = LEVELING_ENABLED && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
   const weeklyPoolXnt = yieldSummary?.poolXnt ?? 0;
+  const nextPoolXnt = yieldSummary?.nextPoolXnt ?? 0;
+  const nextEpochLabel =
+    yieldSummary?.epochEndTs != null && yieldSummary.epochEndTs > 0
+      ? new Date(yieldSummary.epochEndTs * 1000).toUTCString()
+      : null;
   const yieldTotalWeight = yieldSummary?.totalWeight ?? 0;
   const personalCountAtLevel =
     yieldSummary?.countsByLevel?.[userLevel as 2 | 3 | 4 | 5 | 6];
@@ -1099,6 +1104,12 @@ export function PublicDashboard() {
         personalYieldEst != null ? `${personalYieldEst.toFixed(2)} XNT` : "—"
       }`
     : "Connect wallet to see your estimated weekly XNT";
+  const nextPoolLine =
+    nextPoolXnt > 0
+      ? `Next pool: ${nextPoolXnt.toFixed(2)} XNT${
+          nextEpochLabel ? ` (starts ${nextEpochLabel})` : ""
+        }`
+      : null;
   const canClaimYield =
     Boolean(walletPublicKey) && userLevel >= 2 && weeklyPoolXnt > 0 && yieldTotalWeight > 0;
   const levelBonusBpsBig = BigInt(levelBonusBps);
@@ -3363,6 +3374,7 @@ export function PublicDashboard() {
               rateLine={xpRateLine}
               bonusLine={bonusLine}
               yieldLine={personalYieldLine}
+              yieldMetaLine={nextPoolLine}
               yieldActionLabel={walletPublicKey ? "Claim XNT" : null}
               yieldActionDisabled={!canClaimYield || busy != null}
               onYieldAction={canClaimYield ? onClaimYield : undefined}

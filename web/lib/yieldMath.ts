@@ -15,6 +15,8 @@ export type CountsByLevel = Partial<Record<Level, number>>;
 
 export type YieldSummary = {
   poolXnt: number;
+  nextPoolXnt: number;
+  epochEndTs: number | null;
   totalWeight: number;
   countsByLevel: CountsByLevel;
   updatedAt: number;

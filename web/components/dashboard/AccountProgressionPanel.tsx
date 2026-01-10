@@ -12,6 +12,7 @@ export function AccountProgressionPanel({
   yieldActionLabel,
   yieldActionDisabled,
   onYieldAction,
+  yieldMetaLine,
   yieldLinkHref,
   description,
   progressLabel,
@@ -30,6 +31,7 @@ export function AccountProgressionPanel({
   yieldActionLabel?: string | null;
   yieldActionDisabled?: boolean;
   onYieldAction?: () => void;
+  yieldMetaLine?: string | null;
   yieldLinkHref?: string | null;
   description: string;
   progressLabel: string;
@@ -50,6 +52,9 @@ export function AccountProgressionPanel({
           {rateLine ? <div className="mt-1 text-sm text-zinc-300">{rateLine}</div> : null}
           <div className="mt-1 text-sm text-zinc-300">{bonusLine}</div>
           {yieldLine ? <div className="mt-1 text-sm text-zinc-300">{yieldLine}</div> : null}
+          {yieldMetaLine ? (
+            <div className="mt-1 text-[11px] text-zinc-400">{yieldMetaLine}</div>
+          ) : null}
           {yieldActionLabel && onYieldAction ? (
             <Button
               size="sm"

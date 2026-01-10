@@ -64,16 +64,24 @@ async function loadYieldSummary(): Promise<YieldSummary> {
 
   const totalWeight = computeTotalWeight(counts);
   let poolXnt = 0;
+  let nextPoolXnt = 0;
+  let epochEndTs: number | null = null;
   try {
     const yieldConfig = await fetchYieldConfig(connection);
     const poolBase =
       yieldConfig.currentPoolXnt > 0n ? yieldConfig.currentPoolXnt : yieldConfig.nextPoolXnt;
     poolXnt = Number(poolBase) / 10 ** XNT_DECIMALS;
+    nextPoolXnt = Number(yieldConfig.nextPoolXnt) / 10 ** XNT_DECIMALS;
+    epochEndTs = yieldConfig.epochEndTs;
   } catch {
     poolXnt = 0;
+    nextPoolXnt = 0;
+    epochEndTs = null;
   }
   return {
     poolXnt,
+    nextPoolXnt,
+    epochEndTs,
     totalWeight,
     countsByLevel: counts,
     updatedAt: Date.now(),

@@ -3377,7 +3377,7 @@ export function PublicDashboard() {
               yieldMetaLine={nextPoolLine}
               yieldActionLabel={walletPublicKey ? "Claim XNT" : null}
               yieldActionDisabled={!canClaimYield || busy != null}
-              onYieldAction={canClaimYield ? onClaimYield : undefined}
+              onYieldAction={walletPublicKey ? onClaimYield : undefined}
               yieldLinkHref="/progression#level-overview"
               description={xpEstimateNote ? `${progressionDescription} ${xpEstimateNote}` : progressionDescription}
               progressLabel={levelProgressLabel}

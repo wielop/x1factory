@@ -55,7 +55,7 @@ export function AccountProgressionPanel({
           {yieldMetaLine ? (
             <div className="mt-1 text-[11px] text-zinc-400">{yieldMetaLine}</div>
           ) : null}
-          {yieldActionLabel && onYieldAction ? (
+          {yieldActionLabel ? (
             <Button
               size="sm"
               variant="secondary"

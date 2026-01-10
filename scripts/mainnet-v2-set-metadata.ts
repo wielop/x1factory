@@ -21,7 +21,7 @@ const DEFAULT_METADATA_PATH = path.resolve(
   "mind-v2.json"
 );
 const DEFAULT_METADATA_URI =
-  "https://raw.githubusercontent.com/wielop/x1factory/main/metadata/mind-v2.json";
+  "https://x1factory.xyz/metadata/mind-v2.json";
 
 type MetadataFile = {
   name: string;

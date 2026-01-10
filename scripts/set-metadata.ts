@@ -28,7 +28,7 @@ const CONFIG = {
   rpcUrl: 'https://rpc.mainnet.x1.xyz',
   mintAddress: 'DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT',
   metadataUri:
-    'https://raw.githubusercontent.com/wielop/x1factory/main/metadata/mind-v2.json',
+    'https://x1factory.xyz/metadata/mind-v2.json',
   metadataFilePath: METADATA_FILE_PATH,
   mode: 'create-or-update' as ConfigMode,
 };

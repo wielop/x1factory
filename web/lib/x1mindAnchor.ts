@@ -66,25 +66,55 @@ const instructionDiscriminator = (name: string) => {
   return sha256(data).slice(0, 8);
 };
 
+const accountDiscriminator = (name: string) => {
+  const data = new TextEncoder().encode(`account:${name}`);
+  return sha256(data).slice(0, 8);
+};
+
 const normalizeDiscriminator = (name: string, discriminator: unknown) => {
   if (discriminator instanceof Uint8Array) return discriminator;
   if (Array.isArray(discriminator)) return Uint8Array.from(discriminator);
   return instructionDiscriminator(name);
 };
 
+const normalizeAccountDiscriminator = (name: string, discriminator: unknown) => {
+  if (discriminator instanceof Uint8Array) return discriminator;
+  if (Array.isArray(discriminator)) return Uint8Array.from(discriminator);
+  return accountDiscriminator(name);
+};
+
+const withAccountTypes = (idlValue: anchor.Idl): anchor.Idl => {
+  const types = [...(idlValue.types ?? [])];
+  const typeNames = new Set(types.map((typeDef) => typeDef.name));
+  for (const account of idlValue.accounts ?? []) {
+    if (!typeNames.has(account.name)) {
+      types.push({ name: account.name, type: account.type });
+      typeNames.add(account.name);
+    }
+  }
+  return { ...idlValue, types };
+};
+
 const normalizedIdl = normalizeIdl(idl);
+const normalizedWithTypes = withAccountTypes(normalizedIdl);
 const idlForClient = {
-  ...normalizedIdl,
+  ...normalizedWithTypes,
   address: getX1MindProgramId().toBase58(),
-  instructions: (normalizedIdl.instructions ?? []).map((ix) => {
+  instructions: (normalizedWithTypes.instructions ?? []).map((ix) => {
     const disc = (ix as { discriminator?: unknown }).discriminator;
     return {
       ...ix,
       discriminator: normalizeDiscriminator(ix.name, disc),
     };
   }),
-  accounts: normalizedIdl.accounts ?? [],
-  events: normalizedIdl.events ?? [],
+  accounts: (normalizedWithTypes.accounts ?? []).map((account) => {
+    const disc = (account as { discriminator?: unknown }).discriminator;
+    return {
+      ...account,
+      discriminator: normalizeAccountDiscriminator(account.name, disc),
+    };
+  }),
+  events: normalizedWithTypes.events ?? [],
 };
 
 export function getX1MindProgram(connection: Connection, wallet: AnchorWallet) {

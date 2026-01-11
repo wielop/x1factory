@@ -94,6 +94,7 @@ export function X1MindMiner() {
   const [roundId, setRoundId] = useState<bigint | null>(null);
   const [nowTs, setNowTs] = useState<number | null>(null);
   const [selectedCell, setSelectedCell] = useState<number>(0);
+  const [selectedCells, setSelectedCells] = useState<number[]>([]);
   const [amountUi, setAmountUi] = useState("0.01");
   const [referrerUi, setReferrerUi] = useState("");
   const [seedHex, setSeedHex] = useState("");
@@ -219,39 +220,48 @@ export function X1MindMiner() {
       setBusy("commit");
       setError(null);
       const amountBase = parseUiAmountToBase(amountUi, XNT_DECIMALS);
+      const cellsToCommit =
+        selectedCells.length > 0 ? Array.from(new Set(selectedCells)).sort((a, b) => a - b) : [selectedCell];
       if (!globalThis.crypto?.getRandomValues) {
         throw new Error("Missing crypto.getRandomValues");
       }
-      const seed = new Uint8Array(32);
-      globalThis.crypto.getRandomValues(seed);
-      const hash = await buildCommitHash(seed, publicKey, roundId, selectedCell);
       const referrerKey = referrerUi ? new PublicKey(referrerUi) : publicKey;
 
-      const sig = await program.methods
-        .commitDeposit(
-          new BN(roundId.toString()),
-          selectedCell,
-          Array.from(hash),
-          new BN(amountBase.toString()),
-          referrerKey
-        )
-        .accounts({
-          owner: publicKey,
-          config: deriveX1MindConfigPda(),
-          round: deriveX1MindRoundPda(roundId),
-          userCommit: deriveX1MindCommitPda(roundId, publicKey, selectedCell),
-          referrer: referrerKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+      const sigs: string[] = [];
+      for (const cell of cellsToCommit) {
+        const seed = new Uint8Array(32);
+        globalThis.crypto.getRandomValues(seed);
+        const hash = await buildCommitHash(seed, publicKey, roundId, cell);
 
-      if (typeof window !== "undefined") {
-        const nextSeedHex = bytesToHex(seed);
-        window.localStorage.setItem(getSeedKey(roundId, selectedCell), nextSeedHex);
-        setSeedHex(nextSeedHex);
-        setSeedMap((prev) => ({ ...prev, [selectedCell]: nextSeedHex }));
+        const sig = await program.methods
+          .commitDeposit(
+            new BN(roundId.toString()),
+            cell,
+            Array.from(hash),
+            new BN(amountBase.toString()),
+            referrerKey
+          )
+          .accounts({
+            owner: publicKey,
+            config: deriveX1MindConfigPda(),
+            round: deriveX1MindRoundPda(roundId),
+            userCommit: deriveX1MindCommitPda(roundId, publicKey, cell),
+            referrer: referrerKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+        sigs.push(sig);
+
+        if (typeof window !== "undefined") {
+          const nextSeedHex = bytesToHex(seed);
+          window.localStorage.setItem(getSeedKey(roundId, cell), nextSeedHex);
+          if (cell === selectedCell) {
+            setSeedHex(nextSeedHex);
+          }
+          setSeedMap((prev) => ({ ...prev, [cell]: nextSeedHex }));
+        }
       }
-      setLastSig(sig);
+      setLastSig(sigs[sigs.length - 1] ?? null);
       setCommitRefreshKey((value) => value + 1);
       void refresh();
     } catch (err) {
@@ -260,7 +270,18 @@ export function X1MindMiner() {
     } finally {
       setBusy(null);
     }
-  }, [amountUi, anchorWallet, program, publicKey, referrerUi, refresh, round, roundId, selectedCell]);
+  }, [
+    amountUi,
+    anchorWallet,
+    program,
+    publicKey,
+    referrerUi,
+    refresh,
+    round,
+    roundId,
+    selectedCell,
+    selectedCells,
+  ]);
 
   const handleReveal = useCallback(async () => {
     if (!program || !anchorWallet || !publicKey || roundId == null) {
@@ -411,6 +432,7 @@ export function X1MindMiner() {
     : 0;
 
   const winningCell = round?.winningCell != null ? Number(round.winningCell) : null;
+  const selectedCellsForUi = selectedCells.length > 0 ? selectedCells : [selectedCell];
 
   return (
     <div className="min-h-screen">
@@ -483,14 +505,21 @@ export function X1MindMiner() {
                 {Array.from({ length: gridSize }).map((_, idx) => {
                   const total = totalPerCell[idx] ?? 0n;
                   const hasSeed = Boolean(seedMap[idx]);
+                  const isSelected =
+                    selectedCells.length > 0 ? selectedCells.includes(idx) : selectedCell === idx;
                   return (
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => setSelectedCell(idx)}
+                      onClick={() => {
+                        setSelectedCell(idx);
+                        setSelectedCells((prev) =>
+                          prev.includes(idx) ? prev.filter((cell) => cell !== idx) : [...prev, idx].sort((a, b) => a - b)
+                        );
+                      }}
                       className={cn(
                         "relative flex aspect-square flex-col items-center justify-center rounded-xl border text-xs transition",
-                        selectedCell === idx
+                        isSelected
                           ? "border-cyan-300/80 bg-cyan-400/10 text-white"
                           : "border-cyan-400/10 bg-ink/70 text-zinc-400 hover:border-cyan-300/40 hover:text-white"
                       )}
@@ -512,10 +541,15 @@ export function X1MindMiner() {
           <aside className="space-y-6">
             <div className="rounded-3xl border border-cyan-400/20 bg-ink/70 p-6">
               <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Akcja</div>
-              <div className="mt-2 text-2xl font-semibold text-white">Komorka #{selectedCell + 1}</div>
+              <div className="mt-2 text-2xl font-semibold text-white">
+                {selectedCells.length > 1 ? `Komorki (${selectedCells.length})` : `Komorka #${selectedCell + 1}`}
+              </div>
+              <div className="mt-2 text-xs text-zinc-500">
+                Wybrane: {selectedCellsForUi.map((cell) => cell + 1).join(", ")}
+              </div>
 
               <div className="mt-5 grid gap-3">
-                <label className="text-xs text-zinc-400">Kwota XNT</label>
+                <label className="text-xs text-zinc-400">Kwota XNT (za komorke)</label>
                 <input
                   value={amountUi}
                   onChange={(event) => setAmountUi(event.target.value)}

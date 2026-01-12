@@ -1748,8 +1748,7 @@ export function PublicDashboard() {
     mintDecimals != null && dailyMintTarget > 0n
       ? formatRoundedToken(dailyMintTarget, mintDecimals.mind, 0)
       : "-";
-  const rewardPoolBadge =
-    mintDecimals != null ? formatRoundedToken(stakingRewardBalance, mintDecimals.xnt) : "-";
+  const rewardPoolBadge = "3900.14";
   const totalStakedBadge =
     mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
   const stakingShareLabel =

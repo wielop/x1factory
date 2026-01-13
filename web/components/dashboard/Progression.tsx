@@ -114,8 +114,8 @@ export function Progression() {
               </div>
             </Card>
 
-            <Card className="border-cyan-400/20 bg-ink/90 p-6" id="level-overview">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <Card className="border-cyan-400/20 bg-ink/90 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3" id="level-overview">
                 <div className="text-sm font-semibold text-white">Level overview</div>
                 {yieldError ? (
                   <div className="flex items-center gap-2 text-[11px] text-amber-200">

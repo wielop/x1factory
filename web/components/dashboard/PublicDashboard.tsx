@@ -1799,7 +1799,11 @@ export function PublicDashboard() {
           ? "SILVER Miner - LVL 3"
           : row.level === 4
             ? "GOLD Miner - LVL 4"
-            : `LVL ${row.level}`;
+            : row.level === 5
+              ? "PLATINUM Miner - LVL 5"
+              : row.level === 6
+                ? "DIAMOND Miner - LVL 6"
+                : `LVL ${row.level}`;
     const levelClassName =
       row.level === 2
         ? "text-transparent bg-clip-text bg-gradient-to-r from-[#8c4b1f] via-[#c57f3a] to-[#ffcc8f] drop-shadow-[0_0_8px_rgba(197,127,58,0.75)]"
@@ -1807,7 +1811,11 @@ export function PublicDashboard() {
           ? "text-transparent bg-clip-text bg-gradient-to-r from-[#c0c0c0] via-[#f7f7f7] to-[#9ea3ad] drop-shadow-[0_0_7px_rgba(192,192,192,0.7)]"
           : row.level === 4
             ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b88900] via-[#ffd966] to-[#f4c430] drop-shadow-[0_0_10px_rgba(244,196,48,0.8)]"
-            : "text-emerald-200";
+            : row.level === 5
+              ? "text-transparent bg-clip-text bg-gradient-to-r from-[#9fb6c3] via-[#e4ecf1] to-[#6f8898] drop-shadow-[0_0_10px_rgba(159,182,195,0.75)]"
+              : row.level === 6
+                ? "text-transparent bg-clip-text bg-gradient-to-r from-[#dff3ff] via-[#9dd5ff] to-[#5ab4ff] drop-shadow-[0_0_12px_rgba(90,180,255,0.9)]"
+                : "text-emerald-200";
     return (
       <div
         key={row.owner}

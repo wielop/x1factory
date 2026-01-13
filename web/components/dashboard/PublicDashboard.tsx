@@ -1797,7 +1797,7 @@ export function PublicDashboard() {
     const stakedClass = stakedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     const lvlPayout = LVL_PAYOUTS[row.owner];
     const lvlPayoutLabel =
-      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : null;
+      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : "—";
     const levelLabel =
       row.level === 2
         ? "BRONZE Miner - LVL 2"
@@ -1834,9 +1834,9 @@ export function PublicDashboard() {
           {row.level > 1 ? (
             <span className={`ml-2 text-[12px] font-semibold tracking-wide ${levelClassName}`}>
               {levelLabel}
-              {lvlPayoutLabel ? <span className="ml-1 text-[11px] text-zinc-300">· {lvlPayoutLabel}</span> : null}
             </span>
           ) : null}
+          <span className="ml-2 text-[11px] text-zinc-400">· {lvlPayoutLabel}</span>
         </div>
         <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
         <div

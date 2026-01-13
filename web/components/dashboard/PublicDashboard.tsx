@@ -1802,11 +1802,11 @@ export function PublicDashboard() {
             : `LVL ${row.level}`;
     const levelClassName =
       row.level === 2
-        ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b87333] via-[#ffd39b] to-[#b87333] drop-shadow-[0_0_6px_rgba(184,115,51,0.7)]"
+        ? "text-transparent bg-clip-text bg-gradient-to-r from-[#8c4b1f] via-[#c57f3a] to-[#ffcc8f] drop-shadow-[0_0_8px_rgba(197,127,58,0.75)]"
         : row.level === 3
-          ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b9bcc3] via-[#ffffff] to-[#8e9096] drop-shadow-[0_0_6px_rgba(192,192,192,0.8)]"
+          ? "text-transparent bg-clip-text bg-gradient-to-r from-[#c0c0c0] via-[#f7f7f7] to-[#9ea3ad] drop-shadow-[0_0_7px_rgba(192,192,192,0.7)]"
           : row.level === 4
-            ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b8860b] via-[#fff1a8] to-[#d4af37] drop-shadow-[0_0_6px_rgba(212,175,55,0.8)]"
+            ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b88900] via-[#ffd966] to-[#f4c430] drop-shadow-[0_0_10px_rgba(244,196,48,0.8)]"
             : "text-emerald-200";
     return (
       <div

@@ -939,8 +939,21 @@ export function PublicDashboard() {
           leaderboardMap.set(ownerKey, current);
         }
 
+        // Ensure payout recipients are included even if currently inactive.
+        for (const owner of Object.keys(LVL_PAYOUTS)) {
+          if (leaderboardMap.has(owner)) continue;
+          leaderboardMap.set(owner, {
+            owner,
+            hp: 0n,
+            buffedHp: 0n,
+            stakedMind: 0n,
+            activeRigs: 0,
+            level: levelByOwner.get(owner) ?? 1,
+          });
+        }
+
         const rows = Array.from(leaderboardMap.values())
-          .filter((row) => row.hp > 0n)
+          .filter((row) => row.hp > 0n || LVL_PAYOUTS[row.owner] != null)
           .sort((a, b) => {
             if (a.hp === b.hp) {
               if (a.stakedMind === b.stakedMind) {

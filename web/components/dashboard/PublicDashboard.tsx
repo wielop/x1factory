@@ -65,6 +65,7 @@ import {
   findRipperWithdrawAuthority,
   type RipperStakePool,
 } from "@/lib/ripperPool";
+import lvlPayouts from "@/data/lvl-payouts.json";
 
 const ACC_SCALE = 1_000_000_000_000_000_000n;
 const AUTO_CLAIM_INTERVAL_MS = 15_000;
@@ -93,6 +94,7 @@ type LeaderboardRow = {
   activeRigs: number;
   level: number;
 };
+const LVL_PAYOUTS: Record<string, number> = lvlPayouts as Record<string, number>;
 
 interface RigPlan {
   type: RigType;
@@ -1792,6 +1794,9 @@ export function PublicDashboard() {
         ? formatRoundedToken(BigInt(burnedBase), mintDecimals.mind, 2)
         : "-";
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
+    const lvlPayout = LVL_PAYOUTS[row.owner];
+    const lvlPayoutLabel =
+      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(4)} XNT` : "—";
     const levelLabel =
       row.level === 2
         ? "BRONZE Miner - LVL 2"
@@ -1819,7 +1824,7 @@ export function PublicDashboard() {
     return (
       <div
         key={row.owner}
-        className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] items-center text-xs text-zinc-200"
+        className="grid grid-cols-[32px_32px_1fr_120px_120px_110px_120px_140px] items-center text-xs text-zinc-200"
       >
         <div className="text-zinc-500">{idx + 1}</div>
         <div className="text-center font-mono text-sm">{medal ?? ""}</div>
@@ -1831,6 +1836,7 @@ export function PublicDashboard() {
             </span>
           ) : null}
         </div>
+        <div className="text-right text-zinc-200 tabular-nums">{lvlPayoutLabel}</div>
         <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
         <div
           className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
@@ -3539,11 +3545,12 @@ export function PublicDashboard() {
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
             <div className="mt-4 max-h-[360px] overflow-y-auto overflow-x-auto pr-2">
-              <div className="min-w-[720px]">
-                <div className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              <div className="min-w-[860px]">
+                <div className="grid grid-cols-[32px_32px_1fr_120px_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                   <div>#</div>
                   <div></div>
                   <div>Wallet</div>
+                  <div className="text-right">LVL payout</div>
                   <div className="text-right">HP</div>
                   <div className="text-right">HP (bonus)</div>
                   <div className="text-right">Burned</div>

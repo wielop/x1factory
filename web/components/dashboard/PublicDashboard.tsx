@@ -1794,6 +1794,7 @@ export function PublicDashboard() {
         ? formatRoundedToken(BigInt(burnedBase), mintDecimals.mind, 2)
         : "-";
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
+    const stakedClass = stakedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     const lvlPayout = LVL_PAYOUTS[row.owner];
     const lvlPayoutLabel =
       lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : null;
@@ -1844,7 +1845,7 @@ export function PublicDashboard() {
           {levelBonusLabel ?? "—"}
         </div>
         <div className={`text-right tabular-nums ${burnedClass}`}>{burnedLabel}</div>
-        <div className="text-right text-zinc-300">{stakedLabel}</div>
+        <div className={`text-right ${stakedClass}`}>{stakedLabel}</div>
       </div>
   );
 });

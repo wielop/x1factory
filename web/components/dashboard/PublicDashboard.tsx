@@ -893,10 +893,10 @@ export function PublicDashboard() {
               buffedHp: 0n,
               stakedMind: 0n,
               activeRigs: 0,
-              level: levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey),
+              level: levelByOwner.get(ownerKey) ?? 1,
             };
           if (!current.level) {
-            current.level = levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey);
+            current.level = levelByOwner.get(ownerKey) ?? 1;
           }
           const rigType = decoded.hpScaled
             ? decoded.rigType

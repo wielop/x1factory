@@ -84,13 +84,15 @@ export function Progression() {
   const formatEstXnt = (levelNumber: number) => {
     if (byLevel && LEVELS.includes(levelNumber as Level)) {
       const detail = byLevel[levelNumber as Level];
-      const payout = detail.payoutXnt;
       const holders = detail.count;
+      const perHolder = holders > 0 ? detail.payoutXnt / holders : null;
       const share = Number.isFinite(detail.sharePct) ? detail.sharePct : null;
       const holderLabel = holders === 1 ? "holder" : "holders";
-      return `${payout.toFixed(2)} XNT · ${holders} ${holderLabel}${
-        share != null ? ` (${share.toFixed(2)}%)` : ""
-      }`;
+      if (perHolder != null) {
+        return `${perHolder.toFixed(2)} XNT · ${holders} ${holderLabel}${
+          share != null ? ` (${share.toFixed(2)}%)` : ""
+        }`;
+      }
     }
     const est = computeEstWeeklyXnt(levelNumber, totalWeight, weeklyPoolXnt);
     if (!est) return "—";

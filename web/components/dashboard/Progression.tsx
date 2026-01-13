@@ -164,23 +164,6 @@ export function Progression() {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
-                <div>
-                  Weekly Yield Pool: <span className="text-zinc-200">{weeklyPoolXnt} XNT</span>
-                </div>
-                <label className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                  Simulate pool
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    value={poolOverride}
-                    onChange={(event) => setPoolOverride(event.target.value)}
-                    placeholder={`${yieldSummary?.poolXnt ?? getWeeklyPoolXnt()}`}
-                    className="h-7 w-24 rounded-md border border-white/10 bg-white/5 px-2 text-[11px] text-zinc-100 placeholder:text-zinc-600"
-                  />
-                </label>
-              </div>
             </Card>
 
             <Card className="border-emerald-400/20 bg-ink/90 p-6">

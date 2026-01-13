@@ -1206,9 +1206,7 @@ export function PublicDashboard() {
       : null);
   const personalYieldLine = walletPublicKey
     ? yieldDataReady && personalYieldEst != null
-      ? `Est. weekly XNT (LVL yield): ${personalYieldEst.toFixed(2)} XNT${
-          personalSharePct != null ? ` · ${personalSharePct.toFixed(2)}% of pool` : ""
-        } · Pool ${weeklyPoolXnt} XNT`
+      ? `Est. weekly XNT (LVL yield): ${personalYieldEst.toFixed(2)} XNT`
       : yieldLoading
         ? "Loading LVL yield from on-chain snapshot..."
         : "LVL yield unavailable"

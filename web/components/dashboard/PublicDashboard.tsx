@@ -65,7 +65,6 @@ import {
   findRipperWithdrawAuthority,
   type RipperStakePool,
 } from "@/lib/ripperPool";
-import lvlPayouts from "@/data/lvl-payouts.json";
 
 const ACC_SCALE = 1_000_000_000_000_000_000n;
 const AUTO_CLAIM_INTERVAL_MS = 15_000;
@@ -93,13 +92,6 @@ type LeaderboardRow = {
   stakedMind: bigint;
   activeRigs: number;
   level: number;
-};
-const LVL_PAYOUTS: Record<string, number> = lvlPayouts as Record<string, number>;
-const payoutLevelFallback = (owner: string) => {
-  const amount = LVL_PAYOUTS[owner];
-  if (amount == null) return 1;
-  // Snapshot only covered LVL2/LVL3 payouts: 5.55... -> LVL2, 11.11... -> LVL3.
-  return amount > 6 ? 3 : 2;
 };
 
 interface RigPlan {
@@ -929,37 +921,24 @@ export function PublicDashboard() {
           if (!decoded) continue;
           const ownerKey = new PublicKey(decoded.owner).toBase58();
           const current =
-          leaderboardMap.get(ownerKey) ??
-          {
-            owner: ownerKey,
-            hp: 0n,
-            buffedHp: 0n,
-            stakedMind: 0n,
-            activeRigs: 0,
-            level: levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey),
-          };
+            leaderboardMap.get(ownerKey) ??
+            {
+              owner: ownerKey,
+              hp: 0n,
+              buffedHp: 0n,
+              stakedMind: 0n,
+              activeRigs: 0,
+              level: levelByOwner.get(ownerKey) ?? 1,
+            };
           if (!current.level) {
-            current.level = levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey);
+            current.level = levelByOwner.get(ownerKey) ?? 1;
           }
           current.stakedMind = decoded.stakedMind;
           leaderboardMap.set(ownerKey, current);
         }
 
-        // Ensure payout recipients are included even if currently inactive.
-        for (const owner of Object.keys(LVL_PAYOUTS)) {
-          if (leaderboardMap.has(owner)) continue;
-          leaderboardMap.set(owner, {
-            owner,
-            hp: 0n,
-            buffedHp: 0n,
-            stakedMind: 0n,
-            activeRigs: 0,
-            level: levelByOwner.get(owner) ?? payoutLevelFallback(owner),
-          });
-        }
-
         const rows = Array.from(leaderboardMap.values())
-          .filter((row) => row.hp > 0n || LVL_PAYOUTS[row.owner] != null)
+          .filter((row) => row.hp > 0n)
           .sort((a, b) => {
             if (a.hp === b.hp) {
               if (a.stakedMind === b.stakedMind) {
@@ -975,15 +954,7 @@ export function PublicDashboard() {
         console.warn("Failed to load active miners", err);
         setActiveMinerTotal(0);
         setActiveRigTotal(0);
-        const fallbackRows = Object.keys(LVL_PAYOUTS).map((owner) => ({
-          owner,
-          hp: 0n,
-          buffedHp: 0n,
-          stakedMind: 0n,
-          activeRigs: 0,
-          level: payoutLevelFallback(owner),
-        }));
-        setLeaderboardRows(fallbackRows);
+        setLeaderboardRows([]);
       }
 
       const mindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);
@@ -1822,9 +1793,6 @@ export function PublicDashboard() {
         : "-";
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     const stakedClass = stakedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
-    const lvlPayout = LVL_PAYOUTS[row.owner];
-    const lvlPayoutLabel =
-      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : "—";
     const levelLabel =
       row.level === 2
         ? "BRONZE Miner - LVL 2"
@@ -1863,7 +1831,6 @@ export function PublicDashboard() {
               {levelLabel}
             </span>
           ) : null}
-          <span className="ml-2 text-[11px] text-zinc-400">· {lvlPayoutLabel}</span>
         </div>
         <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
         <div

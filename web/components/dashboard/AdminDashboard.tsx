@@ -138,6 +138,8 @@ export function AdminDashboard() {
   const [activeStakerTotal, setActiveStakerTotal] = useState(0);
   const [activeStakedTotal, setActiveStakedTotal] = useState<bigint>(0n);
   const [activeStakerUpdated, setActiveStakerUpdated] = useState<number | null>(null);
+  const [weeklyPoolXnt, setWeeklyPoolXnt] = useState<string>("");
+  const [weeklyPoolUpdatedAt, setWeeklyPoolUpdatedAt] = useState<number | null>(null);
 
   const [emissionPerDayUi, setEmissionPerDayUi] = useState<string>("");
   const [maxEffectiveHpUi, setMaxEffectiveHpUi] = useState<string>("");
@@ -404,6 +406,12 @@ export function AdminDashboard() {
         setActiveStakerTotal(stakerMap.size);
         setActiveStakedTotal(totalStaked);
         setActiveStakerUpdated(now);
+        const poolRes = await fetch("/api/admin/yield-pool");
+        if (poolRes.ok) {
+          const json = (await poolRes.json()) as { value: number; updatedAt: number | null };
+          setWeeklyPoolXnt(String(json.value ?? ""));
+          setWeeklyPoolUpdatedAt(json.updatedAt ?? null);
+        }
       } catch (err) {
         console.warn("Failed to load active miners", err);
         setActiveMiners([]);
@@ -1001,6 +1009,57 @@ export function AdminDashboard() {
               disabled={!isAdmin || busy != null}
             >
               {busy === "Roll epoch" ? "Submitting..." : "Roll Epoch"}
+            </Button>
+          </Card>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">Tygodniowa pula LVL (UI)</div>
+            <div className="mt-2 text-xs text-zinc-400">
+              Ustawia wartość puli XNT pokazywanej na pulpicie LVL (off-chain, bez wpływu na wypłaty).
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">Wartość (XNT)</div>
+            <Input value={weeklyPoolXnt} onChange={setWeeklyPoolXnt} placeholder="50" />
+            <div className="mt-2 text-[11px] text-zinc-500">
+              Ostatnia aktualizacja:{" "}
+              {weeklyPoolUpdatedAt ? new Date(weeklyPoolUpdatedAt).toLocaleString() : "brak"}
+            </div>
+            <Button
+              className="mt-4"
+              onClick={async () => {
+                const parsed = Number(weeklyPoolXnt);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                  setError("Podaj dodatnią liczbę dla puli XNT");
+                  return;
+                }
+                setBusy("Save weekly pool");
+                setError(null);
+                try {
+                  const res = await fetch("/api/admin/yield-pool", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ value: parsed }),
+                  });
+                  if (!res.ok) {
+                    const txt = await res.text();
+                    throw new Error(txt || "Failed to save weekly pool");
+                  }
+                  const json = (await res.json()) as { value: number; updatedAt: number };
+                  setWeeklyPoolXnt(String(json.value));
+                  setWeeklyPoolUpdatedAt(json.updatedAt);
+                  pushToast({
+                    title: "Zapisano pulę",
+                    description: `Tygodniowa pula LVL ustawiona na ${json.value} XNT`,
+                    variant: "success",
+                  });
+                } catch (err: unknown) {
+                  setError(err instanceof Error ? err.message : "Nie udało się zapisać puli");
+                } finally {
+                  setBusy(null);
+                }
+              }}
+              disabled={!isAdmin || busy != null}
+            >
+              {busy === "Save weekly pool" ? "Zapisywanie..." : "Zapisz pulę"}
             </Button>
           </Card>
 

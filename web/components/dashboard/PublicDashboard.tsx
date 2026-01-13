@@ -55,7 +55,7 @@ import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk 
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
-import { computeEstWeeklyXnt, getWeeklyPoolXnt } from "@/lib/yieldMath";
+import { computeEstWeeklyXnt, getWeeklyPoolXnt, LEVELS, type Level } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
   RIPPER_POOL_ADDRESS,
@@ -503,7 +503,7 @@ function isTxTooLargeError(err: unknown) {
 export function PublicDashboard() {
   const { connection } = useConnection();
   const { publicKey: walletPublicKey, signAllTransactions, signTransaction } = useWallet();
-  const { data: yieldSummary } = useYieldSummary();
+  const { data: yieldSummary, loading: yieldLoading } = useYieldSummary();
   const anchorWallet = useAnchorWallet();
   const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
@@ -1189,13 +1189,29 @@ export function PublicDashboard() {
   );
   const nextLevelXp = levelingEnabled && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
-  const weeklyPoolXnt = yieldSummary?.poolXnt ?? getWeeklyPoolXnt();
+  const weeklyPoolXnt = yieldSummary?.poolXnt;
+  const fallbackWeeklyPoolXnt = getWeeklyPoolXnt();
   const yieldTotalWeight = yieldSummary?.totalWeight ?? 0;
-  const personalYieldEst = computeEstWeeklyXnt(userLevel, yieldTotalWeight, weeklyPoolXnt);
+  const userLevelKey = LEVELS.includes(userLevel as Level) ? (userLevel as Level) : null;
+  const levelYield = userLevelKey && yieldSummary?.byLevel ? yieldSummary.byLevel[userLevelKey] : null;
+  const yieldDataReady =
+    yieldSummary != null && weeklyPoolXnt != null && Number.isFinite(weeklyPoolXnt) && yieldTotalWeight > 0;
+  const personalYieldEst = yieldDataReady
+    ? computeEstWeeklyXnt(userLevel, yieldTotalWeight, weeklyPoolXnt ?? fallbackWeeklyPoolXnt)
+    : null;
+  const personalSharePct =
+    levelYield?.sharePct ??
+    (personalYieldEst != null && weeklyPoolXnt != null && weeklyPoolXnt > 0
+      ? (personalYieldEst / weeklyPoolXnt) * 100
+      : null);
   const personalYieldLine = walletPublicKey
-    ? `Est. weekly XNT (LVL yield): ${
-        personalYieldEst != null ? `${personalYieldEst.toFixed(2)} XNT` : "—"
-      }`
+    ? yieldDataReady && personalYieldEst != null
+      ? `Est. weekly XNT (LVL yield): ${personalYieldEst.toFixed(2)} XNT${
+          personalSharePct != null ? ` · ${personalSharePct.toFixed(2)}% of pool` : ""
+        } · Pool ${weeklyPoolXnt} XNT`
+      : yieldLoading
+        ? "Loading LVL yield from on-chain snapshot..."
+        : "LVL yield unavailable"
     : "Connect wallet to see your estimated weekly XNT";
   const levelBonusBpsBig = BigInt(levelBonusBps);
   const xpEstimate = useMemo(() => {

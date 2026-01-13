@@ -17,6 +17,15 @@ export type YieldSummary = {
   poolXnt: number;
   totalWeight: number;
   countsByLevel: CountsByLevel;
+  byLevel: Record<
+    Level,
+    {
+      count: number;
+      weight: number;
+      payoutXnt: number;
+      sharePct: number;
+    }
+  >;
   updatedAt: number;
 };
 

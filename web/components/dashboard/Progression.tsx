@@ -7,7 +7,7 @@ import { TopBar } from "@/components/shared/TopBar";
 import { deriveUserProfilePda, fetchConfig, type DecodedConfig } from "@/lib/solana";
 import { decodeUserMiningProfileAccount } from "@/lib/decoders";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
-import { computeEstWeeklyXnt, getWeeklyPoolXnt } from "@/lib/yieldMath";
+import { computeEstWeeklyXnt, getWeeklyPoolXnt, LEVELS, type Level } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 
 const LEVEL_ROWS = [
@@ -79,8 +79,19 @@ export function Progression() {
     return yieldSummary?.poolXnt ?? getWeeklyPoolXnt();
   }, [poolOverride, yieldSummary]);
   const totalWeight = yieldSummary?.totalWeight ?? 0;
+  const byLevel = yieldSummary?.byLevel;
 
   const formatEstXnt = (levelNumber: number) => {
+    if (byLevel && LEVELS.includes(levelNumber as Level)) {
+      const detail = byLevel[levelNumber as Level];
+      const payout = detail.payoutXnt;
+      const holders = detail.count;
+      const share = Number.isFinite(detail.sharePct) ? detail.sharePct : null;
+      const holderLabel = holders === 1 ? "holder" : "holders";
+      return `${payout.toFixed(2)} XNT · ${holders} ${holderLabel}${
+        share != null ? ` (${share.toFixed(2)}%)` : ""
+      }`;
+    }
     const est = computeEstWeeklyXnt(levelNumber, totalWeight, weeklyPoolXnt);
     if (!est) return "—";
     return `${est.toFixed(2)} XNT`;

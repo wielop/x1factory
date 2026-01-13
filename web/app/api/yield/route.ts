@@ -14,9 +14,11 @@ import {
   computeTotalWeight,
   getWeeklyPoolXnt,
   LEVELS,
+  LEVEL_WEIGHTS,
   type CountsByLevel,
   type YieldSummary,
 } from "@/lib/yieldMath";
+import { getStoredPoolXnt } from "@/lib/yieldPoolStore";
 
 const CACHE_TTL_MS = 60_000;
 let cached: { at: number; value: YieldSummary } | null = null;
@@ -62,10 +64,24 @@ async function loadYieldSummary(): Promise<YieldSummary> {
   }
 
   const totalWeight = computeTotalWeight(counts);
+  const weeklyPoolXnt = getStoredPoolXnt()?.value ?? getWeeklyPoolXnt();
+  const byLevel = LEVELS.reduce<YieldSummary["byLevel"]>((acc, level) => {
+    const count = counts[level] ?? 0;
+    const weight = count * LEVEL_WEIGHTS[level];
+    const share = totalWeight > 0 ? weight / totalWeight : 0;
+    acc[level] = {
+      count,
+      weight,
+      payoutXnt: share * weeklyPoolXnt,
+      sharePct: share * 100,
+    };
+    return acc;
+  }, {} as YieldSummary["byLevel"]);
   return {
-    poolXnt: getWeeklyPoolXnt(),
+    poolXnt: weeklyPoolXnt,
     totalWeight,
     countsByLevel: counts,
+    byLevel,
     updatedAt: Date.now(),
   };
 }

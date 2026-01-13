@@ -1796,7 +1796,7 @@ export function PublicDashboard() {
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     const lvlPayout = LVL_PAYOUTS[row.owner];
     const lvlPayoutLabel =
-      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(4)} XNT` : "—";
+      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : "—";
     const levelLabel =
       row.level === 2
         ? "BRONZE Miner - LVL 2"

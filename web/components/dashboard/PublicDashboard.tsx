@@ -1796,7 +1796,7 @@ export function PublicDashboard() {
     const burnedClass = burnedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
     const lvlPayout = LVL_PAYOUTS[row.owner];
     const lvlPayoutLabel =
-      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : "—";
+      lvlPayout != null && Number.isFinite(lvlPayout) ? `${lvlPayout.toFixed(2)} XNT` : null;
     const levelLabel =
       row.level === 2
         ? "BRONZE Miner - LVL 2"
@@ -1833,10 +1833,10 @@ export function PublicDashboard() {
           {row.level > 1 ? (
             <span className={`ml-2 text-[12px] font-semibold tracking-wide ${levelClassName}`}>
               {levelLabel}
+              {lvlPayoutLabel ? <span className="ml-1 text-[11px] text-zinc-300">· {lvlPayoutLabel}</span> : null}
             </span>
           ) : null}
         </div>
-        <div className="text-right text-zinc-200 tabular-nums">{lvlPayoutLabel}</div>
         <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
         <div
           className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
@@ -3545,12 +3545,11 @@ export function PublicDashboard() {
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
             <div className="mt-4 max-h-[360px] overflow-y-auto overflow-x-auto pr-2">
-              <div className="min-w-[860px]">
-                <div className="grid grid-cols-[32px_32px_1fr_120px_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              <div className="min-w-[800px]">
+                <div className="grid grid-cols-[32px_32px_1fr_140px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                   <div>#</div>
                   <div></div>
                   <div>Wallet</div>
-                  <div className="text-right">LVL payout</div>
                   <div className="text-right">HP</div>
                   <div className="text-right">HP (bonus)</div>
                   <div className="text-right">Burned</div>

@@ -3538,21 +3538,23 @@ export function PublicDashboard() {
               </div>
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
-            <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                <div>#</div>
-                <div></div>
-                <div>Wallet</div>
-                <div className="text-right">HP</div>
-                <div className="text-right">HP (bonus)</div>
-                <div className="text-right">Burned</div>
-                <div className="text-right">Staked MIND</div>
+            <div className="mt-4 max-h-[360px] overflow-y-auto overflow-x-auto pr-2">
+              <div className="min-w-[720px]">
+                <div className="grid grid-cols-[32px_32px_1fr_120px_110px_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                  <div>#</div>
+                  <div></div>
+                  <div>Wallet</div>
+                  <div className="text-right">HP</div>
+                  <div className="text-right">HP (bonus)</div>
+                  <div className="text-right">Burned</div>
+                  <div className="text-right">Staked MIND</div>
+                </div>
+                {leaderboardRows.length === 0 ? (
+                  <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
+                ) : (
+                  <div className="mt-3 space-y-2">{leaderboardRowElements}</div>
+                )}
               </div>
-              {leaderboardRows.length === 0 ? (
-                <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
-              ) : (
-                <div className="mt-3 space-y-2">{leaderboardRowElements}</div>
-              )}
             </div>
           </Card>
         </section>

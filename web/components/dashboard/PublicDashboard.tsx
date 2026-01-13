@@ -95,6 +95,12 @@ type LeaderboardRow = {
   level: number;
 };
 const LVL_PAYOUTS: Record<string, number> = lvlPayouts as Record<string, number>;
+const payoutLevelFallback = (owner: string) => {
+  const amount = LVL_PAYOUTS[owner];
+  if (amount == null) return 1;
+  // Snapshot only covered LVL2/LVL3 payouts: 5.55... -> LVL2, 11.11... -> LVL3.
+  return amount > 6 ? 3 : 2;
+};
 
 interface RigPlan {
   type: RigType;
@@ -895,10 +901,10 @@ export function PublicDashboard() {
               buffedHp: 0n,
               stakedMind: 0n,
               activeRigs: 0,
-              level: levelByOwner.get(ownerKey) ?? 1,
+              level: levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey),
             };
           if (!current.level) {
-            current.level = levelByOwner.get(ownerKey) ?? 1;
+            current.level = levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey);
           }
           const rigType = decoded.hpScaled
             ? decoded.rigType
@@ -923,17 +929,17 @@ export function PublicDashboard() {
           if (!decoded) continue;
           const ownerKey = new PublicKey(decoded.owner).toBase58();
           const current =
-            leaderboardMap.get(ownerKey) ??
-            {
-              owner: ownerKey,
-              hp: 0n,
-              buffedHp: 0n,
-              stakedMind: 0n,
-              activeRigs: 0,
-              level: levelByOwner.get(ownerKey) ?? 1,
-            };
+          leaderboardMap.get(ownerKey) ??
+          {
+            owner: ownerKey,
+            hp: 0n,
+            buffedHp: 0n,
+            stakedMind: 0n,
+            activeRigs: 0,
+            level: levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey),
+          };
           if (!current.level) {
-            current.level = levelByOwner.get(ownerKey) ?? 1;
+            current.level = levelByOwner.get(ownerKey) ?? payoutLevelFallback(ownerKey);
           }
           current.stakedMind = decoded.stakedMind;
           leaderboardMap.set(ownerKey, current);
@@ -948,7 +954,7 @@ export function PublicDashboard() {
             buffedHp: 0n,
             stakedMind: 0n,
             activeRigs: 0,
-            level: levelByOwner.get(owner) ?? 1,
+            level: levelByOwner.get(owner) ?? payoutLevelFallback(owner),
           });
         }
 
@@ -969,7 +975,15 @@ export function PublicDashboard() {
         console.warn("Failed to load active miners", err);
         setActiveMinerTotal(0);
         setActiveRigTotal(0);
-        setLeaderboardRows([]);
+        const fallbackRows = Object.keys(LVL_PAYOUTS).map((owner) => ({
+          owner,
+          hp: 0n,
+          buffedHp: 0n,
+          stakedMind: 0n,
+          activeRigs: 0,
+          level: payoutLevelFallback(owner),
+        }));
+        setLeaderboardRows(fallbackRows);
       }
 
       const mindAta = getAssociatedTokenAddressSync(cfg.mindMint, publicKey);

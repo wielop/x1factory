@@ -54,9 +54,7 @@ let burnCache:
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), ms)
-    ),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
   ]) as Promise<T>;
 };
 
@@ -406,19 +404,30 @@ export async function GET() {
           cfg.stakingTotalStakedMind,
           mindDecimals
         ),
-        10_000
+        30_000
       );
     } catch (err) {
       if (claimCache) {
         stats = claimCache.data;
       } else {
-        throw err;
+        // fall back to zeros instead of failing the route
+        stats = {
+          totalBase: 0n,
+          totalXnt: "0",
+          total7dBase: 0n,
+          total7dXnt: "0",
+          last24hBase: 0n,
+          last24hXnt: "0",
+          apr7dPct: null,
+          events: 0,
+          updatedAt: new Date().toISOString(),
+        };
       }
     }
 
     let burnTotals: Awaited<ReturnType<typeof collectBurnTotals>> | null = null;
     try {
-      burnTotals = await withTimeout(collectBurnTotals(connection, cfg.mindMint), 5_000);
+      burnTotals = await withTimeout(collectBurnTotals(connection, cfg.mindMint), 15_000);
     } catch {
       burnTotals = burnCache;
     }

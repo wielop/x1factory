@@ -9,6 +9,7 @@ import { fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+export const fetchCache = "force-no-store";
 const SIGNATURE_PAGE_LIMIT = 1000;
 const TX_BATCH_SIZE = 25;
 const CLAIM_CACHE_MS = 60 * 1000;
@@ -59,23 +60,6 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
   ]) as Promise<T>;
 };
-
-let warmStarted = false;
-const warmCaches = async () => {
-  if (warmStarted) return;
-  warmStarted = true;
-  try {
-    const connection = new Connection(getRpcUrl(), { commitment: "confirmed" });
-    const cfg = await fetchConfig(connection);
-    if (!cfg) return;
-    await collectClaimStats(connection, cfg.stakingRewardVault, 9, cfg.stakingTotalStakedMind, 9);
-    void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
-  } catch {
-    // ignore warmup failures
-  }
-};
-
-void warmCaches();
 
 const loadPersistentCache = async () => {
   try {
@@ -261,7 +245,7 @@ const collectClaimStats = async (
   mindDecimals: number
 ) => {
   const now = Date.now();
-  if (claimCache && now - claimCache.ts < CLAIM_CACHE_MS) {
+  if (claimCache && now - claimCache.ts < CLAIM_CACHE_MS && claimCache.data.totalBase > 0n) {
     return claimCache.data;
   }
 
@@ -427,6 +411,14 @@ const getMintDecimals = async (connection: Connection, mint: PublicKey, fallback
 
 export async function GET() {
   try {
+    // Avoid hitting on-chain during build-time prerender attempts
+    if (process.env.NEXT_PHASE === "phase-production-build") {
+      return NextResponse.json(
+        { status: "skip-during-build", cached: claimCache?.data ?? null },
+        { status: 200 }
+      );
+    }
+
     const connection = new Connection(getRpcUrl(), { commitment: "confirmed" });
     const cfg = await fetchConfig(connection);
     if (!cfg) {
@@ -450,51 +442,84 @@ export async function GET() {
       mindDecimals = 9;
     }
 
-    let stats: ClaimStats;
-    try {
-      stats = await withTimeout(
-        collectClaimStats(
+    const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
+    let stats: ClaimStats | null = null;
+    if (preferCached) {
+      stats = claimCache!.data;
+      if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
+        void collectClaimStats(
           connection,
           cfg.stakingRewardVault,
           xntDecimals,
           cfg.stakingTotalStakedMind,
           mindDecimals
-        ),
-        5_000
-      );
-    } catch (err) {
-      if (claimCache) {
-        stats = claimCache.data;
-      } else {
-        // fall back to zeros instead of failing the route
-        stats = {
-          totalBase: 0n,
-          totalXnt: "0",
-          total7dBase: 0n,
-          total7dXnt: "0",
-          last24hBase: 0n,
-          last24hXnt: "0",
-          apr7dPct: null,
-          events: 0,
-          updatedAt: new Date().toISOString(),
-        };
+        ).catch(() => null);
+      }
+    } else {
+      try {
+        stats = await withTimeout(
+          collectClaimStats(
+            connection,
+            cfg.stakingRewardVault,
+            xntDecimals,
+            cfg.stakingTotalStakedMind,
+            mindDecimals
+          ),
+          30_000
+        );
+      } catch (err) {
+        if (claimCache) {
+          stats = claimCache.data;
+        } else {
+          // fall back to zeros instead of failing the route
+          stats = {
+            totalBase: 0n,
+            totalXnt: "0",
+            total7dBase: 0n,
+            total7dXnt: "0",
+            last24hBase: 0n,
+            last24hXnt: "0",
+            apr7dPct: null,
+            events: 0,
+            updatedAt: new Date().toISOString(),
+          };
+        }
       }
     }
 
+    if (!stats) {
+      stats = {
+        totalBase: 0n,
+        totalXnt: "0",
+        total7dBase: 0n,
+        total7dXnt: "0",
+        last24hBase: 0n,
+        last24hXnt: "0",
+        apr7dPct: null,
+        events: 0,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     let burnTotals: Awaited<ReturnType<typeof collectBurnTotals>> | null = burnCache;
-    if (!burnTotals) {
-      // kick off burn aggregation in the background; don't block the response
+    const hasBurnData = burnTotals && (burnTotals.burned > 0n || burnTotals.levelUpBurned > 0n);
+    if (!burnTotals || !hasBurnData) {
+      try {
+        burnTotals = await withTimeout(collectBurnTotals(connection, cfg.mindMint), 30_000);
+      } catch {
+        burnTotals = burnCache ?? { ts: Date.now(), burned: 0n, levelUpBurned: 0n, newestSig: null };
+      }
+    } else if (Date.now() - burnTotals.ts > BURN_CACHE_MS) {
       void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
-      burnTotals = { ts: Date.now(), burned: 0n, levelUpBurned: 0n, newestSig: null };
     }
 
     // Pricing via xDEX (Raydium CP swap) pools
     const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);
     const poolUsdc = await fetchPoolState(connection, POOL_XNT_USDC);
 
-  const mindDecimalsPool = await getMintDecimals(connection, MIND_MINT, mindDecimals);
-  const xntDecimalsPool = await getMintDecimals(connection, XNT_MINT, xntDecimals);
-  const usdcDecimalsPool = await getMintDecimals(connection, USDC_MINT, 6);
+    const mindDecimalsPool = await getMintDecimals(connection, MIND_MINT, mindDecimals);
+    const xntDecimalsPool = await getMintDecimals(connection, XNT_MINT, xntDecimals);
+    const usdcDecimalsPool = await getMintDecimals(connection, USDC_MINT, 6);
 
     const [vault0Mind, vault1Mind, vault0Usdc, vault1Usdc] = await Promise.all([
       connection.getTokenAccountBalance(poolMind.token0Vault, "confirmed"),
@@ -503,50 +528,50 @@ export async function GET() {
       connection.getTokenAccountBalance(poolUsdc.token1Vault, "confirmed"),
     ]);
 
-  const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
+    const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
 
-  const mindVaultReserve =
-    poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
-  const xntVaultReserveMind =
-    poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+    const mindVaultReserve =
+      poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+    const xntVaultReserveMind =
+      poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
 
-  const xntVaultReserveUsdc =
-    poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
-  const usdcVaultReserve =
-    poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+    const xntVaultReserveUsdc =
+      poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+    const usdcVaultReserve =
+      poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
 
-  const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
-  const priceFromReserves = (
-    baseReserve: bigint,
-    quoteReserve: bigint,
-    baseDecimals: number,
-    quoteDecimals: number
-  ) => {
-    if (baseReserve === 0n || quoteReserve === 0n) return null;
-    const baseUi = toUi(baseReserve, baseDecimals);
-    const quoteUi = toUi(quoteReserve, quoteDecimals);
-    if (!Number.isFinite(baseUi) || baseUi === 0 || !Number.isFinite(quoteUi)) return null;
-    return quoteUi / baseUi;
-  };
+    const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
+    const priceFromReserves = (
+      baseReserve: bigint,
+      quoteReserve: bigint,
+      baseDecimals: number,
+      quoteDecimals: number
+    ) => {
+      if (baseReserve === 0n || quoteReserve === 0n) return null;
+      const baseUi = toUi(baseReserve, baseDecimals);
+      const quoteUi = toUi(quoteReserve, quoteDecimals);
+      if (!Number.isFinite(baseUi) || baseUi === 0 || !Number.isFinite(quoteUi)) return null;
+      return quoteUi / baseUi;
+    };
 
-  const mindInXnt = priceFromReserves(
-    mindVaultReserve,
-    xntVaultReserveMind,
-    mindDecimalsPool,
-    xntDecimalsPool
-  );
-  const xntInUsd = priceFromReserves(
-    xntVaultReserveUsdc,
-    usdcVaultReserve,
-    xntDecimalsPool,
-    usdcDecimalsPool
-  );
+    const mindInXnt = priceFromReserves(
+      mindVaultReserve,
+      xntVaultReserveMind,
+      mindDecimalsPool,
+      xntDecimalsPool
+    );
+    const xntInUsd = priceFromReserves(
+      xntVaultReserveUsdc,
+      usdcVaultReserve,
+      xntDecimalsPool,
+      usdcDecimalsPool
+    );
 
-  const mindInUsd = mindInXnt != null && xntInUsd != null ? mindInXnt * xntInUsd : null;
-  const tvlUsd =
-    mindInUsd != null
-      ? toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd
-      : null;
+    const mindInUsd = mindInXnt != null && xntInUsd != null ? mindInXnt * xntInUsd : null;
+    const tvlUsd =
+      mindInUsd != null
+        ? toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd
+        : null;
 
     const responsePayload = {
       ...stats,

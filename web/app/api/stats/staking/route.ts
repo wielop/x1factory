@@ -252,15 +252,18 @@ export async function GET() {
     const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);
     const poolUsdc = await fetchPoolState(connection, POOL_XNT_USDC);
 
-    const mindDecimalsPool = poolMind.token0Mint.equals(MIND_MINT)
-      ? poolMind.mint0Decimals
-      : poolMind.mint1Decimals;
-    const xntDecimalsPool = poolMind.token0Mint.equals(XNT_MINT)
-      ? poolMind.mint0Decimals
-      : poolMind.mint1Decimals;
-    const usdcDecimalsPool = poolUsdc.token0Mint.equals(USDC_MINT)
-      ? poolUsdc.mint0Decimals
-      : poolUsdc.mint1Decimals;
+  const mindDecimalsPool = poolMind.token0Mint.equals(MIND_MINT)
+    ? poolMind.mint0Decimals
+    : poolMind.mint1Decimals;
+  const xntDecimalsMindPool = poolMind.token0Mint.equals(XNT_MINT)
+    ? poolMind.mint0Decimals
+    : poolMind.mint1Decimals;
+  const xntDecimalsUsdcPool = poolUsdc.token0Mint.equals(XNT_MINT)
+    ? poolUsdc.mint0Decimals
+    : poolUsdc.mint1Decimals;
+  const usdcDecimalsPool = poolUsdc.token0Mint.equals(USDC_MINT)
+    ? poolUsdc.mint0Decimals
+    : poolUsdc.mint1Decimals;
 
     const [vault0Mind, vault1Mind, vault0Usdc, vault1Usdc] = await Promise.all([
       connection.getTokenAccountBalance(poolMind.token0Vault, "confirmed"),
@@ -289,26 +292,22 @@ export async function GET() {
     quoteDecimals: number
   ) => {
     if (baseReserve === 0n || quoteReserve === 0n) return null;
-    const scale = 1_000_000n;
-    const num =
-      quoteReserve *
-      (10n ** BigInt(baseDecimals)) *
-      scale;
-    const denom = baseReserve * (10n ** BigInt(quoteDecimals));
-    const priceScaled = num / denom;
-    return Number(priceScaled) / Number(scale);
+    const baseUi = toUi(baseReserve, baseDecimals);
+    const quoteUi = toUi(quoteReserve, quoteDecimals);
+    if (!Number.isFinite(baseUi) || baseUi === 0 || !Number.isFinite(quoteUi)) return null;
+    return quoteUi / baseUi;
   };
 
   const mindInXnt = priceFromReserves(
     mindVaultReserve,
     xntVaultReserveMind,
     mindDecimalsPool || mindDecimals,
-    xntDecimalsPool
+    xntDecimalsMindPool
   );
   const xntInUsd = priceFromReserves(
     xntVaultReserveUsdc,
     usdcVaultReserve,
-    xntDecimalsPool,
+    xntDecimalsUsdcPool,
     usdcDecimalsPool || 6
   );
 

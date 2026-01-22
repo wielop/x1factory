@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
-import { getMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { getMint } from "@solana/spl-token";
 import { createHash } from "crypto";
-import bs58 from "bs58";
 import fs from "fs/promises";
 import { fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 
@@ -13,22 +12,10 @@ export const fetchCache = "force-no-store";
 const SIGNATURE_PAGE_LIMIT = 1000;
 const TX_BATCH_SIZE = 25;
 const CLAIM_CACHE_MS = 60 * 1000;
-const BURN_CACHE_MS = 5 * 60 * 1000;
 const EVENT_DISCRIMINATOR = createHash("sha256")
   .update("event:XntClaimed")
   .digest()
   .subarray(0, 8);
-const UNSTAKE_EVENT_DISCRIMINATOR = createHash("sha256")
-  .update("event:MindUnstaked")
-  .digest()
-  .subarray(0, 8);
-const BURN_BPS = 600n;
-const BPS_DENOMINATOR = 10_000n;
-const EXCLUDED_BURN_OWNERS = new Set([
-  "FPLV6bRcBj4i8sipkim2N7eZMsGJC2xfCsAgeoDsQhoD",
-  "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
-]);
-
 type ClaimStats = {
   totalBase: bigint;
   totalXnt: string;
@@ -39,19 +26,9 @@ type ClaimStats = {
   apr7dPct: number | null;
   events: number;
   updatedAt: string;
-  burnedTotalBase?: bigint;
-  burnedLevelUpBase?: bigint;
 };
 
 let claimCache: { ts: number; data: ClaimStats; newestSig: string | null } | null = null;
-let burnCache:
-  | {
-      ts: number;
-      burned: bigint;
-      levelUpBurned: bigint;
-      newestSig: string | null;
-    }
-  | null = null;
 const CACHE_PATH = "/tmp/staking_stats_cache.json";
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
@@ -74,21 +51,7 @@ const loadPersistentCache = async () => {
           totalBase: BigInt(parsed.claim.data.totalBase),
           total7dBase: BigInt(parsed.claim.data.total7dBase),
           last24hBase: BigInt(parsed.claim.data.last24hBase),
-          burnedTotalBase: parsed.claim.data.burnedTotalBase
-            ? BigInt(parsed.claim.data.burnedTotalBase)
-            : undefined,
-          burnedLevelUpBase: parsed.claim.data.burnedLevelUpBase
-            ? BigInt(parsed.claim.data.burnedLevelUpBase)
-            : undefined,
         },
-      };
-    }
-    if (parsed.burn) {
-      burnCache = {
-        ts: parsed.burn.ts,
-        newestSig: parsed.burn.newestSig ?? null,
-        burned: BigInt(parsed.burn.burned),
-        levelUpBurned: BigInt(parsed.burn.levelUpBurned),
       };
     }
   } catch {
@@ -124,117 +87,6 @@ const parseClaimEventsFromLogs = (logs: string[]) => {
     events.push({ amount });
   }
   return events;
-};
-
-const parseUnstakeEventsFromLogs = (logs: string[]) => {
-  const events: Array<{ owner: PublicKey; amount: bigint }> = [];
-  const prefix = "Program data: ";
-  for (const log of logs) {
-    if (!log.startsWith(prefix)) continue;
-    const raw = log.slice(prefix.length).trim();
-    let buf: Buffer;
-    try {
-      buf = Buffer.from(raw, "base64");
-    } catch {
-      continue;
-    }
-    if (buf.length < 48) continue;
-    if (!buf.subarray(0, 8).equals(UNSTAKE_EVENT_DISCRIMINATOR)) continue;
-    const owner = new PublicKey(buf.subarray(8, 40));
-    const amount = buf.readBigUInt64LE(40);
-    events.push({ owner, amount });
-  }
-  return events;
-};
-
-const decodeInstructionData = (data: string) => {
-  try {
-    return Buffer.from(bs58.decode(data));
-  } catch {
-    try {
-      return Buffer.from(data, "base64");
-    } catch {
-      return null;
-    }
-  }
-};
-
-const parseLevelUpBurnsFromTx = (tx: any, mindMint: PublicKey) => {
-  const burns: Array<{ amount: bigint }> = [];
-  const inner = tx?.meta?.innerInstructions;
-  if (!inner) return burns;
-  const accountKeys = tx.transaction.message.accountKeys as Array<PublicKey | string>;
-  const getAccountKey = (index: number) => {
-    const key = accountKeys[index];
-    return typeof key === "string" ? new PublicKey(key) : key;
-  };
-  inner.forEach((group: any) => {
-    group.instructions.forEach((ix: any) => {
-      const programId = getAccountKey(ix.programIdIndex);
-      if (!programId.equals(TOKEN_PROGRAM_ID)) return;
-      const data = decodeInstructionData(ix.data);
-      if (!data || data.length < 9) return;
-      const instruction = data[0];
-      if (instruction !== 8 && instruction !== 15) return;
-      const mintIndex = ix.accounts?.[1];
-      if (mintIndex == null) return;
-      const mint = getAccountKey(mintIndex);
-      if (!mint.equals(mindMint)) return;
-      const amount = data.readBigUInt64LE(1);
-      burns.push({ amount });
-    });
-  });
-  return burns;
-};
-
-const collectBurnTotals = async (connection: Connection, mindMint: PublicKey) => {
-  const now = Date.now();
-  if (burnCache && now - burnCache.ts < BURN_CACHE_MS) {
-    return burnCache;
-  }
-  const programId = getProgramId();
-  const newSignatures: string[] = [];
-  let before: string | undefined;
-  let reachedCached = false;
-  while (true) {
-    const batch = await connection.getSignaturesForAddress(programId, { before, limit: SIGNATURE_PAGE_LIMIT });
-    if (batch.length === 0) break;
-    for (const sig of batch) {
-      if (burnCache?.newestSig && sig.signature === burnCache.newestSig) {
-        reachedCached = true;
-        break;
-      }
-      newSignatures.push(sig.signature);
-    }
-    if (reachedCached || batch.length < SIGNATURE_PAGE_LIMIT) break;
-    before = batch[batch.length - 1].signature;
-  }
-
-  let burned = burnCache ? burnCache.burned : 0n;
-  let levelUpBurned = burnCache ? burnCache.levelUpBurned : 0n;
-  for (let i = 0; i < newSignatures.length; i += TX_BATCH_SIZE) {
-    const chunk = newSignatures.slice(i, i + TX_BATCH_SIZE);
-    const txs = await connection.getTransactions(chunk, {
-      commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
-    });
-    txs.forEach((tx) => {
-      if (!tx?.meta?.logMessages) return;
-      const unstake = parseUnstakeEventsFromLogs(tx.meta.logMessages);
-      unstake.forEach((evt) => {
-        if (EXCLUDED_BURN_OWNERS.has(evt.owner.toBase58())) return;
-        burned += (evt.amount * BURN_BPS) / BPS_DENOMINATOR;
-      });
-      const lvl = parseLevelUpBurnsFromTx(tx, mindMint);
-      lvl.forEach((evt) => {
-        levelUpBurned += evt.amount;
-      });
-    });
-  }
-
-  const newestSig = newSignatures[0] ?? burnCache?.newestSig ?? null;
-  burnCache = { ts: now, burned, levelUpBurned, newestSig };
-  return burnCache;
 };
 
 const collectClaimStats = async (
@@ -501,18 +353,6 @@ export async function GET() {
       };
     }
 
-    let burnTotals: Awaited<ReturnType<typeof collectBurnTotals>> | null = burnCache;
-    const hasBurnData = burnTotals && (burnTotals.burned > 0n || burnTotals.levelUpBurned > 0n);
-    if (!burnTotals || !hasBurnData) {
-      try {
-        burnTotals = await withTimeout(collectBurnTotals(connection, cfg.mindMint), 30_000);
-      } catch {
-        burnTotals = burnCache ?? { ts: Date.now(), burned: 0n, levelUpBurned: 0n, newestSig: null };
-      }
-    } else if (Date.now() - burnTotals.ts > BURN_CACHE_MS) {
-      void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
-    }
-
     // Pricing via xDEX (Raydium CP swap) pools; tolerate failures
     let mindInUsd: number | null = null;
     let mindInXnt: number | null = null;
@@ -595,8 +435,6 @@ export async function GET() {
             }
           : null,
       tvlUsd,
-      burnedTotalBase: burnTotals?.burned ? burnTotals.burned.toString() : "0",
-      burnedLevelUpBase: burnTotals?.levelUpBurned ? burnTotals.levelUpBurned.toString() : "0",
     };
 
     // persist for future cold starts
@@ -604,7 +442,6 @@ export async function GET() {
       CACHE_PATH,
       JSON.stringify({
         claim: claimCache,
-        burn: burnCache,
       }),
       "utf8"
     ).catch(() => null);

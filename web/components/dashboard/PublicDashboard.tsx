@@ -3312,6 +3312,19 @@ export function PublicDashboard() {
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    TVL (staked)
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {config && mintDecimals
+                      ? `${formatTokenAmount(config.stakingTotalStakedMind, mintDecimals.mind, 4)} MIND`
+                      : "—"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    Current total MIND locked in staking.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                     Current staking APR
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-white">

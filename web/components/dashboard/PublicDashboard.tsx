@@ -546,6 +546,9 @@ export function PublicDashboard() {
   });
   const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
+  const [statsTabFilter, setStatsTabFilter] = useState<"all" | "performance" | "staking" | "yield">(
+    "all"
+  );
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
@@ -3320,130 +3323,115 @@ export function PublicDashboard() {
             </div>
 
             {statsTab === "payouts" ? (
-              <div className="mt-6 space-y-8">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold text-white">Protocol Performance</div>
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-[11px] text-zinc-300"
-                      title="Real rewards distributed to stakers on-chain."
+              <div className="mt-6 space-y-4">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  {[
+                    { key: "all", label: "All", count: 7 },
+                    { key: "performance", label: "Performance", count: 3 },
+                    { key: "staking", label: "Staking", count: 3 },
+                    { key: "yield", label: "Yield", count: 1 },
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setStatsTabFilter(tab.key as typeof statsTabFilter)}
+                      className={`rounded-full border px-3 py-1 text-xs transition ${
+                        statsTabFilter === tab.key
+                          ? "border-white/40 bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+                          : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:text-white"
+                      }`}
                     >
-                      i
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-zinc-500">
-                    Real rewards distributed to stakers on-chain.
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12 xl:auto-rows-fr">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        Total paid out
-                      </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {claimStats
-                          ? `${Number(claimStats.totalXnt).toFixed(2)} XNT`
-                          : claimStatsError
-                          ? "—"
-                          : "…"}
-                      </div>
-                      {claimStats?.updatedAt ? (
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          Updated {new Date(claimStats.updatedAt).toLocaleTimeString()}
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 xl:auto-rows-fr">
+                  {(statsTabFilter === "all" || statsTabFilter === "performance") && (
+                    <>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Total paid out
                         </div>
-                      ) : null}
-                      {claimStatsError ? (
-                        <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
-                      ) : null}
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        Rewards last 24h
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {claimStats
+                            ? `${Number(claimStats.totalXnt).toFixed(2)} XNT`
+                            : claimStatsError
+                            ? "—"
+                            : "…"}
+                        </div>
+                        {claimStats?.updatedAt ? (
+                          <div className="mt-1 text-[11px] text-zinc-500">
+                            Updated {new Date(claimStats.updatedAt).toLocaleTimeString()}
+                          </div>
+                        ) : null}
+                        {claimStatsError ? (
+                          <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
+                        ) : null}
                       </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {claimStats ? `+${Number(claimStats.last24hXnt).toFixed(2)} XNT` : "—"}
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Rewards last 24h
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {claimStats ? `+${Number(claimStats.last24hXnt).toFixed(2)} XNT` : "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">Distributed in last 24h.</div>
                       </div>
-                      <div className="mt-1 text-[11px] text-zinc-500">Distributed in last 24h.</div>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        7d realized APR
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          7d realized APR
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {claimStats?.apr7dPct != null ? `${claimStats.apr7dPct.toFixed(2)}%` : "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          From last 7d XNT claims vs current staked base.
+                        </div>
                       </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {claimStats?.apr7dPct != null ? `${claimStats.apr7dPct.toFixed(2)}%` : "—"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-zinc-500">
-                        From last 7d XNT claims vs current staked base.
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                    </>
+                  )}
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold text-white">Staking Health</div>
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-[11px] text-zinc-300"
-                      title="Participation and capital locked in the protocol."
-                    >
-                      i
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-zinc-500">
-                    Participation and capital locked in the protocol.
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12 xl:auto-rows-fr">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        Active stakers
+                  {(statsTabFilter === "all" || statsTabFilter === "staking") && (
+                    <>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Active stakers
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {activeStakersSummary.unique ?? ACTIVE_STAKERS_SUMMARY.unique}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          Unique wallets with staked MIND.
+                        </div>
                       </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {activeStakersSummary.unique ?? ACTIVE_STAKERS_SUMMARY.unique}
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          TVL (staked)
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {config && mintDecimals
+                            ? `${formatTokenAmount(config.stakingTotalStakedMind, mintDecimals.mind, 1)} MIND`
+                            : "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          Current total MIND locked in staking.
+                        </div>
                       </div>
-                      <div className="mt-1 text-[11px] text-zinc-500">
-                        Unique wallets with staked MIND.
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          TVL (USD)
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {claimStats?.tvlUsd != null
+                            ? `$${claimStats.tvlUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+                            : "—"}
+                        </div>
                       </div>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        TVL (staked)
-                      </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {config && mintDecimals
-                          ? `${formatTokenAmount(config.stakingTotalStakedMind, mintDecimals.mind, 1)} MIND`
-                          : "—"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-zinc-500">
-                        Current total MIND locked in staking.
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        TVL (USD)
-                      </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {claimStats?.tvlUsd != null
-                          ? `$${claimStats.tvlUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-                          : "—"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                    </>
+                  )}
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold text-white">Yield Engine</div>
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full border border-white/20 text-[11px] text-zinc-300"
-                      title="Current reward rate based on on-chain distribution."
-                    >
-                      i
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-zinc-500">
-                    Current reward rate based on on-chain distribution.
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12 xl:auto-rows-fr">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)] xl:col-span-4">
+                  {(statsTabFilter === "all" || statsTabFilter === "yield") && (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
                       <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                         Current staking APR
                       </div>
@@ -3454,7 +3442,7 @@ export function PublicDashboard() {
                         Based on on-chain reward rate vs total staked MIND.
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             ) : null}

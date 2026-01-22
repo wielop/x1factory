@@ -252,18 +252,9 @@ export async function GET() {
     const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);
     const poolUsdc = await fetchPoolState(connection, POOL_XNT_USDC);
 
-  const mindDecimalsPool = poolMind.token0Mint.equals(MIND_MINT)
-    ? poolMind.mint0Decimals
-    : poolMind.mint1Decimals;
-  const xntDecimalsMindPool = poolMind.token0Mint.equals(XNT_MINT)
-    ? poolMind.mint0Decimals
-    : poolMind.mint1Decimals;
-  const xntDecimalsUsdcPool = poolUsdc.token0Mint.equals(XNT_MINT)
-    ? poolUsdc.mint0Decimals
-    : poolUsdc.mint1Decimals;
-  const usdcDecimalsPool = poolUsdc.token0Mint.equals(USDC_MINT)
-    ? poolUsdc.mint0Decimals
-    : poolUsdc.mint1Decimals;
+  const mindDecimalsPool = await getMintDecimals(connection, MIND_MINT, mindDecimals);
+  const xntDecimalsPool = await getMintDecimals(connection, XNT_MINT, xntDecimals);
+  const usdcDecimalsPool = await getMintDecimals(connection, USDC_MINT, 6);
 
     const [vault0Mind, vault1Mind, vault0Usdc, vault1Usdc] = await Promise.all([
       connection.getTokenAccountBalance(poolMind.token0Vault, "confirmed"),
@@ -301,14 +292,14 @@ export async function GET() {
   const mindInXnt = priceFromReserves(
     mindVaultReserve,
     xntVaultReserveMind,
-    mindDecimalsPool || mindDecimals,
-    xntDecimalsMindPool
+    mindDecimalsPool,
+    xntDecimalsPool
   );
   const xntInUsd = priceFromReserves(
     xntVaultReserveUsdc,
     usdcVaultReserve,
-    xntDecimalsUsdcPool,
-    usdcDecimalsPool || 6
+    xntDecimalsPool,
+    usdcDecimalsPool
   );
 
   const mindInUsd = mindInXnt != null && xntInUsd != null ? mindInXnt * xntInUsd : null;

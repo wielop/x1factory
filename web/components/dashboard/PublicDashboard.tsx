@@ -546,9 +546,7 @@ export function PublicDashboard() {
   });
   const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
-  const [statsTabFilter, setStatsTabFilter] = useState<"performance" | "staking" | "yield">(
-    "performance"
-  );
+  const [statsTabFilter, setStatsTabFilter] = useState<"performance" | "staking">("performance");
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
@@ -3317,9 +3315,8 @@ export function PublicDashboard() {
               <div className="mt-6 space-y-4">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   {[
-                    { key: "performance", label: "Performance", count: 3 },
-                    { key: "staking", label: "Staking", count: 3 },
-                    { key: "yield", label: "Yield", count: 1 },
+                    { key: "performance", label: "Performance" },
+                    { key: "staking", label: "Staking" },
                   ].map((tab) => (
                     <button
                       key={tab.key}
@@ -3331,7 +3328,7 @@ export function PublicDashboard() {
                           : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:text-white"
                       }`}
                     >
-                      {tab.label} ({tab.count})
+                      {tab.label}
                     </button>
                   ))}
                 </div>
@@ -3420,7 +3417,7 @@ export function PublicDashboard() {
                     </>
                   )}
 
-                  {statsTabFilter === "yield" && (
+                  {statsTabFilter === "performance" ? null : (
                     <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
                       <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                         Current staking APR

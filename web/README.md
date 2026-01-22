@@ -4,6 +4,7 @@ Public app (Vercel-ready) for interacting with the on-chain program:
 
 - Public panel: `/` (create position, deposit, claim)
 - Admin panel: `/admin` (admin_update_config)
+- X1Mind miner: `/miner` (commit/reveal/claim) + cron at `/api/x1mind/cron`
 
 ## Env vars (Vercel)
 
@@ -12,8 +13,8 @@ Public app (Vercel-ready) for interacting with the on-chain program:
 - `NEXT_PUBLIC_X1MIND_PROGRAM_ID` (default: `7qH6rrAoNEp2oWmVurvqD9onVu1cCJcg7vLR6NigvkLz`)
 - `NEXT_PUBLIC_X1MIND_MIND_MINT` (default: `AJhe17P7jFTUgsTUJYxvTdqpND5RG1cr1SSXxLrG9QUc`)
 - `NEXT_PUBLIC_RPC_PROXY` (optional) – use `/api/rpc` for RPC CORS proxying if needed.
-- `X1MIND_ADMIN_KEYPAIR` (server-only) – admin keypair as base58 or JSON array, used by `/api/x1mind/cron`.
-- `CRON_SECRET` (server-only) – bearer token for cron auth; required by `/api/x1mind/cron`.
+- `X1MIND_ADMIN_KEYPAIR` (server-only) – admin keypair (base58 or JSON array) used by `/api/x1mind/cron`.
+- `CRON_SECRET` (server-only) – bearer token required by `/api/x1mind/cron`.
 
 X1Mind config PDA is derived from the program id using seed `config` (default: `6JUBZXSMBRTdCjCD8tQ8CXY1hM5dxggfXuTYG9Zamhu`).
 

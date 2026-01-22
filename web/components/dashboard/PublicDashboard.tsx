@@ -546,8 +546,8 @@ export function PublicDashboard() {
   });
   const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
-  const [statsTabFilter, setStatsTabFilter] = useState<"all" | "performance" | "staking" | "yield">(
-    "all"
+  const [statsTabFilter, setStatsTabFilter] = useState<"performance" | "staking" | "yield">(
+    "performance"
   );
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
@@ -3303,30 +3303,20 @@ export function PublicDashboard() {
 
         <section className="mt-10">
           <Card className="border-cyan-400/20 bg-ink/90 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Stats</div>
-                <div className="text-xl font-semibold text-white">Protocol pulse</div>
-                <div className="text-[11px] text-zinc-500">
-                  Live on-chain reads; refresh cadence every 10 minutes.
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Stats</div>
+                  <div className="text-xl font-semibold text-white">Protocol pulse</div>
+                  <div className="text-[11px] text-zinc-500">
+                    Live on-chain reads; refresh cadence every 10 minutes.
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => setStatsTab("payouts")}
-                >
-                  Payouts
-                </Button>
-              </div>
-            </div>
 
             {statsTab === "payouts" ? (
               <div className="mt-6 space-y-4">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   {[
-                    { key: "all", label: "All", count: 7 },
                     { key: "performance", label: "Performance", count: 3 },
                     { key: "staking", label: "Staking", count: 3 },
                     { key: "yield", label: "Yield", count: 1 },
@@ -3337,7 +3327,7 @@ export function PublicDashboard() {
                       onClick={() => setStatsTabFilter(tab.key as typeof statsTabFilter)}
                       className={`rounded-full border px-3 py-1 text-xs transition ${
                         statsTabFilter === tab.key
-                          ? "border-white/40 bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+                          ? "border-cyan-300/50 bg-cyan-400/10 text-white shadow-[0_0_0_1px_rgba(34,211,238,0.35)]"
                           : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:text-white"
                       }`}
                     >
@@ -3346,7 +3336,7 @@ export function PublicDashboard() {
                   ))}
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 xl:auto-rows-fr">
-                  {(statsTabFilter === "all" || statsTabFilter === "performance") && (
+                  {statsTabFilter === "performance" && (
                     <>
                       <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
                         <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
@@ -3391,7 +3381,7 @@ export function PublicDashboard() {
                     </>
                   )}
 
-                  {(statsTabFilter === "all" || statsTabFilter === "staking") && (
+                  {statsTabFilter === "staking" && (
                     <>
                       <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
                         <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
@@ -3430,7 +3420,7 @@ export function PublicDashboard() {
                     </>
                   )}
 
-                  {(statsTabFilter === "all" || statsTabFilter === "yield") && (
+                  {statsTabFilter === "yield" && (
                     <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
                       <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                         Current staking APR

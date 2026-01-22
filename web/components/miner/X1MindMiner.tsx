@@ -75,7 +75,7 @@ export function X1MindMiner() {
   }, [connection, anchorWallet, readOnlyWallet]);
 
   const gridSize = Number(config?.gridSize ?? GRID_FALLBACK);
-  const gridCols = Math.min(5, Math.max(1, Math.ceil(Math.sqrt(gridSize))));
+  const gridCols = 5; // stałe 5x5 zgodnie z nowym programem
 
   const refresh = useCallback(async () => {
     if (!connection || !program) return;
@@ -176,6 +176,17 @@ export function X1MindMiner() {
   const winningCell =
     round && round.finalized ? Number(toBigInt(round.winningCell ?? 0).valueOf()) : null;
 
+  const canEnter = Boolean(isActive && anchorWallet && round);
+  const disabledReason = !round
+    ? "Brak aktywnej rundy"
+    : round.finalized
+      ? "Runda zakonczona"
+      : !anchorWallet
+        ? "Podlacz portfel"
+        : !isActive
+          ? "Czekam na koniec poprzedniej fazy"
+          : null;
+
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-50">
       <TopBar />
@@ -226,10 +237,7 @@ export function X1MindMiner() {
 
           <div className="grid gap-3">
             <label className="text-sm font-medium text-zinc-200">Wybierz pola (multi-select)</label>
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
-            >
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}>
               {Array.from({ length: gridSize }).map((_, idx) => {
                 const isSelected = selectedCells.includes(idx);
                 const total = totalPerCell[idx] ?? 0n;
@@ -238,10 +246,11 @@ export function X1MindMiner() {
                     key={idx}
                     onClick={() => toggleCell(idx)}
                     className={cn(
-                      "flex h-16 flex-col justify-center rounded-lg border text-sm transition",
-                      "border-zinc-800 bg-zinc-900/60 hover:border-amber-400/60",
-                      isSelected && "border-amber-500/80 bg-amber-500/10 text-amber-100"
+                      "flex h-16 flex-col justify-center rounded-lg border text-sm transition focus:outline-none focus:ring-2 focus:ring-amber-500/60",
+                      "border-zinc-800 bg-zinc-900/60 hover:border-amber-400/60 active:scale-[0.98]",
+                      isSelected && "border-amber-500/80 bg-amber-500/15 text-amber-100"
                     )}
+                    aria-pressed={isSelected}
                   >
                     <span className="font-semibold">#{idx}</span>
                     <span className="text-xs text-zinc-400">
@@ -271,17 +280,23 @@ export function X1MindMiner() {
               <button
                 className={cn(
                   "w-full rounded-lg px-4 py-3 text-sm font-semibold transition",
-                  isActive
+                  canEnter
                     ? "bg-amber-500 text-black hover:bg-amber-400"
                     : "cursor-not-allowed bg-zinc-800 text-zinc-500"
                 )}
-                disabled={!isActive || busy === "enter"}
+                disabled={!canEnter || busy === "enter"}
                 onClick={() => void handleEnter()}
               >
                 {busy === "enter" ? "Wysylam transakcje…" : "Obstaw teraz"}
               </button>
             </div>
           </div>
+
+          {!canEnter && (
+            <div className="text-xs text-zinc-500">
+              {disabledReason ?? "Czekam na runde…"} — odświeżenie co 10s.
+            </div>
+          )}
 
           {error && <div className="text-sm text-red-400">{error}</div>}
           {lastSig && (

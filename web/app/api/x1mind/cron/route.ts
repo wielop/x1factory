@@ -111,7 +111,8 @@ async function payoutWinners(params: {
     tx.recentBlockhash = blockhash;
     tx.lastValidBlockHeight = lastValidBlockHeight;
     tx.feePayer = walletPubkey;
-    const sig = await program.provider.sendAndConfirm(tx, []);
+    const provider = program.provider as anchor.AnchorProvider;
+    const sig = await provider.sendAndConfirm(tx, []);
     actions.push(`payout:${pubkey.toBase58()}:${owner.toBase58()}:${sig}`);
   }
 }

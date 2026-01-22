@@ -58,6 +58,23 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
   ]) as Promise<T>;
 };
 
+let warmStarted = false;
+const warmCaches = async () => {
+  if (warmStarted) return;
+  warmStarted = true;
+  try {
+    const connection = new Connection(getRpcUrl(), { commitment: "confirmed" });
+    const cfg = await fetchConfig(connection);
+    if (!cfg) return;
+    await collectClaimStats(connection, cfg.stakingRewardVault, 9, cfg.stakingTotalStakedMind, 9);
+    void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
+  } catch {
+    // ignore warmup failures
+  }
+};
+
+void warmCaches();
+
 const formatUi = (amountBase: bigint, decimals: number) => {
   if (decimals <= 0) return amountBase.toString();
   const denom = 10n ** BigInt(decimals);
@@ -404,7 +421,7 @@ export async function GET() {
           cfg.stakingTotalStakedMind,
           mindDecimals
         ),
-        30_000
+        5_000
       );
     } catch (err) {
       if (claimCache) {

@@ -296,7 +296,8 @@ export async function GET() {
     const connection = new Connection(getRpcUrl(), { commitment: "confirmed" });
     const cfg = await fetchConfig(connection);
     if (!cfg) {
-      return NextResponse.json({ ...fallbackStats, error: "Config not found" }, { status: 200 });
+      const payload = toResponsePayload(fallbackStats, null, null);
+      return NextResponse.json({ ...payload, error: "Config not found" }, { status: 200 });
     }
 
     let xntDecimals = 9;

@@ -1586,12 +1586,7 @@ export function PublicDashboard() {
     const apr = (rewardPerSec * STAKING_SECONDS_PER_YEAR) / totalStaked;
     return apr * 100;
   }, [config, mintDecimals]);
-  const stakingApyPct = useMemo(() => {
-    if (stakingAprPct == null) return null;
-    const aprRate = stakingAprPct / 100;
-    const apyRate = Math.pow(1 + aprRate / 365, 365) - 1;
-    return apyRate * 100;
-  }, [stakingAprPct]);
+  // APY removed from UI; APR is shown directly in stats.
   const totalClaimedMind = mindBalance + (userStake?.stakedMind ?? 0n);
   const secondsPerDayNumber = config ? Number(config.secondsPerDay) : 86_400;
   const secondsIntoDay =
@@ -1837,7 +1832,6 @@ export function PublicDashboard() {
   );
 });
   const stakingAprDisplay = formatPercent(stakingAprPct);
-  const stakingApyDisplay = formatPercent(stakingApyPct);
   const lastClaimRounded =
     mintDecimals && lastClaimAmount != null
       ? formatRoundedToken(lastClaimAmount, mintDecimals.mind, 6)
@@ -3306,10 +3300,10 @@ export function PublicDashboard() {
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                    Current staking APY
+                    Current staking APR
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-white">
-                    {stakingApyPct != null ? `${stakingApyPct.toFixed(2)}%` : "—"}
+                    {stakingAprPct != null ? `${stakingAprPct.toFixed(2)}%` : "—"}
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-500">
                     Based on on-chain reward rate vs total staked MIND.

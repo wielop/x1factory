@@ -529,6 +529,8 @@ export function PublicDashboard() {
   const [stakingMindBalance, setStakingMindBalance] = useState<bigint>(0n);
   const [claimStats, setClaimStats] = useState<{
     totalXnt: string;
+    total7dXnt: string;
+    apr7dPct: number | null;
     events: number;
     updatedAt: string;
   } | null>(null);
@@ -1035,10 +1037,20 @@ export function PublicDashboard() {
         if (!active) return;
         const totalXnt =
           typeof data.totalXnt === "string" ? data.totalXnt : (data.totalBase ?? "0").toString();
+        const total7dXnt =
+          typeof data.total7dXnt === "string"
+            ? data.total7dXnt
+            : (data.total7dBase ?? "0").toString();
         const events = typeof data.events === "number" ? data.events : 0;
         const updatedAt =
           typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString();
-        setClaimStats({ totalXnt, events, updatedAt });
+        setClaimStats({
+          totalXnt,
+          total7dXnt,
+          apr7dPct: typeof data.apr7dPct === "number" ? data.apr7dPct : null,
+          events,
+          updatedAt,
+        });
       } catch (err) {
         if (!active) return;
         setClaimStatsError("Failed to load payout stats");
@@ -3307,6 +3319,17 @@ export function PublicDashboard() {
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-500">
                     Based on on-chain reward rate vs total staked MIND.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    7d realized APR
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {claimStats?.apr7dPct != null ? `${claimStats.apr7dPct.toFixed(2)}%` : "—"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    From last 7d XNT claims vs current staked base.
                   </div>
                 </div>
               </div>

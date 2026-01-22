@@ -15,6 +15,9 @@ const EVENT_DISCRIMINATOR = createHash("sha256")
 type ClaimStats = {
   totalBase: bigint;
   totalXnt: string;
+  total7dBase: bigint;
+  total7dXnt: string;
+  apr7dPct: number | null;
   events: number;
   updatedAt: string;
 };
@@ -49,7 +52,13 @@ const parseClaimEventsFromLogs = (logs: string[]) => {
   return events;
 };
 
-const collectClaimStats = async (connection: Connection, rewardVault: PublicKey, decimals: number) => {
+const collectClaimStats = async (
+  connection: Connection,
+  rewardVault: PublicKey,
+  decimals: number,
+  totalStakedMind: bigint,
+  mindDecimals: number
+) => {
   const now = Date.now();
   if (claimCache && now - claimCache.ts < CLAIM_CACHE_MS) {
     return claimCache.data;
@@ -73,7 +82,9 @@ const collectClaimStats = async (connection: Connection, rewardVault: PublicKey,
   }
 
   let total = claimCache ? claimCache.data.totalBase : 0n;
+  let total7d = 0n;
   let events = claimCache ? claimCache.data.events : 0;
+  const sevenDaysAgo = Math.floor(now / 1000) - 7 * 86_400;
   for (let i = 0; i < newSignatures.length; i += TX_BATCH_SIZE) {
     const chunk = newSignatures.slice(i, i + TX_BATCH_SIZE);
     const txs = await connection.getTransactions(chunk, {
@@ -82,18 +93,42 @@ const collectClaimStats = async (connection: Connection, rewardVault: PublicKey,
     });
     txs.forEach((tx) => {
       if (!tx?.meta?.logMessages) return;
+      const blockTime = tx.blockTime ?? 0;
       const parsed = parseClaimEventsFromLogs(tx.meta.logMessages);
       parsed.forEach((evt) => {
         total += evt.amount;
         events += 1;
+        if (blockTime >= sevenDaysAgo) {
+          total7d += evt.amount;
+        }
       });
     });
   }
+
+  if (claimCache && !newSignatures.length) {
+    total7d = claimCache.data.total7dBase;
+  }
+
+  const perSec7d =
+    total7d > 0n
+      ? Number(total7d) /
+        Math.pow(10, decimals) /
+        (7 * 86_400)
+      : 0;
+  const totalStakedUi =
+    totalStakedMind > 0n ? Number(totalStakedMind) / Math.pow(10, mindDecimals) : 0;
+  const apr7dPct =
+    totalStakedUi > 0 && perSec7d > 0
+      ? ((perSec7d * 31_536_000) / totalStakedUi) * 100
+      : null;
 
   const newestSig = newSignatures[0] ?? claimCache?.newestSig ?? null;
   const data: ClaimStats = {
     totalBase: total,
     totalXnt: formatUi(total, decimals),
+    total7dBase: total7d,
+    total7dXnt: formatUi(total7d, decimals),
+    apr7dPct,
     events,
     updatedAt: new Date().toISOString(),
   };
@@ -110,6 +145,7 @@ export async function GET() {
     }
 
     let xntDecimals = 9;
+    let mindDecimals = 9;
     if (!cfg.xntMint.equals(SystemProgram.programId)) {
       try {
         const mintInfo = await getMint(connection, cfg.xntMint, "confirmed");
@@ -118,10 +154,26 @@ export async function GET() {
         xntDecimals = 9;
       }
     }
+    try {
+      const mindMintInfo = await getMint(connection, cfg.mindMint, "confirmed");
+      mindDecimals = mindMintInfo.decimals;
+    } catch {
+      mindDecimals = 9;
+    }
 
-    const stats = await collectClaimStats(connection, cfg.stakingRewardVault, xntDecimals);
+    const stats = await collectClaimStats(
+      connection,
+      cfg.stakingRewardVault,
+      xntDecimals,
+      cfg.stakingTotalStakedMind,
+      mindDecimals
+    );
     return NextResponse.json(
-      { ...stats, totalBase: stats.totalBase.toString() },
+      {
+        ...stats,
+        totalBase: stats.totalBase.toString(),
+        total7dBase: stats.total7dBase.toString(),
+      },
       { status: 200 }
     );
   } catch (err) {

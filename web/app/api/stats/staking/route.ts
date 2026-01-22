@@ -513,65 +513,73 @@ export async function GET() {
       void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
     }
 
-    // Pricing via xDEX (Raydium CP swap) pools
-    const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);
-    const poolUsdc = await fetchPoolState(connection, POOL_XNT_USDC);
+    // Pricing via xDEX (Raydium CP swap) pools; tolerate failures
+    let mindInUsd: number | null = null;
+    let mindInXnt: number | null = null;
+    let xntInUsd: number | null = null;
+    let tvlUsd: number | null = null;
+    try {
+      const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);
+      const poolUsdc = await fetchPoolState(connection, POOL_XNT_USDC);
 
-    const mindDecimalsPool = await getMintDecimals(connection, MIND_MINT, mindDecimals);
-    const xntDecimalsPool = await getMintDecimals(connection, XNT_MINT, xntDecimals);
-    const usdcDecimalsPool = await getMintDecimals(connection, USDC_MINT, 6);
+      const mindDecimalsPool = await getMintDecimals(connection, MIND_MINT, mindDecimals);
+      const xntDecimalsPool = await getMintDecimals(connection, XNT_MINT, xntDecimals);
+      const usdcDecimalsPool = await getMintDecimals(connection, USDC_MINT, 6);
 
-    const [vault0Mind, vault1Mind, vault0Usdc, vault1Usdc] = await Promise.all([
-      connection.getTokenAccountBalance(poolMind.token0Vault, "confirmed"),
-      connection.getTokenAccountBalance(poolMind.token1Vault, "confirmed"),
-      connection.getTokenAccountBalance(poolUsdc.token0Vault, "confirmed"),
-      connection.getTokenAccountBalance(poolUsdc.token1Vault, "confirmed"),
-    ]);
+      const [vault0Mind, vault1Mind, vault0Usdc, vault1Usdc] = await Promise.all([
+        connection.getTokenAccountBalance(poolMind.token0Vault, "confirmed"),
+        connection.getTokenAccountBalance(poolMind.token1Vault, "confirmed"),
+        connection.getTokenAccountBalance(poolUsdc.token0Vault, "confirmed"),
+        connection.getTokenAccountBalance(poolUsdc.token1Vault, "confirmed"),
+      ]);
 
-    const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
+      const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
 
-    const mindVaultReserve =
-      poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
-    const xntVaultReserveMind =
-      poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+      const mindVaultReserve =
+        poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+      const xntVaultReserveMind =
+        poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
 
-    const xntVaultReserveUsdc =
-      poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
-    const usdcVaultReserve =
-      poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+      const xntVaultReserveUsdc =
+        poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+      const usdcVaultReserve =
+        poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
 
-    const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
-    const priceFromReserves = (
-      baseReserve: bigint,
-      quoteReserve: bigint,
-      baseDecimals: number,
-      quoteDecimals: number
-    ) => {
-      if (baseReserve === 0n || quoteReserve === 0n) return null;
-      const baseUi = toUi(baseReserve, baseDecimals);
-      const quoteUi = toUi(quoteReserve, quoteDecimals);
-      if (!Number.isFinite(baseUi) || baseUi === 0 || !Number.isFinite(quoteUi)) return null;
-      return quoteUi / baseUi;
-    };
+      const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
+      const priceFromReserves = (
+        baseReserve: bigint,
+        quoteReserve: bigint,
+        baseDecimals: number,
+        quoteDecimals: number
+      ) => {
+        if (baseReserve === 0n || quoteReserve === 0n) return null;
+        const baseUi = toUi(baseReserve, baseDecimals);
+        const quoteUi = toUi(quoteReserve, quoteDecimals);
+        if (!Number.isFinite(baseUi) || baseUi === 0 || !Number.isFinite(quoteUi)) return null;
+        return quoteUi / baseUi;
+      };
 
-    const mindInXnt = priceFromReserves(
-      mindVaultReserve,
-      xntVaultReserveMind,
-      mindDecimalsPool,
-      xntDecimalsPool
-    );
-    const xntInUsd = priceFromReserves(
-      xntVaultReserveUsdc,
-      usdcVaultReserve,
-      xntDecimalsPool,
-      usdcDecimalsPool
-    );
+      mindInXnt = priceFromReserves(
+        mindVaultReserve,
+        xntVaultReserveMind,
+        mindDecimalsPool,
+        xntDecimalsPool
+      );
+      xntInUsd = priceFromReserves(
+        xntVaultReserveUsdc,
+        usdcVaultReserve,
+        xntDecimalsPool,
+        usdcDecimalsPool
+      );
 
-    const mindInUsd = mindInXnt != null && xntInUsd != null ? mindInXnt * xntInUsd : null;
-    const tvlUsd =
-      mindInUsd != null
-        ? toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd
-        : null;
+      mindInUsd = mindInXnt != null && xntInUsd != null ? mindInXnt * xntInUsd : null;
+      tvlUsd =
+        mindInUsd != null
+          ? toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd
+          : null;
+    } catch {
+      // ignore pricing failures; return other stats
+    }
 
     const responsePayload = {
       ...stats,

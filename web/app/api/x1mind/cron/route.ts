@@ -42,7 +42,7 @@ const roundIdMemcmp = (roundId: bigint) => {
   const buf = Buffer.alloc(8);
   buf.writeBigUInt64LE(roundId);
   // UserEntry layout: 8 discriminator + 32 owner + 8 round_id
-  return { offset: 8 + 32, bytes: bs58.encode(buf) };
+  return { memcmp: { offset: 8 + 32, bytes: bs58.encode(buf) } };
 };
 
 const isAuthorized = (req: Request) => {

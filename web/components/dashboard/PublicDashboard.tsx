@@ -527,6 +527,12 @@ export function PublicDashboard() {
   const [mindBalance, setMindBalance] = useState<bigint>(0n);
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
   const [stakingMindBalance, setStakingMindBalance] = useState<bigint>(0n);
+  const [claimStats, setClaimStats] = useState<{
+    totalXnt: string;
+    events: number;
+    updatedAt: string;
+  } | null>(null);
+  const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
@@ -1016,6 +1022,34 @@ export function PublicDashboard() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    let active = true;
+    const loadClaimStats = async () => {
+      try {
+        setClaimStatsError(null);
+        const res = await fetch("/api/stats/staking", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!active) return;
+        const totalXnt =
+          typeof data.totalXnt === "string" ? data.totalXnt : (data.totalBase ?? "0").toString();
+        const events = typeof data.events === "number" ? data.events : 0;
+        const updatedAt =
+          typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString();
+        setClaimStats({ totalXnt, events, updatedAt });
+      } catch (err) {
+        if (!active) return;
+        setClaimStatsError("Błąd odczytu statystyk wypłat");
+      }
+    };
+    void loadClaimStats();
+    const id = window.setInterval(loadClaimStats, 600_000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -3238,6 +3272,17 @@ export function PublicDashboard() {
             <div className="mt-3 text-xs text-zinc-400">
               Claimable: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT
             </div>
+            <div className="mt-2 text-xs text-emerald-200">
+              Łącznie wypłacone:{" "}
+              {claimStats ? `${claimStats.totalXnt} XNT` : claimStatsError ? "—" : "…"}
+              <span className="text-[11px] text-zinc-500">
+                {claimStats ? ` · ${claimStats.events} claimów` : null}
+                {claimStats?.updatedAt ? ` · ${new Date(claimStats.updatedAt).toLocaleTimeString()}` : null}
+              </span>
+            </div>
+            {claimStatsError ? (
+              <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
+            ) : null}
             {!loading && mintDecimals && userStake?.stakedMind ? (
               userStake.stakedMind > 0n ? (
                 <div className="mt-2 text-[11px] text-zinc-500">

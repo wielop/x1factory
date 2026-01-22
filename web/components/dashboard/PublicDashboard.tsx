@@ -3307,7 +3307,7 @@ export function PublicDashboard() {
             </div>
 
             {statsTab === "payouts" ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-4">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                     Total paid out
@@ -3324,9 +3324,20 @@ export function PublicDashboard() {
                       Updated {new Date(claimStats.updatedAt).toLocaleTimeString()}
                     </div>
                   ) : null}
-                  {claimStatsError ? (
-                    <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
-                  ) : null}
+                    {claimStatsError ? (
+                      <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
+                    ) : null}
+                  </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    Active stakers
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {activeStakersSummary.unique ?? ACTIVE_STAKERS_SUMMARY.unique}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    Unique wallets with staked MIND.
+                  </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">

@@ -3295,10 +3295,11 @@ export function PublicDashboard() {
                   <div className="mt-2 text-2xl font-semibold text-white">
                     {claimStats ? `${claimStats.totalXnt} XNT` : claimStatsError ? "—" : "…"}
                   </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    Pulled from `XntClaimed` logs on rpc.mainnet.x1.xyz
-                    {claimStats?.updatedAt ? ` · ${new Date(claimStats.updatedAt).toLocaleTimeString()}` : ""}
-                  </div>
+                  {claimStats?.updatedAt ? (
+                    <div className="mt-1 text-[11px] text-zinc-500">
+                      Updated {new Date(claimStats.updatedAt).toLocaleTimeString()}
+                    </div>
+                  ) : null}
                   {claimStatsError ? (
                     <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
                   ) : null}

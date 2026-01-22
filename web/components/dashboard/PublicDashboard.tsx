@@ -3275,10 +3275,6 @@ export function PublicDashboard() {
             <div className="mt-2 text-xs text-emerald-200">
               Total paid out:{" "}
               {claimStats ? `${claimStats.totalXnt} XNT` : claimStatsError ? "—" : "…"}
-              <span className="text-[11px] text-zinc-500">
-                {claimStats ? ` · ${claimStats.events} claims` : null}
-                {claimStats?.updatedAt ? ` · ${new Date(claimStats.updatedAt).toLocaleTimeString()}` : null}
-              </span>
             </div>
             {claimStatsError ? (
               <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>

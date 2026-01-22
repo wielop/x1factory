@@ -320,7 +320,7 @@ export async function GET() {
     const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
     let stats: ClaimStats | null = preferCached ? claimCache!.data : null;
 
-    // If no useful cache, block briefly to warm it; otherwise return cache immediately and refresh in background
+    // If no useful cache, block (generous timeout) to warm it; otherwise return cache immediately and refresh in background
     if (!stats) {
       try {
         stats = await withTimeout(
@@ -331,7 +331,7 @@ export async function GET() {
             cfg.stakingTotalStakedMind,
             mindDecimals
           ),
-          8_000
+          25_000
         );
       } catch {
         stats = claimCache?.data ?? fallbackStats;

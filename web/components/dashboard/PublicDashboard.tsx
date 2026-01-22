@@ -532,6 +532,7 @@ export function PublicDashboard() {
     total7dXnt: string;
     last24hXnt: string;
     apr7dPct: number | null;
+    burnedTotalBase?: string;
     events: number;
     updatedAt: string;
     tvlUsd?: number;
@@ -1061,6 +1062,12 @@ export function PublicDashboard() {
           data.price && typeof data.price.mindUsd === "number"
             ? data.price.mindUsd
             : undefined;
+        const burnedTotalBase =
+          typeof data.burnedTotalBase === "string"
+            ? data.burnedTotalBase
+            : typeof data.burnedTotalBase === "number"
+            ? BigInt(data.burnedTotalBase).toString()
+            : undefined;
         setClaimStats({
           totalXnt,
           total7dXnt,
@@ -1070,6 +1077,7 @@ export function PublicDashboard() {
           updatedAt,
           tvlUsd,
           priceMindUsd,
+          burnedTotalBase,
         });
       } catch (err) {
         if (!active) return;
@@ -3313,7 +3321,7 @@ export function PublicDashboard() {
             </div>
 
             {statsTab === "payouts" ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+              <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                     Total paid out
@@ -3397,6 +3405,19 @@ export function PublicDashboard() {
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-500">
                     From last 7d XNT claims vs current staked base.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    Burned tokens
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {mintDecimals && claimStats?.burnedTotalBase
+                      ? `${formatTokenAmount(BigInt(claimStats.burnedTotalBase), mintDecimals.mind, 2)} MIND`
+                      : "—"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    Unstake burn + level-up burn, lifetime.
                   </div>
                 </div>
               </div>

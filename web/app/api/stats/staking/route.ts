@@ -269,38 +269,68 @@ export async function GET() {
       connection.getTokenAccountBalance(poolUsdc.token1Vault, "confirmed"),
     ]);
 
-    const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
+  const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
 
-    const mindVaultReserve =
-      poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
-    const xntVaultReserveMind =
-      poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+  const mindVaultReserve =
+    poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+  const xntVaultReserveMind =
+    poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
 
-    const xntVaultReserveUsdc =
-      poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
-    const usdcVaultReserve =
-      poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+  const xntVaultReserveUsdc =
+    poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+  const usdcVaultReserve =
+    poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
 
-    const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
+  const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
+  const priceFromReserves = (
+    baseReserve: bigint,
+    quoteReserve: bigint,
+    baseDecimals: number,
+    quoteDecimals: number
+  ) => {
+    if (baseReserve === 0n || quoteReserve === 0n) return null;
+    const scale = 1_000_000n;
+    const num =
+      quoteReserve *
+      (10n ** BigInt(baseDecimals)) *
+      scale;
+    const denom = baseReserve * (10n ** BigInt(quoteDecimals));
+    const priceScaled = num / denom;
+    return Number(priceScaled) / Number(scale);
+  };
 
-    const mindInXnt =
-      toUi(xntVaultReserveMind, xntDecimalsPool) / toUi(mindVaultReserve, mindDecimalsPool || mindDecimals);
-    const xntInUsd =
-      toUi(usdcVaultReserve, usdcDecimalsPool || 6) / toUi(xntVaultReserveUsdc, xntDecimalsPool);
+  const mindInXnt = priceFromReserves(
+    mindVaultReserve,
+    xntVaultReserveMind,
+    mindDecimalsPool || mindDecimals,
+    xntDecimalsPool
+  );
+  const xntInUsd = priceFromReserves(
+    xntVaultReserveUsdc,
+    usdcVaultReserve,
+    xntDecimalsPool,
+    usdcDecimalsPool || 6
+  );
 
-    const mindInUsd = mindInXnt * xntInUsd;
-    const tvlUsd = toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd;
+  const mindInUsd = mindInXnt != null && xntInUsd != null ? mindInXnt * xntInUsd : null;
+  const tvlUsd =
+    mindInUsd != null
+      ? toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd
+      : null;
 
     return NextResponse.json(
       {
         ...stats,
         totalBase: stats.totalBase.toString(),
         total7dBase: stats.total7dBase.toString(),
-        price: {
-          mindUsd: mindInUsd,
-          mindXnt: mindInXnt,
-          xntUsd: xntInUsd,
-        },
+        price:
+          mindInUsd != null && mindInXnt != null && xntInUsd != null
+            ? {
+                mindUsd: mindInUsd,
+                mindXnt: mindInXnt,
+                xntUsd: xntInUsd,
+              }
+            : null,
         tvlUsd,
       },
       { status: 200 }

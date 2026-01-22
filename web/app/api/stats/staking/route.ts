@@ -429,6 +429,7 @@ export async function GET() {
     if (!burnTotals) {
       // kick off burn aggregation in the background; don't block the response
       void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
+      burnTotals = { ts: Date.now(), burned: 0n, levelUpBurned: 0n, newestSig: null };
     }
 
     // Pricing via xDEX (Raydium CP swap) pools
@@ -506,8 +507,8 @@ export async function GET() {
               }
             : null,
         tvlUsd,
-        burnedTotalBase: burnTotals?.burned ? burnTotals.burned.toString() : undefined,
-        burnedLevelUpBase: burnTotals?.levelUpBurned ? burnTotals.levelUpBurned.toString() : undefined,
+        burnedTotalBase: burnTotals?.burned ? burnTotals.burned.toString() : "0",
+        burnedLevelUpBase: burnTotals?.levelUpBurned ? burnTotals.levelUpBurned.toString() : "0",
       },
       { status: 200 }
     );

@@ -1040,7 +1040,7 @@ export function PublicDashboard() {
         setClaimStats({ totalXnt, events, updatedAt });
       } catch (err) {
         if (!active) return;
-        setClaimStatsError("Błąd odczytu statystyk wypłat");
+        setClaimStatsError("Failed to load payout stats");
       }
     };
     void loadClaimStats();
@@ -3273,10 +3273,10 @@ export function PublicDashboard() {
               Claimable: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT
             </div>
             <div className="mt-2 text-xs text-emerald-200">
-              Łącznie wypłacone:{" "}
+              Total paid out:{" "}
               {claimStats ? `${claimStats.totalXnt} XNT` : claimStatsError ? "—" : "…"}
               <span className="text-[11px] text-zinc-500">
-                {claimStats ? ` · ${claimStats.events} claimów` : null}
+                {claimStats ? ` · ${claimStats.events} claims` : null}
                 {claimStats?.updatedAt ? ` · ${new Date(claimStats.updatedAt).toLocaleTimeString()}` : null}
               </span>
             </div>

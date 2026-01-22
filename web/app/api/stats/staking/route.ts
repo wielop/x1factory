@@ -81,9 +81,11 @@ const collectClaimStats = async (
   }
 
   let total = claimCache ? claimCache.data.totalBase : 0n;
-  let total7d = 0n;
-  let events = claimCache ? claimCache.data.events : 0;
-  const sevenDaysAgo = Math.floor(now / 1000) - 7 * 86_400;
+let total7d = 0n;
+let last24h = 0n;
+let events = claimCache ? claimCache.data.events : 0;
+const sevenDaysAgo = Math.floor(now / 1000) - 7 * 86_400;
+const oneDayAgo = Math.floor(now / 1000) - 86_400;
   for (let i = 0; i < newSignatures.length; i += TX_BATCH_SIZE) {
     const chunk = newSignatures.slice(i, i + TX_BATCH_SIZE);
     const txs = await connection.getTransactions(chunk, {
@@ -100,13 +102,17 @@ const collectClaimStats = async (
         if (blockTime >= sevenDaysAgo) {
           total7d += evt.amount;
         }
+        if (blockTime >= oneDayAgo) {
+          last24h += evt.amount;
+        }
       });
     });
   }
 
-  if (claimCache && !newSignatures.length) {
-    total7d = claimCache.data.total7dBase;
-  }
+if (claimCache && !newSignatures.length) {
+  total7d = claimCache.data.total7dBase;
+  last24h = claimCache.data.last24hBase;
+}
 
   const perSec7d =
     total7d > 0n
@@ -121,16 +127,18 @@ const collectClaimStats = async (
       ? ((perSec7d * 31_536_000) / totalStakedUi) * 100
       : null;
 
-  const newestSig = newSignatures[0] ?? claimCache?.newestSig ?? null;
-  const data: ClaimStats = {
-    totalBase: total,
-    totalXnt: formatUi(total, decimals),
-    total7dBase: total7d,
-    total7dXnt: formatUi(total7d, decimals),
-    apr7dPct,
-    events,
-    updatedAt: new Date().toISOString(),
-  };
+const newestSig = newSignatures[0] ?? claimCache?.newestSig ?? null;
+const data: ClaimStats = {
+  totalBase: total,
+  totalXnt: formatUi(total, decimals),
+  total7dBase: total7d,
+  total7dXnt: formatUi(total7d, decimals),
+  last24hBase: last24h,
+  last24hXnt: formatUi(last24h, decimals),
+  apr7dPct,
+  events,
+  updatedAt: new Date().toISOString(),
+};
   claimCache = { ts: now, data, newestSig };
   return data;
 };

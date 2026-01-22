@@ -530,6 +530,7 @@ export function PublicDashboard() {
   const [claimStats, setClaimStats] = useState<{
     totalXnt: string;
     total7dXnt: string;
+    last24hXnt: string;
     apr7dPct: number | null;
     events: number;
     updatedAt: string;
@@ -1043,6 +1044,10 @@ export function PublicDashboard() {
           typeof data.total7dXnt === "string"
             ? data.total7dXnt
             : (data.total7dBase ?? "0").toString();
+        const last24hXnt =
+          typeof data.last24hXnt === "string"
+            ? data.last24hXnt
+            : (data.last24hBase ?? "0").toString();
         const events = typeof data.events === "number" ? data.events : 0;
         const updatedAt =
           typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString();
@@ -1059,6 +1064,7 @@ export function PublicDashboard() {
         setClaimStats({
           totalXnt,
           total7dXnt,
+          last24hXnt,
           apr7dPct: typeof data.apr7dPct === "number" ? data.apr7dPct : null,
           events,
           updatedAt,
@@ -3307,7 +3313,7 @@ export function PublicDashboard() {
             </div>
 
             {statsTab === "payouts" ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+              <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-5">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                     Total paid out
@@ -3338,6 +3344,15 @@ export function PublicDashboard() {
                   <div className="mt-1 text-[11px] text-zinc-500">
                     Unique wallets with staked MIND.
                   </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    Rewards last 24h
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {claimStats ? `+${Number(claimStats.last24hXnt).toFixed(2)} XNT` : "—"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">Distributed in last 24h.</div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">

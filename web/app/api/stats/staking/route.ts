@@ -310,20 +310,33 @@ export async function GET() {
     const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
     let stats: ClaimStats | null = preferCached ? claimCache!.data : null;
 
-    // Always trigger background refresh (incremental by newestSig) but never block the response
-    void collectClaimStats(
-      connection,
-      cfg.stakingRewardVault,
-      xntDecimals,
-      cfg.stakingTotalStakedMind,
-      mindDecimals
-    ).catch(() => null);
+    // If no useful cache, block briefly to warm it; otherwise return cache immediately and refresh in background
+    if (!stats) {
+      try {
+        stats = await withTimeout(
+          collectClaimStats(
+            connection,
+            cfg.stakingRewardVault,
+            xntDecimals,
+            cfg.stakingTotalStakedMind,
+            mindDecimals
+          ),
+          8_000
+        );
+      } catch {
+        stats = claimCache?.data ?? fallbackStats;
+      }
+    } else if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
+      void collectClaimStats(
+        connection,
+        cfg.stakingRewardVault,
+        xntDecimals,
+        cfg.stakingTotalStakedMind,
+        mindDecimals
+      ).catch(() => null);
+    }
 
     const effectiveStats = stats ?? claimCache?.data ?? fallbackStats;
-
-    if (!stats) {
-      stats = fallbackStats;
-    }
 
     // Pricing via xDEX (Raydium CP swap) pools; tolerate failures
     let mindInUsd: number | null = null;

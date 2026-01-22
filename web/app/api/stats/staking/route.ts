@@ -3,6 +3,7 @@ import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import { getMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash } from "crypto";
 import bs58 from "bs58";
+import fs from "fs/promises";
 import { fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,7 @@ let burnCache:
       newestSig: string | null;
     }
   | null = null;
+const CACHE_PATH = "/tmp/staking_stats_cache.json";
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
@@ -74,6 +76,43 @@ const warmCaches = async () => {
 };
 
 void warmCaches();
+
+const loadPersistentCache = async () => {
+  try {
+    const raw = await fs.readFile(CACHE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed.claim) {
+      claimCache = {
+        ts: parsed.claim.ts,
+        newestSig: parsed.claim.newestSig ?? null,
+        data: {
+          ...parsed.claim.data,
+          totalBase: BigInt(parsed.claim.data.totalBase),
+          total7dBase: BigInt(parsed.claim.data.total7dBase),
+          last24hBase: BigInt(parsed.claim.data.last24hBase),
+          burnedTotalBase: parsed.claim.data.burnedTotalBase
+            ? BigInt(parsed.claim.data.burnedTotalBase)
+            : undefined,
+          burnedLevelUpBase: parsed.claim.data.burnedLevelUpBase
+            ? BigInt(parsed.claim.data.burnedLevelUpBase)
+            : undefined,
+        },
+      };
+    }
+    if (parsed.burn) {
+      burnCache = {
+        ts: parsed.burn.ts,
+        newestSig: parsed.burn.newestSig ?? null,
+        burned: BigInt(parsed.burn.burned),
+        levelUpBurned: BigInt(parsed.burn.levelUpBurned),
+      };
+    }
+  } catch {
+    // ignore missing/invalid cache
+  }
+};
+
+void loadPersistentCache();
 
 const formatUi = (amountBase: bigint, decimals: number) => {
   if (decimals <= 0) return amountBase.toString();
@@ -509,26 +548,35 @@ export async function GET() {
       ? toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd
       : null;
 
-    return NextResponse.json(
-      {
-        ...stats,
-        totalBase: stats.totalBase.toString(),
-        total7dBase: stats.total7dBase.toString(),
-        last24hBase: stats.last24hBase.toString(),
-        price:
-          mindInUsd != null && mindInXnt != null && xntInUsd != null
-            ? {
-                mindUsd: mindInUsd,
-                mindXnt: mindInXnt,
-                xntUsd: xntInUsd,
-              }
-            : null,
-        tvlUsd,
-        burnedTotalBase: burnTotals?.burned ? burnTotals.burned.toString() : "0",
-        burnedLevelUpBase: burnTotals?.levelUpBurned ? burnTotals.levelUpBurned.toString() : "0",
-      },
-      { status: 200 }
-    );
+    const responsePayload = {
+      ...stats,
+      totalBase: stats.totalBase.toString(),
+      total7dBase: stats.total7dBase.toString(),
+      last24hBase: stats.last24hBase.toString(),
+      price:
+        mindInUsd != null && mindInXnt != null && xntInUsd != null
+          ? {
+              mindUsd: mindInUsd,
+              mindXnt: mindInXnt,
+              xntUsd: xntInUsd,
+            }
+          : null,
+      tvlUsd,
+      burnedTotalBase: burnTotals?.burned ? burnTotals.burned.toString() : "0",
+      burnedLevelUpBase: burnTotals?.levelUpBurned ? burnTotals.levelUpBurned.toString() : "0",
+    };
+
+    // persist for future cold starts
+    void fs.writeFile(
+      CACHE_PATH,
+      JSON.stringify({
+        claim: claimCache,
+        burn: burnCache,
+      }),
+      "utf8"
+    ).catch(() => null);
+
+    return NextResponse.json(responsePayload, { status: 200 });
   } catch (err) {
     console.error("Failed to collect staking claim stats", err);
     return NextResponse.json({ error: "Failed to load stats" }, { status: 500 });

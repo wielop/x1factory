@@ -51,6 +51,15 @@ let burnCache:
     }
   | null = null;
 
+const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), ms)
+    ),
+  ]) as Promise<T>;
+};
+
 const formatUi = (amountBase: bigint, decimals: number) => {
   if (decimals <= 0) return amountBase.toString();
   const denom = 10n ** BigInt(decimals);
@@ -387,15 +396,32 @@ export async function GET() {
       mindDecimals = 9;
     }
 
-    const stats = await collectClaimStats(
-      connection,
-      cfg.stakingRewardVault,
-      xntDecimals,
-      cfg.stakingTotalStakedMind,
-      mindDecimals
-    );
+    let stats: ClaimStats;
+    try {
+      stats = await withTimeout(
+        collectClaimStats(
+          connection,
+          cfg.stakingRewardVault,
+          xntDecimals,
+          cfg.stakingTotalStakedMind,
+          mindDecimals
+        ),
+        10_000
+      );
+    } catch (err) {
+      if (claimCache) {
+        stats = claimCache.data;
+      } else {
+        throw err;
+      }
+    }
 
-    const burnTotals = await collectBurnTotals(connection, cfg.mindMint);
+    let burnTotals: Awaited<ReturnType<typeof collectBurnTotals>> | null = null;
+    try {
+      burnTotals = await withTimeout(collectBurnTotals(connection, cfg.mindMint), 5_000);
+    } catch {
+      burnTotals = burnCache;
+    }
 
     // Pricing via xDEX (Raydium CP swap) pools
     const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);

@@ -197,6 +197,15 @@ const XNT_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 const USDC_MINT = new PublicKey("B69chRzqzDCmdB5WYB8NRu5Yv5ZA95ABiZcdzCgGm9Tq");
 const RAYDIUM_PROGRAM = new PublicKey("sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN");
 
+const toResponsePayload = (stats: ClaimStats, price: any, tvlUsd: number | null) => ({
+  ...stats,
+  totalBase: stats.totalBase.toString(),
+  total7dBase: stats.total7dBase.toString(),
+  last24hBase: stats.last24hBase.toString(),
+  price,
+  tvlUsd,
+});
+
 const decodePoolState = (data: Buffer): PoolState => {
   const offset = 8; // anchor account discriminator
   let idx = offset;
@@ -279,7 +288,7 @@ export async function GET() {
     // Avoid hitting on-chain during build-time prerender attempts
     if (process.env.NEXT_PHASE === "phase-production-build") {
       return NextResponse.json(
-        { status: "skip-during-build", cached: claimCache?.data ?? fallbackStats },
+        toResponsePayload(claimCache?.data ?? fallbackStats, null, null),
         { status: 200 }
       );
     }
@@ -406,21 +415,15 @@ export async function GET() {
       // ignore pricing failures; return other stats
     }
 
-    const responsePayload = {
-      ...effectiveStats,
-      totalBase: effectiveStats.totalBase.toString(),
-      total7dBase: effectiveStats.total7dBase.toString(),
-      last24hBase: effectiveStats.last24hBase.toString(),
-      price:
-        mindInUsd != null && mindInXnt != null && xntInUsd != null
-          ? {
-              mindUsd: mindInUsd,
-              mindXnt: mindInXnt,
-              xntUsd: xntInUsd,
-            }
-          : null,
-      tvlUsd,
-    };
+    const price =
+      mindInUsd != null && mindInXnt != null && xntInUsd != null
+        ? {
+            mindUsd: mindInUsd,
+            mindXnt: mindInXnt,
+            xntUsd: xntInUsd,
+          }
+        : null;
+    const responsePayload = toResponsePayload(effectiveStats, price, tvlUsd);
 
     // persist for future cold starts
     void fs.writeFile(
@@ -434,6 +437,6 @@ export async function GET() {
     return NextResponse.json(responsePayload, { status: 200 });
   } catch (err) {
     console.error("Failed to collect staking claim stats", err);
-    return NextResponse.json(fallbackStats, { status: 200 });
+    return NextResponse.json(toResponsePayload(fallbackStats, null, null), { status: 200 });
   }
 }

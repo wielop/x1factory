@@ -3313,7 +3313,11 @@ export function PublicDashboard() {
                     Total paid out
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-white">
-                    {claimStats ? `${claimStats.totalXnt} XNT` : claimStatsError ? "—" : "…"}
+                    {claimStats
+                      ? `${Number(claimStats.totalXnt).toFixed(2)} XNT`
+                      : claimStatsError
+                      ? "—"
+                      : "…"}
                   </div>
                   {claimStats?.updatedAt ? (
                     <div className="mt-1 text-[11px] text-zinc-500">
@@ -3345,9 +3349,6 @@ export function PublicDashboard() {
                     {claimStats?.tvlUsd != null
                       ? `$${claimStats.tvlUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
                       : "—"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    Uses live MIND/XNT and XNT/USDC from xDEX.
                   </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">

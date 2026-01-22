@@ -3305,7 +3305,7 @@ export function PublicDashboard() {
                   ) : null}
                 </div>
               </div>
-            )}
+            ) : null}
           </Card>
         </section>
 

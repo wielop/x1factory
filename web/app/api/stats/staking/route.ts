@@ -147,7 +147,7 @@ type PoolState = {
 const POOL_MIND_XNT = new PublicKey("FAVw1iDioK69epJf1YY3Z1oakSCUYtmfUpVBxR14BGpm");
 const POOL_XNT_USDC = new PublicKey("CAJeVEoSm1QQZccnCqYu9cnNF7TTD2fcUA3E5HQoxRvR");
 const MIND_MINT = new PublicKey("DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT");
-const XNT_MINT = new PublicKey("11111111111111111111111111111111");
+const XNT_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 const USDC_MINT = new PublicKey("B69chRzqzDCmdB5WYB8NRu5Yv5ZA95ABiZcdzCgGm9Tq");
 const RAYDIUM_PROGRAM = new PublicKey("sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN");
 

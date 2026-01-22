@@ -3330,7 +3330,7 @@ export function PublicDashboard() {
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-white">
                     {config && mintDecimals
-                      ? `${formatTokenAmount(config.stakingTotalStakedMind, mintDecimals.mind, 4)} MIND`
+                      ? `${formatTokenAmount(config.stakingTotalStakedMind, mintDecimals.mind, 1)} MIND`
                       : "—"}
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-500">

@@ -426,13 +426,21 @@ export async function GET() {
     const responsePayload = toResponsePayload(effectiveStats, price, tvlUsd);
 
     // persist for future cold starts
-    void fs.writeFile(
-      CACHE_PATH,
-      JSON.stringify({
-        claim: claimCache,
-      }),
-      "utf8"
-    ).catch(() => null);
+    if (claimCache) {
+      const serializedClaim = {
+        ts: claimCache.ts,
+        newestSig: claimCache.newestSig,
+        data: {
+          ...claimCache.data,
+          totalBase: claimCache.data.totalBase.toString(),
+          total7dBase: claimCache.data.total7dBase.toString(),
+          last24hBase: claimCache.data.last24hBase.toString(),
+        },
+      };
+      void fs
+        .writeFile(CACHE_PATH, JSON.stringify({ claim: serializedClaim }), "utf8")
+        .catch(() => null);
+    }
 
     return NextResponse.json(responsePayload, { status: 200 });
   } catch (err) {

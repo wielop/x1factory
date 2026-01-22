@@ -536,7 +536,14 @@ export function PublicDashboard() {
     updatedAt: string;
     tvlUsd?: number;
     priceMindUsd?: number;
-  } | null>(null);
+  } | null>({
+    totalXnt: "0",
+    total7dXnt: "0",
+    last24hXnt: "0",
+    apr7dPct: null,
+    events: 0,
+    updatedAt: new Date().toISOString(),
+  });
   const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);

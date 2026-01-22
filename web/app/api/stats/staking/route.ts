@@ -262,11 +262,24 @@ const getMintDecimals = async (connection: Connection, mint: PublicKey, fallback
 };
 
 export async function GET() {
+  // Always return 200 with best-effort data to avoid frontend failures
+  const fallbackStats: ClaimStats = {
+    totalBase: 0n,
+    totalXnt: "0",
+    total7dBase: 0n,
+    total7dXnt: "0",
+    last24hBase: 0n,
+    last24hXnt: "0",
+    apr7dPct: null,
+    events: 0,
+    updatedAt: new Date().toISOString(),
+  };
+
   try {
     // Avoid hitting on-chain during build-time prerender attempts
     if (process.env.NEXT_PHASE === "phase-production-build") {
       return NextResponse.json(
-        { status: "skip-during-build", cached: claimCache?.data ?? null },
+        { status: "skip-during-build", cached: claimCache?.data ?? fallbackStats },
         { status: 200 }
       );
     }
@@ -274,7 +287,7 @@ export async function GET() {
     const connection = new Connection(getRpcUrl(), { commitment: "confirmed" });
     const cfg = await fetchConfig(connection);
     if (!cfg) {
-      return NextResponse.json({ error: "Config not found" }, { status: 404 });
+      return NextResponse.json({ ...fallbackStats, error: "Config not found" }, { status: 200 });
     }
 
     let xntDecimals = 9;
@@ -295,19 +308,21 @@ export async function GET() {
     }
 
     const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
-    let stats: ClaimStats | null = null;
-    if (preferCached) {
-      stats = claimCache!.data;
-      if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
-        void collectClaimStats(
-          connection,
-          cfg.stakingRewardVault,
-          xntDecimals,
-          cfg.stakingTotalStakedMind,
-          mindDecimals
-        ).catch(() => null);
-      }
-    } else {
+    let stats: ClaimStats | null = preferCached ? claimCache!.data : null;
+
+    // Kick off a background refresh if cache is stale or missing
+    const triggerRefresh = () =>
+      collectClaimStats(
+        connection,
+        cfg.stakingRewardVault,
+        xntDecimals,
+        cfg.stakingTotalStakedMind,
+        mindDecimals
+      ).catch(() => null);
+
+    if (!stats) {
+      // Try quickly to get fresh data; fall back immediately on timeout
+      triggerRefresh();
       try {
         stats = await withTimeout(
           collectClaimStats(
@@ -317,40 +332,17 @@ export async function GET() {
             cfg.stakingTotalStakedMind,
             mindDecimals
           ),
-          30_000
+          5_000
         );
-      } catch (err) {
-        if (claimCache) {
-          stats = claimCache.data;
-        } else {
-          // fall back to zeros instead of failing the route
-          stats = {
-            totalBase: 0n,
-            totalXnt: "0",
-            total7dBase: 0n,
-            total7dXnt: "0",
-            last24hBase: 0n,
-            last24hXnt: "0",
-            apr7dPct: null,
-            events: 0,
-            updatedAt: new Date().toISOString(),
-          };
-        }
+      } catch {
+        stats = claimCache?.data ?? fallbackStats;
       }
+    } else if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
+      void triggerRefresh();
     }
 
     if (!stats) {
-      stats = {
-        totalBase: 0n,
-        totalXnt: "0",
-        total7dBase: 0n,
-        total7dXnt: "0",
-        last24hBase: 0n,
-        last24hXnt: "0",
-        apr7dPct: null,
-        events: 0,
-        updatedAt: new Date().toISOString(),
-      };
+      stats = fallbackStats;
     }
 
     // Pricing via xDEX (Raydium CP swap) pools; tolerate failures
@@ -449,6 +441,6 @@ export async function GET() {
     return NextResponse.json(responsePayload, { status: 200 });
   } catch (err) {
     console.error("Failed to collect staking claim stats", err);
-    return NextResponse.json({ error: "Failed to load stats" }, { status: 500 });
+    return NextResponse.json(fallbackStats, { status: 200 });
   }
 }

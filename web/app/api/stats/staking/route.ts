@@ -3,7 +3,6 @@ import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import { getMint } from "@solana/spl-token";
 import { createHash } from "crypto";
 import { fetchConfig, getRpcUrl } from "@/lib/solana";
-
 const SIGNATURE_PAGE_LIMIT = 1000;
 const TX_BATCH_SIZE = 25;
 const CLAIM_CACHE_MS = 60 * 1000;
@@ -136,6 +135,86 @@ const collectClaimStats = async (
   return data;
 };
 
+type PoolState = {
+  token0Vault: PublicKey;
+  token1Vault: PublicKey;
+  token0Mint: PublicKey;
+  token1Mint: PublicKey;
+  mint0Decimals: number;
+  mint1Decimals: number;
+};
+
+const POOL_MIND_XNT = new PublicKey("FAVw1iDioK69epJf1YY3Z1oakSCUYtmfUpVBxR14BGpm");
+const POOL_XNT_USDC = new PublicKey("CAJeVEoSm1QQZccnCqYu9cnNF7TTD2fcUA3E5HQoxRvR");
+const MIND_MINT = new PublicKey("DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT");
+const XNT_MINT = new PublicKey("11111111111111111111111111111111");
+const USDC_MINT = new PublicKey("B69chRzqzDCmdB5WYB8NRu5Yv5ZA95ABiZcdzCgGm9Tq");
+const RAYDIUM_PROGRAM = new PublicKey("sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN");
+
+const decodePoolState = (data: Buffer): PoolState => {
+  const offset = 8; // anchor account discriminator
+  let idx = offset;
+  const readPubkey = () => {
+    const pk = new PublicKey(data.subarray(idx, idx + 32));
+    idx += 32;
+    return pk;
+  };
+  const skipPubkeys = (count: number) => {
+    idx += 32 * count;
+  };
+  // order per IDL
+  skipPubkeys(0);
+  const ammConfig = readPubkey();
+  const poolCreator = readPubkey();
+  const token0Vault = readPubkey();
+  const token1Vault = readPubkey();
+  const lpMint = readPubkey();
+  const token0Mint = readPubkey();
+  const token1Mint = readPubkey();
+  const token0Program = readPubkey();
+  const token1Program = readPubkey();
+  const observationKey = readPubkey();
+  // bumps / status / decimals
+  const authBump = data.readUInt8(idx);
+  idx += 1;
+  const status = data.readUInt8(idx);
+  idx += 1;
+  const lpMintDecimals = data.readUInt8(idx);
+  idx += 1;
+  const mint0Decimals = data.readUInt8(idx);
+  idx += 1;
+  const mint1Decimals = data.readUInt8(idx);
+  idx += 1;
+  return {
+    token0Vault,
+    token1Vault,
+    token0Mint,
+    token1Mint,
+    mint0Decimals,
+    mint1Decimals,
+  };
+};
+
+const fetchPoolState = async (connection: Connection, address: PublicKey): Promise<PoolState> => {
+  const info = await connection.getAccountInfo(address, "confirmed");
+  if (!info) {
+    throw new Error(`PoolState not found: ${address.toBase58()}`);
+  }
+  if (!info.owner.equals(RAYDIUM_PROGRAM)) {
+    throw new Error(`PoolState owner mismatch: ${info.owner.toBase58()}`);
+  }
+  return decodePoolState(info.data);
+};
+
+const getMintDecimals = async (connection: Connection, mint: PublicKey, fallback = 9) => {
+  try {
+    const info = await getMint(connection, mint, "confirmed");
+    return info.decimals ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export async function GET() {
   try {
     const connection = new Connection(getRpcUrl(), { commitment: "confirmed" });
@@ -168,11 +247,61 @@ export async function GET() {
       cfg.stakingTotalStakedMind,
       mindDecimals
     );
+
+    // Pricing via xDEX (Raydium CP swap) pools
+    const poolMind = await fetchPoolState(connection, POOL_MIND_XNT);
+    const poolUsdc = await fetchPoolState(connection, POOL_XNT_USDC);
+
+    const mindDecimalsPool = poolMind.token0Mint.equals(MIND_MINT)
+      ? poolMind.mint0Decimals
+      : poolMind.mint1Decimals;
+    const xntDecimalsPool = poolMind.token0Mint.equals(XNT_MINT)
+      ? poolMind.mint0Decimals
+      : poolMind.mint1Decimals;
+    const usdcDecimalsPool = poolUsdc.token0Mint.equals(USDC_MINT)
+      ? poolUsdc.mint0Decimals
+      : poolUsdc.mint1Decimals;
+
+    const [vault0Mind, vault1Mind, vault0Usdc, vault1Usdc] = await Promise.all([
+      connection.getTokenAccountBalance(poolMind.token0Vault, "confirmed"),
+      connection.getTokenAccountBalance(poolMind.token1Vault, "confirmed"),
+      connection.getTokenAccountBalance(poolUsdc.token0Vault, "confirmed"),
+      connection.getTokenAccountBalance(poolUsdc.token1Vault, "confirmed"),
+    ]);
+
+    const getReserve = (bal: { value: { amount?: string } }) => BigInt(bal.value.amount || "0");
+
+    const mindVaultReserve =
+      poolMind.token0Mint.equals(MIND_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+    const xntVaultReserveMind =
+      poolMind.token0Mint.equals(XNT_MINT) ? getReserve(vault0Mind) : getReserve(vault1Mind);
+
+    const xntVaultReserveUsdc =
+      poolUsdc.token0Mint.equals(XNT_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+    const usdcVaultReserve =
+      poolUsdc.token0Mint.equals(USDC_MINT) ? getReserve(vault0Usdc) : getReserve(vault1Usdc);
+
+    const toUi = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
+
+    const mindInXnt =
+      toUi(xntVaultReserveMind, xntDecimalsPool) / toUi(mindVaultReserve, mindDecimalsPool || mindDecimals);
+    const xntInUsd =
+      toUi(usdcVaultReserve, usdcDecimalsPool || 6) / toUi(xntVaultReserveUsdc, xntDecimalsPool);
+
+    const mindInUsd = mindInXnt * xntInUsd;
+    const tvlUsd = toUi(cfg.stakingTotalStakedMind, mindDecimals) * mindInUsd;
+
     return NextResponse.json(
       {
         ...stats,
         totalBase: stats.totalBase.toString(),
         total7dBase: stats.total7dBase.toString(),
+        price: {
+          mindUsd: mindInUsd,
+          mindXnt: mindInXnt,
+          xntUsd: xntInUsd,
+        },
+        tvlUsd,
       },
       { status: 200 }
     );

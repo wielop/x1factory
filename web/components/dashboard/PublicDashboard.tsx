@@ -533,6 +533,8 @@ export function PublicDashboard() {
     apr7dPct: number | null;
     events: number;
     updatedAt: string;
+    tvlUsd?: number;
+    priceMindUsd?: number;
   } | null>(null);
   const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
@@ -1044,12 +1046,24 @@ export function PublicDashboard() {
         const events = typeof data.events === "number" ? data.events : 0;
         const updatedAt =
           typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString();
+        const tvlUsd =
+          typeof data.tvlUsd === "number"
+            ? data.tvlUsd
+            : typeof data.tvlUsd === "string"
+            ? Number(data.tvlUsd)
+            : undefined;
+        const priceMindUsd =
+          data.price && typeof data.price.mindUsd === "number"
+            ? data.price.mindUsd
+            : undefined;
         setClaimStats({
           totalXnt,
           total7dXnt,
           apr7dPct: typeof data.apr7dPct === "number" ? data.apr7dPct : null,
           events,
           updatedAt,
+          tvlUsd,
+          priceMindUsd,
         });
       } catch (err) {
         if (!active) return;
@@ -3293,7 +3307,7 @@ export function PublicDashboard() {
             </div>
 
             {statsTab === "payouts" ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                     Total paid out
@@ -3321,6 +3335,19 @@ export function PublicDashboard() {
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-500">
                     Current total MIND locked in staking.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    TVL (USD)
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {claimStats?.tvlUsd != null
+                      ? `$${claimStats.tvlUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+                      : "—"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    Uses live MIND/XNT and XNT/USDC from xDEX.
                   </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">

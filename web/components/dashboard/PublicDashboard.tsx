@@ -562,6 +562,7 @@ export function PublicDashboard() {
     updated: ACTIVE_STAKERS_SUMMARY.updated,
   });
   const [activeStakers, setActiveStakers] = useState<ActiveStaker[]>(ACTIVE_STAKERS);
+  const [tvlHistory, setTvlHistory] = useState<Array<{ ts: number; usd: number }>>([]);
 
   const isAdmin = Boolean(publicKey && config && publicKey.equals(config.admin));
   const levelingEnabled = LEVELING_ENABLED || isAdmin;
@@ -590,6 +591,21 @@ export function PublicDashboard() {
   const [showShareFull, setShowShareFull] = useState(false);
   const [showEmissionFull, setShowEmissionFull] = useState(false);
   const [claimRipperPct, setClaimRipperPct] = useState(0);
+  const tvlSparkline = useMemo(() => {
+    if (tvlHistory.length < 2) return null;
+    const width = 160;
+    const height = 60;
+    const min = Math.min(...tvlHistory.map((p) => p.usd));
+    const max = Math.max(...tvlHistory.map((p) => p.usd));
+    const range = max - min || 1;
+    const stepX = width / Math.max(1, tvlHistory.length - 1);
+    const points = tvlHistory.map((p, i) => {
+      const x = i * stepX;
+      const y = height - ((p.usd - min) / range) * height;
+      return `${i === 0 ? "M" : "L"}${x},${y}`;
+    });
+    return { width, height, path: points.join(" ") };
+  }, [tvlHistory]);
 
   const setMindAmountFromPercent = useCallback(
     (amountBase: bigint, setter: (value: string) => void, pct: number) => {
@@ -1037,6 +1053,18 @@ export function PublicDashboard() {
   }, [refresh]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem("staking_tvl_usd_history");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Array<{ ts: number; usd: number }>;
+      setTvlHistory(parsed);
+    } catch {
+      // ignore malformed cache
+    }
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const loadClaimStats = async () => {
       try {
@@ -1078,6 +1106,17 @@ export function PublicDashboard() {
           tvlUsd,
           priceMindUsd,
         });
+        if (typeof window !== "undefined" && tvlUsd != null && Number.isFinite(tvlUsd)) {
+          setTvlHistory((prev) => {
+            const now = Date.now();
+            const next = [...prev, { ts: now, usd: tvlUsd }];
+            const cutoff = now - 7 * 24 * 60 * 60 * 1000; // 7d window
+            const pruned = next.filter((p) => p.ts >= cutoff);
+            while (pruned.length > 1000) pruned.shift();
+            window.localStorage.setItem("staking_tvl_usd_history", JSON.stringify(pruned));
+            return pruned;
+          });
+        }
       } catch (err) {
         if (!active) return;
         setClaimStatsError("Failed to load payout stats");
@@ -3383,6 +3422,38 @@ export function PublicDashboard() {
                       ? `$${claimStats.tvlUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
                       : "—"}
                   </div>
+                  {tvlSparkline ? (
+                    <div className="mt-3">
+                      <svg
+                        viewBox={`0 0 ${tvlSparkline.width} ${tvlSparkline.height}`}
+                        className="h-16 w-full"
+                        preserveAspectRatio="none"
+                      >
+                        <defs>
+                          <linearGradient id="tvlGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.8" />
+                            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.1" />
+                          </linearGradient>
+                        </defs>
+                        <path
+                          d={`${tvlSparkline.path} L ${tvlSparkline.width},${tvlSparkline.height} L 0,${tvlSparkline.height} Z`}
+                          fill="url(#tvlGradient)"
+                          stroke="none"
+                        />
+                        <path
+                          d={tvlSparkline.path}
+                          fill="none"
+                          stroke="#34d399"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <div className="mt-1 text-[11px] text-zinc-500">Past 7d (local).</div>
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-[11px] text-zinc-500">Building TVL trend…</div>
+                  )}
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">

@@ -425,11 +425,10 @@ export async function GET() {
       }
     }
 
-    let burnTotals: Awaited<ReturnType<typeof collectBurnTotals>> | null = null;
-    try {
-      burnTotals = await withTimeout(collectBurnTotals(connection, cfg.mindMint), 15_000);
-    } catch {
-      burnTotals = burnCache;
+    let burnTotals: Awaited<ReturnType<typeof collectBurnTotals>> | null = burnCache;
+    if (!burnTotals) {
+      // kick off burn aggregation in the background; don't block the response
+      void collectBurnTotals(connection, cfg.mindMint).catch(() => null);
     }
 
     // Pricing via xDEX (Raydium CP swap) pools

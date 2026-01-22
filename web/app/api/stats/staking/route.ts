@@ -4,6 +4,10 @@ import { getMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash } from "crypto";
 import bs58 from "bs58";
 import { fetchConfig, getProgramId, getRpcUrl } from "@/lib/solana";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 const SIGNATURE_PAGE_LIMIT = 1000;
 const TX_BATCH_SIZE = 25;
 const CLAIM_CACHE_MS = 60 * 1000;

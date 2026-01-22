@@ -3276,24 +3276,18 @@ export function PublicDashboard() {
                 </div>
               </div>
               <div className="flex gap-2">
-                {[
-                  { key: "payouts", label: "Payouts" },
-                  { key: "vault", label: "Vault" },
-                ].map((tab) => (
-                  <Button
-                    key={tab.key}
-                    size="sm"
-                    variant={statsTab === tab.key ? "primary" : "ghost"}
-                    onClick={() => setStatsTab(tab.key as typeof statsTab)}
-                  >
-                    {tab.label}
-                  </Button>
-                ))}
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => setStatsTab("payouts")}
+                >
+                  Payouts
+                </Button>
               </div>
             </div>
 
             {statsTab === "payouts" ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                     Total paid out
@@ -3308,63 +3302,6 @@ export function PublicDashboard() {
                   {claimStatsError ? (
                     <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
                   ) : null}
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                    Reward pool (live)
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-white">
-                    {mintDecimals
-                      ? `${formatTokenAmount(stakingRewardBalance, mintDecimals.xnt, 4)} XNT`
-                      : "—"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    Net of rent. Matches staking reward vault on-chain.
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                    Data freshness
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-white">
-                    {claimStats?.updatedAt
-                      ? new Date(claimStats.updatedAt).toLocaleTimeString()
-                      : claimStatsError
-                      ? "—"
-                      : "…"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    Auto-updates every 10 minutes; forces a scan on first load.
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                    Reward vault
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-white">
-                    {mintDecimals
-                      ? `${formatTokenAmount(stakingRewardBalance, mintDecimals.xnt, 4)} XNT`
-                      : "—"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    Tracks the on-chain staking reward vault balance in real time.
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                    Claim feed status
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-white">
-                    {claimStatsError ? "Degraded" : "Healthy"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    {claimStatsError
-                      ? "Unable to read claim logs right now."
-                      : "On-chain log scan is up to date."}
-                  </div>
                 </div>
               </div>
             )}

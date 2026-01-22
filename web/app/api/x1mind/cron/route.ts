@@ -149,18 +149,16 @@ export async function GET(req: Request) {
 
     if (!round) {
       actions.push("round_missing");
-      if (currentRoundId === 0n) {
-        const sig = await program.methods
-          .startRound(new BN(nextRoundId.toString()))
-          .accounts({
-            config: configPda,
-            admin: keypair.publicKey,
-            round: deriveX1MindRoundPda(nextRoundId),
-            systemProgram: SystemProgram.programId,
-          })
-          .rpc();
-        actions.push(`start:${sig}`);
-      }
+      const sig = await program.methods
+        .startRound(new BN(nextRoundId.toString()))
+        .accounts({
+          config: configPda,
+          admin: keypair.publicKey,
+          round: deriveX1MindRoundPda(nextRoundId),
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      actions.push(`start:${sig}`);
       return NextResponse.json({ ok: true, actions, now, currentRoundId: currentRoundId.toString() });
     }
 

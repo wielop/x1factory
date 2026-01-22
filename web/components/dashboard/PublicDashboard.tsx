@@ -546,7 +546,9 @@ export function PublicDashboard() {
   });
   const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
   const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
-  const [statsTabFilter, setStatsTabFilter] = useState<"performance" | "staking">("performance");
+  const [statsTabFilter, setStatsTabFilter] = useState<"performance" | "staking" | "network">(
+    "performance"
+  );
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
@@ -3317,6 +3319,7 @@ export function PublicDashboard() {
                   {[
                     { key: "performance", label: "Performance" },
                     { key: "staking", label: "Staking" },
+                    { key: "network", label: "Network" },
                   ].map((tab) => (
                     <button
                       key={tab.key}
@@ -3429,6 +3432,42 @@ export function PublicDashboard() {
                         Based on on-chain reward rate vs total staked MIND.
                       </div>
                     </div>
+                  )}
+
+                  {statsTabFilter === "network" && (
+                    <>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Emission / day
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {mintDecimals ? `${formatRoundedToken(emissionPerDay, mintDecimals.mind, 0)} MIND` : "—"}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Active miners
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">{activeMinerTotal}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">Unique addresses mining now.</div>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Active rigs
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">{activeRigTotal}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">Rigs currently earning.</div>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          Reward pool
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-white">
+                          {mintDecimals ? `${formatRoundedToken(stakingRewardBalance, mintDecimals.xnt, 2)} XNT` : "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">Current staking reward vault.</div>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

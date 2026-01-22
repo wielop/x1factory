@@ -94,10 +94,16 @@ const collectClaimStats = async (
   rewardVault: PublicKey,
   decimals: number,
   totalStakedMind: bigint,
-  mindDecimals: number
+  mindDecimals: number,
+  opts?: { ignoreCache?: boolean }
 ) => {
   const now = Date.now();
-  if (claimCache && now - claimCache.ts < CLAIM_CACHE_MS && claimCache.data.totalBase > 0n) {
+  if (
+    !opts?.ignoreCache &&
+    claimCache &&
+    now - claimCache.ts < CLAIM_CACHE_MS &&
+    claimCache.data.totalBase > 0n
+  ) {
     return claimCache.data;
   }
 
@@ -108,7 +114,7 @@ const collectClaimStats = async (
     const batch = await connection.getSignaturesForAddress(rewardVault, { before, limit: SIGNATURE_PAGE_LIMIT });
     if (batch.length === 0) break;
     for (const sig of batch) {
-      if (claimCache?.newestSig && sig.signature === claimCache.newestSig) {
+      if (!opts?.ignoreCache && claimCache?.newestSig && sig.signature === claimCache.newestSig) {
         reachedCached = true;
         break;
       }
@@ -118,10 +124,10 @@ const collectClaimStats = async (
     before = batch[batch.length - 1].signature;
   }
 
-  let total = claimCache ? claimCache.data.totalBase : 0n;
+  let total = claimCache && !opts?.ignoreCache ? claimCache.data.totalBase : 0n;
   let total7d = 0n;
   let last24h = 0n;
-  let events = claimCache ? claimCache.data.events : 0;
+  let events = claimCache && !opts?.ignoreCache ? claimCache.data.events : 0;
   const sevenDaysAgo = Math.floor(now / 1000) - 7 * 86_400;
   const oneDayAgo = Math.floor(now / 1000) - 86_400;
   for (let i = 0; i < newSignatures.length; i += TX_BATCH_SIZE) {
@@ -147,7 +153,7 @@ const collectClaimStats = async (
     });
   }
 
-  if (claimCache && !newSignatures.length) {
+  if (claimCache && !opts?.ignoreCache && !newSignatures.length) {
     total7d = claimCache.data.total7dBase;
     last24h = claimCache.data.last24hBase;
   }
@@ -320,30 +326,21 @@ export async function GET() {
     const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
     let stats: ClaimStats | null = preferCached ? claimCache!.data : null;
 
-    // If no useful cache, block (generous timeout) to warm it; otherwise return cache immediately and refresh in background
-    if (!stats) {
-      try {
-        stats = await withTimeout(
-          collectClaimStats(
-            connection,
-            cfg.stakingRewardVault,
-            xntDecimals,
-            cfg.stakingTotalStakedMind,
-            mindDecimals
-          ),
-          25_000
-        );
-      } catch {
-        stats = claimCache?.data ?? fallbackStats;
-      }
-    } else if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
-      void collectClaimStats(
-        connection,
-        cfg.stakingRewardVault,
-        xntDecimals,
-        cfg.stakingTotalStakedMind,
-        mindDecimals
-      ).catch(() => null);
+    // Force a fresh rescan (ignore cache) for accuracy; fall back to cached if it times out
+    try {
+      stats = await withTimeout(
+        collectClaimStats(
+          connection,
+          cfg.stakingRewardVault,
+          xntDecimals,
+          cfg.stakingTotalStakedMind,
+          mindDecimals,
+          { ignoreCache: true }
+        ),
+        60_000
+      );
+    } catch {
+      stats = claimCache?.data ?? fallbackStats;
     }
 
     const effectiveStats = stats ?? claimCache?.data ?? fallbackStats;

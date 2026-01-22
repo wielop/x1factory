@@ -310,19 +310,8 @@ export async function GET() {
     const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
     let stats: ClaimStats | null = preferCached ? claimCache!.data : null;
 
-    // Kick off a background refresh if cache is stale or missing
-    const triggerRefresh = () =>
-      collectClaimStats(
-        connection,
-        cfg.stakingRewardVault,
-        xntDecimals,
-        cfg.stakingTotalStakedMind,
-        mindDecimals
-      ).catch(() => null);
-
+    // If no cache, block once to build it (generous timeout to avoid infinite wait)
     if (!stats) {
-      // Try quickly to get fresh data; fall back immediately on timeout
-      triggerRefresh();
       try {
         stats = await withTimeout(
           collectClaimStats(
@@ -332,13 +321,20 @@ export async function GET() {
             cfg.stakingTotalStakedMind,
             mindDecimals
           ),
-          5_000
+          30_000
         );
       } catch {
         stats = claimCache?.data ?? fallbackStats;
       }
     } else if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
-      void triggerRefresh();
+      // Cache is stale; refresh in the background but still return cached data immediately
+      void collectClaimStats(
+        connection,
+        cfg.stakingRewardVault,
+        xntDecimals,
+        cfg.stakingTotalStakedMind,
+        mindDecimals
+      ).catch(() => null);
     }
 
     if (!stats) {

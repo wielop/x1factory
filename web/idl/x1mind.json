@@ -97,7 +97,7 @@
       ]
     },
     {
-      "name": "commitDeposit",
+      "name": "enterRound",
       "accounts": [
         {
           "name": "owner",
@@ -115,12 +115,7 @@
           "isSigner": false
         },
         {
-          "name": "userCommit",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "referrer",
+          "name": "userEntry",
           "isMut": true,
           "isSigner": false
         },
@@ -136,69 +131,12 @@
           "type": "u64"
         },
         {
-          "name": "cell",
-          "type": "u8"
+          "name": "cells",
+          "type": "bytes"
         },
         {
-          "name": "commitHash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "amount",
+          "name": "amountPerCell",
           "type": "u64"
-        },
-        {
-          "name": "referrerKey",
-          "type": "publicKey"
-        }
-      ]
-    },
-    {
-      "name": "reveal",
-      "accounts": [
-        {
-          "name": "owner",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "config",
-          "isMut": false,
-          "isSigner": false
-        },
-        {
-          "name": "round",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "userCommit",
-          "isMut": true,
-          "isSigner": false
-        }
-      ],
-      "args": [
-        {
-          "name": "roundId",
-          "type": "u64"
-        },
-        {
-          "name": "cell",
-          "type": "u8"
-        },
-        {
-          "name": "seed",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
         }
       ]
     },
@@ -241,54 +179,8 @@
           "isSigner": false
         },
         {
-          "name": "systemProgram",
-          "isMut": false,
-          "isSigner": false
-        }
-      ],
-      "args": [
-        {
-          "name": "roundId",
-          "type": "u64"
-        }
-      ]
-    },
-    {
-      "name": "claim",
-      "accounts": [
-        {
-          "name": "owner",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "config",
-          "isMut": false,
-          "isSigner": false
-        },
-        {
-          "name": "round",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "userCommit",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "mindVault",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
           "name": "mindVaultAuthority",
           "isMut": false,
-          "isSigner": false
-        },
-        {
-          "name": "userMindAta",
-          "isMut": true,
           "isSigner": false
         },
         {
@@ -306,12 +198,54 @@
         {
           "name": "roundId",
           "type": "u64"
-        },
-        {
-          "name": "cell",
-          "type": "u8"
         }
       ]
+    },
+    {
+      "name": "payoutWinner",
+      "accounts": [
+        {
+          "name": "round",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userEntry",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -350,14 +284,6 @@
           },
           {
             "name": "roundLengthSecs",
-            "type": "u64"
-          },
-          {
-            "name": "commitWindowSecs",
-            "type": "u64"
-          },
-          {
-            "name": "revealWindowSecs",
             "type": "u64"
           },
           {
@@ -413,11 +339,7 @@
             "type": "i64"
           },
           {
-            "name": "commitEndTs",
-            "type": "i64"
-          },
-          {
-            "name": "revealEndTs",
+            "name": "endTs",
             "type": "i64"
           },
           {
@@ -465,29 +387,23 @@
             "type": "bool"
           },
           {
-            "name": "commitAccumulator",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
+            "name": "mindMint",
+            "type": "publicKey"
           },
           {
-            "name": "revealAccumulator",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
+            "name": "mindVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindVaultAuthorityBump",
+            "type": "u8"
           },
           {
             "name": "totalPerCell",
             "type": {
               "array": [
                 "u64",
-                36
+                25
               ]
             }
           },
@@ -499,7 +415,7 @@
       }
     },
     {
-      "name": "UserCommit",
+      "name": "UserEntry",
       "type": {
         "kind": "struct",
         "fields": [
@@ -512,37 +428,25 @@
             "type": "u64"
           },
           {
-            "name": "cell",
-            "type": "u8"
-          },
-          {
-            "name": "deposit",
-            "type": "u64"
-          },
-          {
-            "name": "commitHash",
+            "name": "deposits",
             "type": {
               "array": [
-                "u8",
-                32
+                "u64",
+                25
               ]
             }
           },
           {
-            "name": "revealed",
-            "type": "bool"
-          },
-          {
-            "name": "claimed",
-            "type": "bool"
-          },
-          {
-            "name": "referrer",
-            "type": "publicKey"
+            "name": "totalDeposit",
+            "type": "u64"
           },
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
           }
         ]
       }
@@ -572,14 +476,6 @@
           },
           {
             "name": "roundLengthSecs",
-            "type": "u64"
-          },
-          {
-            "name": "commitWindowSecs",
-            "type": "u64"
-          },
-          {
-            "name": "revealWindowSecs",
             "type": "u64"
           },
           {
@@ -634,91 +530,68 @@
     },
     {
       "code": 6005,
-      "name": "CommitWindowClosed",
-      "msg": "Commit window closed"
-    },
-    {
-      "code": 6006,
-      "name": "RevealTooEarly",
-      "msg": "Reveal window not started"
-    },
-    {
-      "code": 6007,
-      "name": "RevealWindowClosed",
-      "msg": "Reveal window closed"
-    },
-    {
-      "code": 6008,
       "name": "RoundNotFinalized",
       "msg": "Round not finalized"
     },
     {
-      "code": 6009,
+      "code": 6006,
       "name": "RoundFinalized",
       "msg": "Round already finalized"
     },
     {
-      "code": 6010,
+      "code": 6007,
       "name": "AlreadyCommitted",
       "msg": "Already committed"
     },
     {
-      "code": 6011,
-      "name": "AlreadyRevealed",
-      "msg": "Already revealed"
-    },
-    {
-      "code": 6012,
-      "name": "AlreadyClaimed",
-      "msg": "Already claimed"
-    },
-    {
-      "code": 6013,
-      "name": "CommitMismatch",
-      "msg": "Commit hash mismatch"
-    },
-    {
-      "code": 6014,
-      "name": "NotRevealed",
-      "msg": "Not revealed"
-    },
-    {
-      "code": 6015,
-      "name": "NotWinner",
-      "msg": "Not a winner"
-    },
-    {
-      "code": 6016,
-      "name": "NothingToClaim",
-      "msg": "Nothing to claim"
-    },
-    {
-      "code": 6017,
+      "code": 6008,
       "name": "InvalidAmount",
       "msg": "Invalid amount"
     },
     {
-      "code": 6018,
+      "code": 6009,
       "name": "MathOverflow",
       "msg": "Math overflow"
     },
     {
-      "code": 6019,
+      "code": 6010,
       "name": "InvalidMint",
       "msg": "Invalid mint"
     },
     {
-      "code": 6020,
+      "code": 6011,
       "name": "InvalidVaultAuthority",
       "msg": "Invalid vault authority"
     },
     {
-      "code": 6021,
+      "code": 6012,
       "name": "RevealWindowOpen",
-      "msg": "Reveal window still open"
+      "msg": "Round window still open"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidAccountCount",
+      "msg": "Invalid account count"
+    },
+    {
+      "code": 6014,
+      "name": "AlreadyClaimed",
+      "msg": "Already claimed"
+    },
+    {
+      "code": 6015,
+      "name": "NotWinner",
+      "msg": "Entry has no win on this round"
+    },
+    {
+      "code": 6016,
+      "name": "NoWinners",
+      "msg": "Round has no winners"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidOwner",
+      "msg": "Invalid owner"
     }
-  ],
-  "metadata": {
-    "address": "7qH6rrAoNEp2oWmVurvqD9onVu1cCJcg7vLR6NigvkLz"
-  }
+  ]
 }

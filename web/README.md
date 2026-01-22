@@ -4,7 +4,7 @@ Public app (Vercel-ready) for interacting with the on-chain program:
 
 - Public panel: `/` (create position, deposit, claim)
 - Admin panel: `/admin` (admin_update_config)
-- X1Mind miner: `/miner` (commit/reveal/claim) + cron at `/api/x1mind/cron`
+- X1Mind miner: `/miner` (jednokrokowe wejscie, auto-wyplaty) + cron `/api/x1mind/cron`
 
 ## Env vars (Vercel)
 

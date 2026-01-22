@@ -5,7 +5,7 @@ export const DEFAULT_X1MIND_MIND_MINT = "AJhe17P7jFTUgsTUJYxvTdqpND5RG1cr1SSXxLr
 
 const CONFIG_SEED = "config";
 const ROUND_SEED = "round";
-const COMMIT_SEED = "commit";
+const ENTRY_SEED = "entry";
 const MIND_VAULT_AUTH_SEED = "mind_vault_auth";
 const MOTHERLODE_VAULT_SEED = "motherlode_vault";
 
@@ -63,9 +63,9 @@ export function deriveX1MindRoundPda(roundId: bigint) {
   )[0];
 }
 
-export function deriveX1MindCommitPda(roundId: bigint, owner: PublicKey, cell: number) {
+export function deriveX1MindEntryPda(roundId: bigint, owner: PublicKey) {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(COMMIT_SEED), toU64LE(roundId), owner.toBuffer(), Buffer.from([cell])],
+    [Buffer.from(ENTRY_SEED), toU64LE(roundId), owner.toBuffer()],
     getX1MindProgramId()
   )[0];
 }

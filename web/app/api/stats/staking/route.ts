@@ -310,32 +310,16 @@ export async function GET() {
     const preferCached = claimCache && (claimCache.data.totalBase > 0n || claimCache.data.events > 0);
     let stats: ClaimStats | null = preferCached ? claimCache!.data : null;
 
-    // If no cache, block once to build it (generous timeout to avoid infinite wait)
-    if (!stats) {
-      try {
-        stats = await withTimeout(
-          collectClaimStats(
-            connection,
-            cfg.stakingRewardVault,
-            xntDecimals,
-            cfg.stakingTotalStakedMind,
-            mindDecimals
-          ),
-          30_000
-        );
-      } catch {
-        stats = claimCache?.data ?? fallbackStats;
-      }
-    } else if (Date.now() - claimCache!.ts > CLAIM_CACHE_MS) {
-      // Cache is stale; refresh in the background but still return cached data immediately
-      void collectClaimStats(
-        connection,
-        cfg.stakingRewardVault,
-        xntDecimals,
-        cfg.stakingTotalStakedMind,
-        mindDecimals
-      ).catch(() => null);
-    }
+    // Always trigger background refresh (incremental by newestSig) but never block the response
+    void collectClaimStats(
+      connection,
+      cfg.stakingRewardVault,
+      xntDecimals,
+      cfg.stakingTotalStakedMind,
+      mindDecimals
+    ).catch(() => null);
+
+    const effectiveStats = stats ?? claimCache?.data ?? fallbackStats;
 
     if (!stats) {
       stats = fallbackStats;
@@ -410,10 +394,10 @@ export async function GET() {
     }
 
     const responsePayload = {
-      ...stats,
-      totalBase: stats.totalBase.toString(),
-      total7dBase: stats.total7dBase.toString(),
-      last24hBase: stats.last24hBase.toString(),
+      ...effectiveStats,
+      totalBase: effectiveStats.totalBase.toString(),
+      total7dBase: effectiveStats.total7dBase.toString(),
+      last24hBase: effectiveStats.last24hBase.toString(),
       price:
         mindInUsd != null && mindInXnt != null && xntInUsd != null
           ? {

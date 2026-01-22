@@ -18,6 +18,10 @@ const UNSTAKE_EVENT_DISCRIMINATOR = createHash("sha256")
   .subarray(0, 8);
 const BURN_BPS = 600n;
 const BPS_DENOMINATOR = 10_000n;
+const EXCLUDED_BURN_OWNERS = new Set([
+  "FPLV6bRcBj4i8sipkim2N7eZMsGJC2xfCsAgeoDsQhoD",
+  "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
+]);
 
 type ClaimStats = {
   totalBase: bigint;
@@ -72,7 +76,7 @@ const parseClaimEventsFromLogs = (logs: string[]) => {
 };
 
 const parseUnstakeEventsFromLogs = (logs: string[]) => {
-  const events: Array<{ amount: bigint }> = [];
+  const events: Array<{ owner: PublicKey; amount: bigint }> = [];
   const prefix = "Program data: ";
   for (const log of logs) {
     if (!log.startsWith(prefix)) continue;
@@ -85,8 +89,9 @@ const parseUnstakeEventsFromLogs = (logs: string[]) => {
     }
     if (buf.length < 48) continue;
     if (!buf.subarray(0, 8).equals(UNSTAKE_EVENT_DISCRIMINATOR)) continue;
+    const owner = new PublicKey(buf.subarray(8, 40));
     const amount = buf.readBigUInt64LE(40);
-    events.push({ amount });
+    events.push({ owner, amount });
   }
   return events;
 };
@@ -166,6 +171,7 @@ const collectBurnTotals = async (connection: Connection, mindMint: PublicKey) =>
       if (!tx?.meta?.logMessages) return;
       const unstake = parseUnstakeEventsFromLogs(tx.meta.logMessages);
       unstake.forEach((evt) => {
+        if (EXCLUDED_BURN_OWNERS.has(evt.owner.toBase58())) return;
         burned += (evt.amount * BURN_BPS) / BPS_DENOMINATOR;
       });
       const lvl = parseLevelUpBurnsFromTx(tx, mindMint);

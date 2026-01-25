@@ -8,6 +8,14 @@ const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   output: "standalone",
+  async rewrites() {
+    return [
+      {
+        source: "/docs/:path*",
+        destination: "https://proxy.gitbook.site/sites/site_6HCPB/:path*",
+      },
+    ];
+  },
   experimental: {
     turbo: {
       resolveAlias: {

@@ -56,7 +56,10 @@ export function TopBar({
             href="https://docs.x1factory.xyz"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center rounded-full border px-3 text-[10px] font-semibold uppercase tracking-[0.2em] transition border-cyan-400/20 bg-ink/70 text-zinc-300 hover:border-cyan-300/40 hover:bg-ink/90"
+            aria-disabled="true"
+            tabIndex={-1}
+            className="inline-flex h-9 items-center justify-center rounded-full border px-3 text-[10px] font-semibold uppercase tracking-[0.2em] transition border-cyan-400/20 bg-ink/50 text-zinc-500 opacity-60 pointer-events-none"
+            title="Docs temporarily disabled"
           >
             Docs
           </a>

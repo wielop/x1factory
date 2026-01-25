@@ -53,6 +53,12 @@ export function TopBar({
           <InfoPopover />
           <HowItWorksPopover />
           <Link
+            href="/docs"
+            className="inline-flex h-9 items-center justify-center rounded-full border px-3 text-[10px] font-semibold uppercase tracking-[0.2em] transition border-cyan-400/20 bg-ink/70 text-zinc-300 hover:border-cyan-300/40 hover:bg-ink/90"
+          >
+            Docs
+          </Link>
+          <Link
             href="/progression"
             aria-current={isProgression ? "page" : undefined}
             className={cn(

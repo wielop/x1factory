@@ -72,6 +72,12 @@ export function TopBar({
             Miner
           </Link>
           <Link
+            href="/docs"
+            className={navClass(false)}
+          >
+            Docs
+          </Link>
+          <Link
             href="/progression"
             aria-current={isProgression ? "page" : undefined}
             className={navClass(isProgression)}

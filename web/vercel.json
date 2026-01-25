@@ -4,5 +4,11 @@
       "path": "/api/x1mind/cron",
       "schedule": "*/1 * * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/docs/:path*",
+      "destination": "https://proxy.gitbook.site/sites/site_6HCPB/:path*"
+    }
   ]
 }

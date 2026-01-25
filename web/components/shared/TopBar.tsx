@@ -64,18 +64,15 @@ export function TopBar({
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <InfoPopover programId={x1mindProgram} config={x1mindConfig} mint={x1mindMint} />
+          <Link href="/docs" className={navClass(false)}>
+            Docs
+          </Link>
           <HowItWorksPopover />
           <Link href="/" aria-current={isDashboard ? "page" : undefined} className={navClass(isDashboard)}>
             Dashboard
           </Link>
           <Link href="/miner" aria-current={isMiner ? "page" : undefined} className={navClass(isMiner)}>
             Miner
-          </Link>
-          <Link
-            href="/docs"
-            className={navClass(false)}
-          >
-            Docs
           </Link>
           <Link
             href="/progression"

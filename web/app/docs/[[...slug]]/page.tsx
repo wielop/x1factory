@@ -10,6 +10,6 @@ type DocsPageProps = {
 
 export default function DocsPage({ params }: DocsPageProps) {
   const slug = params.slug ?? [];
-  const destination = ["https://proxy.gitbook.site/sites/site_6HCPB", ...slug].join("/");
+  const destination = ["https://docs.x1factory.xyz", ...slug].join("/");
   redirect(destination);
 }

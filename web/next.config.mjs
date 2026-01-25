@@ -12,7 +12,7 @@ const nextConfig = {
     return [
       {
         source: "/docs/:path*",
-        destination: "https://proxy.gitbook.site/sites/site_6HCPB/:path*",
+        destination: "https://docs.x1factory.xyz/:path*",
       },
     ];
   },

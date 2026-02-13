@@ -73,11 +73,6 @@ export default function MeltPlayerPage() {
   const [leaderboardCursor, setLeaderboardCursor] = useState<string | null>(null);
   const leaderboardSeenRef = useRef<Set<string>>(new Set());
   const leaderboardRoundRef = useRef<string>("");
-  const autoFinalizeRef = useRef<{ roundKey: string; lastAttemptMs: number; inFlight: boolean }>({
-    roundKey: "",
-    lastAttemptMs: 0,
-    inFlight: false,
-  });
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
@@ -121,55 +116,6 @@ export default function MeltPlayerPage() {
       variant: "error",
     });
   }, [melt.error, toast]);
-
-  useEffect(() => {
-    if (!wallet || !publicKey || !melt.config || !melt.roundPda || !melt.round) return;
-    if (roundStatus !== "active") return;
-    const endTs = Number(melt.round.endTs.toString());
-    if (nowTs <= endTs) return;
-
-    const roundKey = `${melt.roundPda.toBase58()}:${melt.round.seq.toString()}`;
-    if (autoFinalizeRef.current.roundKey !== roundKey) {
-      autoFinalizeRef.current = {
-        roundKey,
-        lastAttemptMs: 0,
-        inFlight: false,
-      };
-    }
-    if (autoFinalizeRef.current.inFlight) return;
-    const nowMs = Date.now();
-    if (nowMs - autoFinalizeRef.current.lastAttemptMs < 15_000) return;
-
-    autoFinalizeRef.current.lastAttemptMs = nowMs;
-    autoFinalizeRef.current.inFlight = true;
-
-    void (async () => {
-      try {
-        const program = getMeltProgram(connection, wallet);
-        await program.methods
-          .finalizeRound()
-          .accounts({
-            admin: publicKey,
-            config: deriveMeltConfigPda(),
-            round: melt.roundPda!,
-            vault: melt.config!.vault,
-          })
-          .rpc();
-        await melt.refresh();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (
-          !msg.includes("RoundNotEnded") &&
-          !msg.includes("BadRoundStatus") &&
-          !msg.includes("AccountNotInitialized")
-        ) {
-          console.warn("auto finalize failed", msg);
-        }
-      } finally {
-        autoFinalizeRef.current.inFlight = false;
-      }
-    })();
-  }, [connection, melt, nowTs, publicKey, roundStatus, wallet]);
 
   const capLamports = melt.config ? BigInt(melt.config.vaultCapLamports.toString()) : 0n;
   const vialLamports = melt.config ? BigInt(melt.config.vialLamports.toString()) : 0n;

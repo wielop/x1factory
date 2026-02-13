@@ -14,6 +14,7 @@
     "melt:testnet:2users": "ANCHOR_PROVIDER_URL=https://rpc.testnet.x1.xyz ts-node scripts/melt-v1-flow-2users-testnet.ts",
     "melt:testnet:scenarios": "ANCHOR_PROVIDER_URL=https://rpc.testnet.x1.xyz ts-node scripts/melt-v1-scenarios-testnet.ts",
     "melt:testnet:migrate": "ANCHOR_PROVIDER_URL=https://rpc.testnet.x1.xyz ts-node scripts/melt-v1-migrate-testnet.ts",
+    "melt:testnet:autofinalize": "ANCHOR_PROVIDER_URL=https://rpc.testnet.x1.xyz ts-node scripts/melt-v1-autofinalize-testnet.ts --watch --interval-sec 15",
     "mining:testnet:melt-migrate": "ANCHOR_PROVIDER_URL=https://rpc.testnet.x1.xyz ts-node scripts/mining-v2-melt-migrate-testnet.ts"
   },
   "dependencies": {

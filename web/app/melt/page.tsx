@@ -155,6 +155,9 @@ export default function MeltPlayerPage() {
     if (message.includes("AlreadyClaimed")) return "Already claimed";
     if (message.includes("NothingToClaim")) return "Nothing to claim for this event";
     if (message.includes("AccountNotInitialized")) return "Nothing to claim for this event";
+    if (message.includes("InsufficientVaultBalance")) {
+      return "Vault underfunded. Admin must top up MELT vault before claims can be paid.";
+    }
     if (message.includes("RoundNotEnded") || message.includes("BadRoundStatus")) {
       return "Claim available after event ends";
     }

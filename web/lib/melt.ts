@@ -297,6 +297,54 @@ const MELT_IDL = {
   ],
   types: [
     {
+      name: "MeltConfig",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "admin", type: "publicKey" },
+          { name: "mindMint", type: "publicKey" },
+          { name: "vault", type: "publicKey" },
+          { name: "vaultCapLamports", type: "u64" },
+          { name: "rolloverBps", type: "u16" },
+          { name: "burnMin", type: "u64" },
+          { name: "roundWindowSec", type: "u64" },
+          { name: "testMode", type: "bool" },
+          { name: "roundSeq", type: "u64" },
+          { name: "bumpConfig", type: "u8" },
+          { name: "bumpVault", type: "u8" },
+        ],
+      },
+    },
+    {
+      name: "MeltRound",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "seq", type: "u64" },
+          { name: "startTs", type: "i64" },
+          { name: "endTs", type: "i64" },
+          { name: "vRound", type: "u64" },
+          { name: "vPay", type: "u64" },
+          { name: "totalBurn", type: "u64" },
+          { name: "status", type: { defined: "RoundStatus" } },
+          { name: "bump", type: "u8" },
+        ],
+      },
+    },
+    {
+      name: "MeltUserRound",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "user", type: "publicKey" },
+          { name: "round", type: "publicKey" },
+          { name: "burned", type: "u64" },
+          { name: "claimed", type: "bool" },
+          { name: "bump", type: "u8" },
+        ],
+      },
+    },
+    {
       name: "InitMeltParams",
       type: {
         kind: "struct",

@@ -26,9 +26,9 @@ const main = async () => {
     throw new Error("Wallet not loaded");
   }
 
-  const program = getProgram();
+  const program: any = getProgram();
   const configPda = deriveConfigPda();
-  const cfg = await program.account.config.fetch(configPda);
+  const cfg = await (program.account as any).config.fetch(configPda);
 
   console.log(
     "Withdrawing from staking reward vault:",

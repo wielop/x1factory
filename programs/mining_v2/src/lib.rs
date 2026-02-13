@@ -3,6 +3,9 @@ use anchor_lang::system_program::{self, Transfer as SystemTransfer};
 use anchor_lang::Discriminator;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 use solana_program::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
+use solana_program::hash::hash;
+use solana_program::instruction::{AccountMeta, Instruction};
+use solana_program::program::invoke;
 use solana_program::program_option::COption;
 
 declare_id!("uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw");
@@ -20,6 +23,9 @@ const RIG_BUFF_CONFIG_SEED: &[u8] = b"rig_buff";
 const YIELD_CONFIG_SEED: &[u8] = b"yield_config";
 const YIELD_VAULT_SEED: &[u8] = b"yield_vault";
 const YIELD_USER_SEED: &[u8] = b"yield_user";
+const MELT_CONFIG_SEED: &[u8] = b"melt_config";
+const MELT_VAULT_SEED: &[u8] = b"melt_vault";
+const MELT_ROUND_SEED: &[u8] = b"melt_round";
 
 const BPS_DENOMINATOR: u128 = 10_000;
 const ACC_SCALE: u128 = 1_000_000_000_000_000_000;
@@ -104,6 +110,9 @@ pub mod mining_v2 {
         config.staking_total_staked_mind = 0;
         config.staking_undistributed_xnt = 0;
         config.staking_accounted_balance = 0;
+        config.melt_enabled = false;
+        config.melt_program_id = Pubkey::default();
+        config.melt_funding_bps = 0;
         config.bumps = bumps;
 
         ctx.accounts.staking_reward_vault.bump = *ctx.bumps.get("staking_reward_vault").unwrap();
@@ -365,14 +374,29 @@ pub mod mining_v2 {
             .checked_add(hp_effective_u64)
             .ok_or(ErrorCode::MathOverflow)?;
 
-        let staking_share = (cost_base as u128)
+        let mut staking_share = (cost_base as u128)
             .checked_mul(STAKING_SHARE_BPS)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(BPS_DENOMINATOR)
             .ok_or(ErrorCode::MathOverflow)? as u64;
-        let treasury_share = cost_base
+        let mut treasury_share = cost_base
             .checked_sub(staking_share)
             .ok_or(ErrorCode::MathOverflow)?;
+        let mut melt_share: u64 = 0;
+        if cfg.melt_enabled && cfg.melt_program_id != Pubkey::default() && cfg.melt_funding_bps > 0 {
+            let desired = (cost_base as u128)
+                .checked_mul(cfg.melt_funding_bps as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(BPS_DENOMINATOR)
+                .ok_or(ErrorCode::MathOverflow)?;
+            let desired_u64 = u64::try_from(desired).map_err(|_| ErrorCode::MathOverflow)?;
+            // Testnet funding override: route configured share to MELT and skip staking.
+            staking_share = 0;
+            treasury_share = cost_base
+                .checked_sub(desired_u64)
+                .ok_or(ErrorCode::MathOverflow)?;
+            melt_share = desired_u64;
+        }
 
         system_program::transfer(
             CpiContext::new(
@@ -403,6 +427,54 @@ pub mod mining_v2 {
                 .staking_accounted_balance
                 .checked_add(staking_share)
                 .ok_or(ErrorCode::MathOverflow)?;
+        }
+        if melt_share > 0 {
+            let melt_config_ai = ctx.accounts.melt_config.to_account_info();
+            let melt_vault_ai = ctx.accounts.melt_vault.to_account_info();
+            let melt_round_ai = ctx.accounts.melt_round.to_account_info();
+            let (melt_config_pda, _) =
+                Pubkey::find_program_address(&[MELT_CONFIG_SEED], &cfg.melt_program_id);
+            let (melt_vault_pda, _) =
+                Pubkey::find_program_address(&[MELT_VAULT_SEED], &cfg.melt_program_id);
+            require!(melt_config_ai.key() == melt_config_pda, ErrorCode::InvalidMeltConfig);
+            require!(melt_vault_ai.key() == melt_vault_pda, ErrorCode::InvalidMeltConfig);
+            let owner_ai = ctx.accounts.owner.to_account_info();
+            let system_ai = ctx.accounts.system_program.to_account_info();
+
+            system_program::transfer(
+                CpiContext::new(
+                    system_ai.clone(),
+                    SystemTransfer {
+                        from: owner_ai.clone(),
+                        to: melt_vault_ai.clone(),
+                    },
+                ),
+                melt_share,
+            )?;
+
+            let mut data = hash(b"global:record_funding").to_bytes()[..8].to_vec();
+            data.extend_from_slice(&melt_share.to_le_bytes());
+            let ix = Instruction {
+                program_id: cfg.melt_program_id,
+                accounts: vec![
+                    AccountMeta::new(ctx.accounts.owner.key(), true),
+                    AccountMeta::new(melt_config_ai.key(), false),
+                    AccountMeta::new(melt_vault_ai.key(), false),
+                    AccountMeta::new(melt_round_ai.key(), false),
+                    AccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+                ],
+                data,
+            };
+            invoke(
+                &ix,
+                &[
+                    owner_ai,
+                    melt_config_ai.clone(),
+                    melt_vault_ai.clone(),
+                    melt_round_ai.clone(),
+                    system_ai,
+                ],
+            )?;
         }
 
         profile.next_position_index = profile
@@ -1375,6 +1447,37 @@ pub mod mining_v2 {
         Ok(())
     }
 
+    pub fn admin_set_melt_config(
+        ctx: Context<AdminSetMeltConfig>,
+        melt_enabled: bool,
+        melt_program_id: Pubkey,
+        melt_funding_bps: u16,
+    ) -> Result<()> {
+        require_keys_eq!(ctx.accounts.config.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        if melt_enabled {
+            require!(melt_program_id != Pubkey::default(), ErrorCode::InvalidMeltConfig);
+            require!(melt_funding_bps > 0 && melt_funding_bps <= 10_000, ErrorCode::InvalidMeltConfig);
+        }
+        let cfg = &mut ctx.accounts.config;
+        cfg.melt_enabled = melt_enabled;
+        cfg.melt_program_id = melt_program_id;
+        cfg.melt_funding_bps = melt_funding_bps;
+        emit!(MeltConfigUpdated {
+            melt_enabled,
+            melt_program_id,
+            melt_funding_bps,
+        });
+        Ok(())
+    }
+
+    /// Reallocates config to the latest size (testnet migration).
+    pub fn admin_migrate_config(ctx: Context<AdminMigrateConfig>) -> Result<()> {
+        migrate_mining_config_account(
+            &ctx.accounts.admin.to_account_info(),
+            &ctx.accounts.config.to_account_info(),
+        )
+    }
+
     pub fn admin_fix_accumulator(
         ctx: Context<AdminFixAccumulator>,
         new_acc_mind_per_hp: u128,
@@ -1840,6 +1943,15 @@ pub struct BuyContract<'info> {
         constraint = treasury_vault.key() == config.treasury_vault
     )]
     pub treasury_vault: Account<'info, NativeVault>,
+    /// CHECK: Verified against MELT PDA seeds when melt_enabled is true.
+    #[account(mut)]
+    pub melt_config: UncheckedAccount<'info>,
+    /// CHECK: Verified against MELT PDA seeds when melt_enabled is true.
+    #[account(mut)]
+    pub melt_vault: UncheckedAccount<'info>,
+    /// CHECK: Passed to MELT record_funding CPI; verified by MELT program.
+    #[account(mut)]
+    pub melt_round: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -2229,6 +2341,32 @@ pub struct AdminUpdateConfig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AdminSetMeltConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+}
+
+#[derive(Accounts)]
+pub struct AdminMigrateConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump
+    )]
+    /// CHECK: Legacy config migration reads/writes raw bytes.
+    pub config: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct AdminFixAccumulator<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -2458,6 +2596,9 @@ pub struct Config {
     pub staking_total_staked_mind: u64,
     pub staking_undistributed_xnt: u64,
     pub staking_accounted_balance: u64,
+    pub melt_enabled: bool,
+    pub melt_program_id: Pubkey,
+    pub melt_funding_bps: u16,
     pub bumps: ConfigBumps,
 }
 
@@ -2465,6 +2606,30 @@ pub struct Config {
 pub struct ConfigBumps {
     pub config: u8,
     pub vault_authority: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+pub struct ConfigLegacyV1 {
+    pub admin: Pubkey,
+    pub emission_per_sec: u64,
+    pub acc_mind_per_hp: u128,
+    pub last_update_ts: i64,
+    pub network_hp_active: u64,
+    pub mind_mint: Pubkey,
+    pub xnt_mint: Pubkey,
+    pub staking_reward_vault: Pubkey,
+    pub treasury_vault: Pubkey,
+    pub staking_mind_vault: Pubkey,
+    pub max_effective_hp: u64,
+    pub seconds_per_day: u64,
+    pub staking_acc_xnt_per_mind: u128,
+    pub staking_last_update_ts: i64,
+    pub staking_reward_rate_xnt_per_sec: u64,
+    pub staking_epoch_end_ts: i64,
+    pub staking_total_staked_mind: u64,
+    pub staking_undistributed_xnt: u64,
+    pub staking_accounted_balance: u64,
+    pub bumps: ConfigBumps,
 }
 
 #[account]
@@ -2597,6 +2762,13 @@ pub struct ConfigInitialized {
     pub admin: Pubkey,
     pub emission_per_sec: u64,
     pub max_effective_hp: u64,
+}
+
+#[event]
+pub struct MeltConfigUpdated {
+    pub melt_enabled: bool,
+    pub melt_program_id: Pubkey,
+    pub melt_funding_bps: u16,
 }
 
 #[event]
@@ -3681,6 +3853,75 @@ fn pending_stake(cfg: &Config, user_stake: &UserStake) -> Result<u128> {
     Ok(earned.saturating_sub(user_stake.reward_debt))
 }
 
+fn migrate_mining_config_account(
+    admin_ai: &AccountInfo,
+    config_ai: &AccountInfo,
+) -> Result<()> {
+    require_keys_eq!(*config_ai.owner, crate::id(), ErrorCode::InvalidProgramData);
+    let new_cfg = {
+        let data = config_ai.try_borrow_data()?;
+        require!(data.len() >= 8, ErrorCode::InvalidProgramData);
+        require!(
+            data[..8] == Config::DISCRIMINATOR,
+            ErrorCode::InvalidProgramData
+        );
+        let payload = &data[8..];
+        if payload.len() == Config::INIT_SPACE {
+            Config::try_from_slice(payload).map_err(|_| ErrorCode::InvalidProgramData)?
+        } else if payload.len() == ConfigLegacyV1::INIT_SPACE {
+            let old = ConfigLegacyV1::try_from_slice(payload)
+                .map_err(|_| ErrorCode::InvalidProgramData)?;
+            Config {
+                admin: old.admin,
+                emission_per_sec: old.emission_per_sec,
+                acc_mind_per_hp: old.acc_mind_per_hp,
+                last_update_ts: old.last_update_ts,
+                network_hp_active: old.network_hp_active,
+                mind_mint: old.mind_mint,
+                xnt_mint: old.xnt_mint,
+                staking_reward_vault: old.staking_reward_vault,
+                treasury_vault: old.treasury_vault,
+                staking_mind_vault: old.staking_mind_vault,
+                max_effective_hp: old.max_effective_hp,
+                seconds_per_day: old.seconds_per_day,
+                staking_acc_xnt_per_mind: old.staking_acc_xnt_per_mind,
+                staking_last_update_ts: old.staking_last_update_ts,
+                staking_reward_rate_xnt_per_sec: old.staking_reward_rate_xnt_per_sec,
+                staking_epoch_end_ts: old.staking_epoch_end_ts,
+                staking_total_staked_mind: old.staking_total_staked_mind,
+                staking_undistributed_xnt: old.staking_undistributed_xnt,
+                staking_accounted_balance: old.staking_accounted_balance,
+                melt_enabled: false,
+                melt_program_id: Pubkey::default(),
+                melt_funding_bps: 0,
+                bumps: old.bumps,
+            }
+        } else {
+            return err!(ErrorCode::InvalidProgramData);
+        }
+    };
+
+    require_keys_eq!(new_cfg.admin, *admin_ai.key, ErrorCode::Unauthorized);
+
+    let new_len = 8 + Config::INIT_SPACE;
+    if config_ai.data_len() < new_len {
+        let rent_min = Rent::get()?.minimum_balance(new_len);
+        let current = config_ai.lamports();
+        require!(current >= rent_min, ErrorCode::InvalidAmount);
+        config_ai.realloc(new_len, false)?;
+    }
+
+    let mut out = vec![0u8; new_len];
+    out[..8].copy_from_slice(&Config::DISCRIMINATOR);
+    let body = new_cfg
+        .try_to_vec()
+        .map_err(|_| ErrorCode::InvalidProgramData)?;
+    require!(body.len() == Config::INIT_SPACE, ErrorCode::InvalidProgramData);
+    out[8..].copy_from_slice(&body);
+    config_ai.try_borrow_mut_data()?.copy_from_slice(&out);
+    Ok(())
+}
+
 fn accrue_staking_owed(cfg: &Config, user_stake: &mut UserStake) -> Result<()> {
     let pending = pending_stake(cfg, user_stake)?;
     if pending == 0 {
@@ -3823,4 +4064,6 @@ pub enum ErrorCode {
     YieldNotEligible,
     #[msg("Yield pool is empty")]
     YieldPoolEmpty,
+    #[msg("Invalid MELT config")]
+    InvalidMeltConfig,
 }

@@ -57,6 +57,19 @@ export function getMeltEnv(): EnvCache {
 export const getMeltRpcUrl = () => getMeltEnv().rpcUrl;
 export const getMeltProgramId = () => getMeltEnv().programId;
 export const getMindMint = () => getMeltEnv().mindMint;
+export const getMiningProgramId = (): PublicKey | null => {
+  const raw =
+    process.env.NEXT_PUBLIC_PROGRAM_ID ??
+    process.env.NEXT_PUBLIC_MINING_V2_PROGRAM_ID ??
+    "";
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    return new PublicKey(trimmed);
+  } catch {
+    return null;
+  }
+};
 
 export const deriveMeltConfigPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from(CONFIG_SEED)], getMeltProgramId())[0];
@@ -158,6 +171,18 @@ const MELT_IDL = {
         { name: "admin", isMut: true, isSigner: true },
         { name: "config", isMut: false, isSigner: false },
         { name: "vault", isMut: true, isSigner: false },
+        { name: "round", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [{ name: "lamports", type: "u64" }],
+    },
+    {
+      name: "adminTopupVial",
+      accounts: [
+        { name: "admin", isMut: true, isSigner: true },
+        { name: "config", isMut: false, isSigner: false },
+        { name: "vault", isMut: true, isSigner: false },
+        { name: "round", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],
       args: [{ name: "lamports", type: "u64" }],
@@ -196,6 +221,14 @@ const MELT_IDL = {
         { name: "startTs", type: "i64" },
         { name: "endTs", type: "i64" },
       ],
+    },
+    {
+      name: "adminSetParams",
+      accounts: [
+        { name: "admin", isMut: true, isSigner: true },
+        { name: "config", isMut: true, isSigner: false },
+      ],
+      args: [{ name: "params", type: { defined: "AdminSetParamsParams" } }],
     },
     {
       name: "startRound",
@@ -260,6 +293,11 @@ const MELT_IDL = {
           { name: "roundWindowSec", type: "u64" },
           { name: "testMode", type: "bool" },
           { name: "roundSeq", type: "u64" },
+          { name: "vialLamports", type: "u64" },
+          { name: "bonusPoolLamports", type: "u64" },
+          { name: "activeRoundSeq", type: "u64" },
+          { name: "activeRoundActive", type: "bool" },
+          { name: "pendingWindowSec", type: "u64" },
           { name: "bumpConfig", type: "u8" },
           { name: "bumpVault", type: "u8" },
         ],
@@ -310,6 +348,11 @@ const MELT_IDL = {
           { name: "roundWindowSec", type: "u64" },
           { name: "testMode", type: "bool" },
           { name: "roundSeq", type: "u64" },
+          { name: "vialLamports", type: "u64" },
+          { name: "bonusPoolLamports", type: "u64" },
+          { name: "activeRoundSeq", type: "u64" },
+          { name: "activeRoundActive", type: "bool" },
+          { name: "pendingWindowSec", type: "u64" },
           { name: "bumpConfig", type: "u8" },
           { name: "bumpVault", type: "u8" },
         ],
@@ -358,6 +401,18 @@ const MELT_IDL = {
       },
     },
     {
+      name: "AdminSetParamsParams",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "vaultCapXnt", type: { option: "u64" } },
+          { name: "rolloverBps", type: { option: "u16" } },
+          { name: "burnMin", type: { option: "u64" } },
+          { name: "roundWindowSec", type: { option: "u64" } },
+        ],
+      },
+    },
+    {
       name: "RoundStatus",
       type: {
         kind: "enum",
@@ -391,4 +446,43 @@ export function getMeltProgram(connection: Connection, wallet: AnchorWallet) {
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new (anchor as any).Program(idlForClient, provider);
+}
+
+export async function fetchMiningMeltConfig(connection: Connection) {
+  const miningProgramId = getMiningProgramId();
+  if (!miningProgramId) return null;
+
+  const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], miningProgramId);
+  const info = await connection.getAccountInfo(configPda, "confirmed");
+  if (!info || info.data.length < 321) return null;
+  const data = info.data;
+  let offset = 8;
+
+  offset += 32; // admin
+  offset += 8; // emission_per_sec
+  offset += 16; // acc_mind_per_hp
+  offset += 8; // last_update_ts
+  offset += 8; // network_hp_active
+  offset += 32; // mind_mint
+  offset += 32; // xnt_mint
+  offset += 32; // staking_reward_vault
+  offset += 32; // treasury_vault
+  offset += 32; // staking_mind_vault
+  offset += 8; // max_effective_hp
+  offset += 8; // seconds_per_day
+  offset += 16; // staking_acc_xnt_per_mind
+  offset += 8; // staking_last_update_ts
+  offset += 8; // staking_reward_rate_xnt_per_sec
+  offset += 8; // staking_epoch_end_ts
+  offset += 8; // staking_total_staked_mind
+  offset += 8; // staking_undistributed_xnt
+  offset += 8; // staking_accounted_balance
+  if (offset + 1 > data.length) return null;
+  const meltEnabled = data.readUInt8(offset) === 1;
+  offset += 1;
+  if (offset + 32 + 2 > data.length) return null;
+  const meltProgramId = new PublicKey(data.subarray(offset, offset + 32));
+  offset += 32;
+  const meltFundingBps = data.readUInt16LE(offset);
+  return { meltEnabled, meltProgramId, meltFundingBps };
 }

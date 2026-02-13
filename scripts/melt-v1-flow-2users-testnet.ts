@@ -11,6 +11,19 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 
+const TESTNET_RPC_URL = 'https://rpc.testnet.x1.xyz';
+
+function assertTestnetOnly(provider: anchor.AnchorProvider) {
+  const envRpc = (process.env.ANCHOR_PROVIDER_URL || '').trim();
+  if (envRpc !== TESTNET_RPC_URL) {
+    throw new Error('TESTNET ONLY: ANCHOR_PROVIDER_URL must be https://rpc.testnet.x1.xyz');
+  }
+  const rpc = provider.connection.rpcEndpoint;
+  if (rpc !== TESTNET_RPC_URL || rpc.includes('mainnet') || envRpc.includes('mainnet')) {
+    throw new Error('TESTNET ONLY');
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -89,6 +102,20 @@ function fixIdl(idl: any): any {
   for (const t of idl.types || []) {
     for (const field of t.type?.fields || []) field.type = fixType(field.type);
   }
+  for (const ev of idl.events || []) {
+    if (!ev.discriminator) {
+      const preimage = `event:${ev.name}`;
+      const hash = crypto.createHash('sha256').update(preimage).digest();
+      ev.discriminator = hash.subarray(0, 8);
+    }
+    if (ev.fields && !idl.types.find((t: any) => t.name === ev.name)) {
+      idl.types.push({
+        name: ev.name,
+        type: { kind: 'struct', fields: ev.fields },
+      });
+    }
+    for (const field of ev.fields || []) field.type = fixType(field.type);
+  }
   return idl;
 }
 
@@ -112,6 +139,7 @@ function writeKeypair(filePath: string, kp: Keypair) {
 async function main() {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
+  assertTestnetOnly(provider);
   const connection = provider.connection;
   const commitment: anchor.web3.Commitment = 'confirmed';
 
@@ -220,7 +248,14 @@ async function main() {
   );
   await provider.sendAndConfirm(mindTx, []);
 
-  // 3) Topup vault (admin)
+  // 3) Round setup
+  const roundSeq = BigInt(cfg.roundSeq.toString());
+  const seqBuf = Buffer.alloc(8);
+  seqBuf.writeBigUInt64LE(roundSeq);
+  const [roundPda] = PublicKey.findProgramAddressSync([Buffer.from('melt_round'), seqBuf], programId);
+  console.log('roundSeq', roundSeq.toString(), 'roundPda', roundPda.toBase58());
+
+  // 4) Topup vault (admin)
   const topupLamports = 10n * 1_000_000_000n;
   const sigTopup = await program.methods
     .adminTopupVault(new anchor.BN(topupLamports))
@@ -228,16 +263,10 @@ async function main() {
       admin: adminPk,
       config: configPda,
       vault: vaultPk,
+      round: roundPda,
       systemProgram: SystemProgram.programId,
     })
     .rpc();
-
-  // 4) Round setup
-  const roundSeq = BigInt(cfg.roundSeq.toString());
-  const seqBuf = Buffer.alloc(8);
-  seqBuf.writeBigUInt64LE(roundSeq);
-  const [roundPda] = PublicKey.findProgramAddressSync([Buffer.from('melt_round'), seqBuf], programId);
-  console.log('roundSeq', roundSeq.toString(), 'roundPda', roundPda.toBase58());
 
   const now = Math.floor(Date.now() / 1000);
   const startTs = Number(process.env.MELT_TEST_START_TS || now + 5);

@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
+use anchor_lang::Discriminator;
 use anchor_lang::system_program::{self, Transfer as SystemTransfer};
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount};
+use std::collections::BTreeMap;
 
 // NOTE: Testnet program id placeholder. We'll generate a real program id when deploying to testnet.
 declare_id!("HAWdiMtvTfiFhENgxPdWEgBQmoa3A5oN1KV9N3LSmxXz");
@@ -31,6 +33,11 @@ pub mod melt_v1 {
         cfg.bump_config = *ctx.bumps.get("config").unwrap();
         cfg.bump_vault = *ctx.bumps.get("vault").unwrap();
         cfg.round_seq = 0;
+        cfg.vial_lamports = 0;
+        cfg.bonus_pool_lamports = 0;
+        cfg.active_round_seq = 0;
+        cfg.active_round_active = false;
+        cfg.pending_window_sec = 0;
         Ok(())
     }
 
@@ -57,32 +64,35 @@ pub mod melt_v1 {
         Ok(())
     }
 
+    /// Reallocates config to the latest size (testnet migration).
+    pub fn admin_migrate_config(ctx: Context<AdminMigrateConfig>) -> Result<()> {
+        migrate_melt_config_account(
+            &ctx.accounts.admin.to_account_info(),
+            &ctx.accounts.config.to_account_info(),
+        )
+    }
+
     /// Admin can set a custom schedule for the next round (testnet).
     pub fn admin_set_schedule(ctx: Context<AdminSetSchedule>, start_ts: i64, end_ts: i64) -> Result<()> {
-        let cfg = &ctx.accounts.config;
+        let cfg = &mut ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
         require!(end_ts > start_ts, MeltError::InvalidParams);
 
         let now = Clock::get()?.unix_timestamp;
         require!(end_ts > now, MeltError::InvalidParams);
 
-        let round = &mut ctx.accounts.round;
-        require!(round.status == RoundStatus::Planned, MeltError::BadRoundStatus);
-
-        if round.seq == 0 {
-            round.seq = cfg.round_seq;
-        }
-        require!(round.seq == cfg.round_seq, MeltError::InvalidParams);
-
-        round.start_ts = start_ts;
-        round.end_ts = end_ts;
+        require!(cfg.test_mode, MeltError::InvalidParams);
+        let duration = end_ts
+            .checked_sub(start_ts)
+            .ok_or(MeltError::MathOverflow)?;
+        cfg.pending_window_sec = u64::try_from(duration).map_err(|_| MeltError::MathOverflow)?;
         Ok(())
     }
 
-    /// Top up vault with native XNT (lamports). For tests.
-    pub fn admin_topup_vault(ctx: Context<AdminTopupVault>, lamports: u64) -> Result<()> {
+    /// Top up the vial (next round progress) with native XNT (lamports). For tests.
+    pub fn admin_topup_vial(ctx: Context<AdminTopupVial>, lamports: u64) -> Result<()> {
         require!(lamports > 0, MeltError::InvalidParams);
-        let cfg = &ctx.accounts.config;
+        let cfg = &mut ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
 
         system_program::transfer(
@@ -95,18 +105,101 @@ pub mod melt_v1 {
             ),
             lamports,
         )?;
+        cfg.vial_lamports = cfg
+            .vial_lamports
+            .checked_add(lamports)
+            .ok_or(MeltError::MathOverflow)?;
+
+        emit!(FundingRecorded {
+            amount: lamports,
+            vial_lamports: cfg.vial_lamports,
+        });
+        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.round, &ctx.bumps, false)? {
+            emit!(RoundStarted {
+                seq: info.seq,
+                start_ts: info.start_ts,
+                end_ts: info.end_ts,
+                pot: info.pot,
+                v_pay: info.v_pay,
+            });
+        }
+        Ok(())
+    }
+
+    /// Backwards-compatible topup (same as admin_topup_vial).
+    pub fn admin_topup_vault(ctx: Context<AdminTopupVault>, lamports: u64) -> Result<()> {
+        require!(lamports > 0, MeltError::InvalidParams);
+        let cfg = &mut ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
+
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                SystemTransfer {
+                    from: ctx.accounts.admin.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                },
+            ),
+            lamports,
+        )?;
+        cfg.vial_lamports = cfg
+            .vial_lamports
+            .checked_add(lamports)
+            .ok_or(MeltError::MathOverflow)?;
+        emit!(FundingRecorded {
+            amount: lamports,
+            vial_lamports: cfg.vial_lamports,
+        });
+        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.round, &ctx.bumps, false)? {
+            emit!(RoundStarted {
+                seq: info.seq,
+                start_ts: info.start_ts,
+                end_ts: info.end_ts,
+                pot: info.pot,
+                v_pay: info.v_pay,
+            });
+        }
+        Ok(())
+    }
+
+    /// Record funding already transferred into the MELT vault.
+    /// Permissionless; intended for CPI from other programs.
+    pub fn record_funding(ctx: Context<RecordFunding>, lamports: u64) -> Result<()> {
+        require!(lamports > 0, MeltError::InvalidParams);
+        let cfg = &mut ctx.accounts.config;
+
+        cfg.vial_lamports = cfg
+            .vial_lamports
+            .checked_add(lamports)
+            .ok_or(MeltError::MathOverflow)?;
+        emit!(FundingRecorded {
+            amount: lamports,
+            vial_lamports: cfg.vial_lamports,
+        });
+        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.round, &ctx.bumps, false)? {
+            emit!(RoundStarted {
+                seq: info.seq,
+                start_ts: info.start_ts,
+                end_ts: info.end_ts,
+                pot: info.pot,
+                v_pay: info.v_pay,
+            });
+        }
         Ok(())
     }
 
     /// Withdraw from vault back to admin. Only allowed in test_mode.
     pub fn admin_withdraw_vault(ctx: Context<AdminWithdrawVault>, lamports: u64) -> Result<()> {
         require!(lamports > 0, MeltError::InvalidParams);
-        let cfg = &ctx.accounts.config;
+        let cfg = &mut ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
         require!(cfg.test_mode, MeltError::WithdrawDisabled);
 
-        let vault_balance = ctx.accounts.vault.to_account_info().lamports();
-        require!(vault_balance >= lamports, MeltError::InsufficientVaultBalance);
+        require!(cfg.vial_lamports >= lamports, MeltError::InsufficientVaultBalance);
+        cfg.vial_lamports = cfg
+            .vial_lamports
+            .checked_sub(lamports)
+            .ok_or(MeltError::MathOverflow)?;
 
         // NOTE: vault is program-owned, so we move lamports directly.
         {
@@ -130,39 +223,16 @@ pub mod melt_v1 {
     pub fn start_round(ctx: Context<StartRound>) -> Result<()> {
         let cfg = &mut ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
-
-        // Round scheduling
-        let now = Clock::get()?.unix_timestamp;
-        let round = &mut ctx.accounts.round;
-        require!(round.status == RoundStatus::Planned, MeltError::BadRoundStatus);
-
-        if round.seq == 0 {
-            round.seq = cfg.round_seq;
+        require!(cfg.test_mode, MeltError::InvalidParams);
+        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.round, &ctx.bumps, true)? {
+            emit!(RoundStarted {
+                seq: info.seq,
+                start_ts: info.start_ts,
+                end_ts: info.end_ts,
+                pot: info.pot,
+                v_pay: info.v_pay,
+            });
         }
-        require!(round.seq == cfg.round_seq, MeltError::InvalidParams);
-
-        if round.start_ts == 0 && round.end_ts == 0 {
-            round.start_ts = now;
-            round.end_ts = now
-                .checked_add(cfg.round_window_sec as i64)
-                .ok_or(MeltError::MathOverflow)?;
-        } else {
-            // If schedule was pre-set, ensure it is valid and we can start now.
-            require!(round.end_ts > round.start_ts, MeltError::InvalidParams);
-            require!(now >= round.start_ts, MeltError::RoundNotStarted);
-            require!(round.end_ts > now, MeltError::InvalidParams);
-        }
-
-        // Snapshot the round pool now (prevents admin topups/withdrawals during the round from changing payouts).
-        let vault_balance = ctx.accounts.vault.to_account_info().lamports();
-        let v_round = core::cmp::min(vault_balance, cfg.vault_cap_lamports);
-        round.v_round = v_round;
-        round.v_pay = 0; // computed on finalize
-        round.total_burn = 0;
-        round.status = RoundStatus::Active;
-        round.bump = *ctx.bumps.get("round").unwrap();
-
-        cfg.round_seq = cfg.round_seq.checked_add(1).ok_or(MeltError::MathOverflow)?;
         Ok(())
     }
 
@@ -208,32 +278,41 @@ pub mod melt_v1 {
             .checked_add(amount)
             .ok_or(MeltError::MathOverflow)?;
 
+        emit!(Burned {
+            user: ctx.accounts.user.key(),
+            round: round.key(),
+            amount,
+            total_burn: round.total_burn,
+        });
         Ok(())
     }
 
     /// Finalize a round after it ends. Computes v_pay = (1-rollover)*v_round.
     pub fn finalize_round(ctx: Context<FinalizeRound>) -> Result<()> {
-        let cfg = &ctx.accounts.config;
+        let cfg = &mut ctx.accounts.config;
         require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
 
         let now = Clock::get()?.unix_timestamp;
         let round = &mut ctx.accounts.round;
         require!(round.status == RoundStatus::Active, MeltError::BadRoundStatus);
+        require!(cfg.active_round_active, MeltError::BadRoundStatus);
+        require!(round.seq == cfg.active_round_seq, MeltError::InvalidParams);
         require!(now > round.end_ts, MeltError::RoundNotEnded);
 
-        // NOTE: v_round is snapshotted in start_round (prevents admin topup/withdraw from changing payouts mid-round).
-        let v_round = round.v_round;
-
-        let pay_bps = 10_000u128
-            .checked_sub(cfg.rollover_bps as u128)
+        let rollover = round
+            .v_round
+            .checked_sub(round.v_pay)
             .ok_or(MeltError::MathOverflow)?;
-        let v_pay = (v_round as u128)
-            .checked_mul(pay_bps)
-            .ok_or(MeltError::MathOverflow)?
-            .checked_div(10_000u128)
+        cfg.bonus_pool_lamports = cfg
+            .bonus_pool_lamports
+            .checked_add(rollover)
             .ok_or(MeltError::MathOverflow)?;
-        round.v_pay = u64::try_from(v_pay).map_err(|_| MeltError::MathOverflow)?;
         round.status = RoundStatus::Finalized;
+        cfg.active_round_active = false;
+        emit!(Finalized {
+            seq: round.seq,
+            rollover,
+        });
         Ok(())
     }
 
@@ -282,8 +361,97 @@ pub mod melt_v1 {
         }
 
         ur.claimed = true;
+        emit!(Claimed {
+            user: ctx.accounts.user.key(),
+            round: round.key(),
+            payout: payout_u64,
+        });
         Ok(())
     }
+}
+
+struct RoundStartInfo {
+    seq: u64,
+    start_ts: i64,
+    end_ts: i64,
+    pot: u64,
+    v_pay: u64,
+}
+
+fn try_start_round(
+    cfg: &mut Account<MeltConfig>,
+    round: &mut Account<MeltRound>,
+    bumps: &BTreeMap<String, u8>,
+    strict: bool,
+) -> Result<Option<RoundStartInfo>> {
+    if cfg.active_round_active {
+        return if strict {
+            err!(MeltError::RoundAlreadyActive)
+        } else {
+            Ok(None)
+        };
+    }
+    if cfg.vial_lamports < cfg.vault_cap_lamports {
+        return if strict {
+            err!(MeltError::VialNotFull)
+        } else {
+            Ok(None)
+        };
+    }
+
+    let now = Clock::get()?.unix_timestamp;
+    let duration = if cfg.pending_window_sec > 0 {
+        cfg.pending_window_sec
+    } else {
+        cfg.round_window_sec
+    };
+
+    let pot = cfg
+        .vault_cap_lamports
+        .checked_add(cfg.bonus_pool_lamports)
+        .ok_or(MeltError::MathOverflow)?;
+    let pay_bps = 10_000u128
+        .checked_sub(cfg.rollover_bps as u128)
+        .ok_or(MeltError::MathOverflow)?;
+    let v_pay = (pot as u128)
+        .checked_mul(pay_bps)
+        .ok_or(MeltError::MathOverflow)?
+        .checked_div(10_000u128)
+        .ok_or(MeltError::MathOverflow)?;
+
+    cfg.vial_lamports = cfg
+        .vial_lamports
+        .checked_sub(cfg.vault_cap_lamports)
+        .ok_or(MeltError::MathOverflow)?;
+    cfg.bonus_pool_lamports = 0;
+
+    let seq = cfg.round_seq;
+    let start_ts = now;
+    let end_ts = now
+        .checked_add(duration as i64)
+        .ok_or(MeltError::MathOverflow)?;
+    let v_pay_u64 = u64::try_from(v_pay).map_err(|_| MeltError::MathOverflow)?;
+
+    round.seq = seq;
+    round.start_ts = start_ts;
+    round.end_ts = end_ts;
+    round.v_round = pot;
+    round.v_pay = v_pay_u64;
+    round.total_burn = 0;
+    round.status = RoundStatus::Active;
+    round.bump = *bumps.get("round").unwrap();
+
+    cfg.active_round_seq = seq;
+    cfg.active_round_active = true;
+    cfg.round_seq = cfg.round_seq.checked_add(1).ok_or(MeltError::MathOverflow)?;
+    cfg.pending_window_sec = 0;
+    Ok(Some(RoundStartInfo {
+        seq,
+        start_ts,
+        end_ts,
+        pot,
+        v_pay: v_pay_u64,
+    }))
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -311,6 +479,26 @@ pub struct AdminSetParamsParams {
 #[account]
 #[derive(InitSpace)]
 pub struct MeltConfig {
+    pub admin: Pubkey,
+    pub mind_mint: Pubkey,
+    pub vault: Pubkey,
+    pub vault_cap_lamports: u64,
+    pub rollover_bps: u16,
+    pub burn_min: u64,
+    pub round_window_sec: u64,
+    pub test_mode: bool,
+    pub round_seq: u64,
+    pub vial_lamports: u64,
+    pub bonus_pool_lamports: u64,
+    pub active_round_seq: u64,
+    pub active_round_active: bool,
+    pub pending_window_sec: u64,
+    pub bump_config: u8,
+    pub bump_vault: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+pub struct MeltConfigLegacyV1 {
     pub admin: Pubkey,
     pub mind_mint: Pubkey,
     pub vault: Pubkey,
@@ -400,13 +588,73 @@ pub struct AdminSetParams<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AdminMigrateConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump
+    )]
+    /// CHECK: Legacy config migration reads/writes raw bytes.
+    pub config: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct AdminTopupVault<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump_config)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
     pub config: Account<'info, MeltConfig>,
     #[account(mut, seeds = [VAULT_SEED], bump = config.bump_vault)]
     pub vault: Account<'info, MeltVault>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        space = 8 + MeltRound::INIT_SPACE,
+        seeds = [ROUND_SEED, &config.round_seq.to_le_bytes()],
+        bump
+    )]
+    pub round: Account<'info, MeltRound>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AdminTopupVial<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
+    pub config: Account<'info, MeltConfig>,
+    #[account(mut, seeds = [VAULT_SEED], bump = config.bump_vault)]
+    pub vault: Account<'info, MeltVault>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        space = 8 + MeltRound::INIT_SPACE,
+        seeds = [ROUND_SEED, &config.round_seq.to_le_bytes()],
+        bump
+    )]
+    pub round: Account<'info, MeltRound>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RecordFunding<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
+    pub config: Account<'info, MeltConfig>,
+    #[account(mut, seeds = [VAULT_SEED], bump = config.bump_vault)]
+    pub vault: Account<'info, MeltVault>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + MeltRound::INIT_SPACE,
+        seeds = [ROUND_SEED, &config.round_seq.to_le_bytes()],
+        bump
+    )]
+    pub round: Account<'info, MeltRound>,
     pub system_program: Program<'info, System>,
 }
 
@@ -414,7 +662,7 @@ pub struct AdminTopupVault<'info> {
 pub struct AdminWithdrawVault<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump_config)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
     pub config: Account<'info, MeltConfig>,
     #[account(mut, seeds = [VAULT_SEED], bump = config.bump_vault)]
     pub vault: Account<'info, MeltVault>,
@@ -447,7 +695,7 @@ pub struct StartRound<'info> {
 pub struct AdminSetSchedule<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump_config)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
     pub config: Account<'info, MeltConfig>,
     #[account(
         init_if_needed,
@@ -471,7 +719,7 @@ pub struct BurnMind<'info> {
     #[account(mut, seeds = [ROUND_SEED, &round.seq.to_le_bytes()], bump = round.bump)]
     pub round: Account<'info, MeltRound>,
 
-    #[account(address = config.mind_mint)]
+    #[account(mut, address = config.mind_mint)]
     pub mind_mint: Account<'info, Mint>,
 
     #[account(
@@ -497,7 +745,7 @@ pub struct BurnMind<'info> {
 #[derive(Accounts)]
 pub struct FinalizeRound<'info> {
     pub admin: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump_config)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
     pub config: Account<'info, MeltConfig>,
     #[account(mut, seeds = [ROUND_SEED, &round.seq.to_le_bytes()], bump = round.bump)]
     pub round: Account<'info, MeltRound>,
@@ -525,6 +773,42 @@ pub struct Claim<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event]
+pub struct FundingRecorded {
+    pub amount: u64,
+    pub vial_lamports: u64,
+}
+
+#[event]
+pub struct RoundStarted {
+    pub seq: u64,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub pot: u64,
+    pub v_pay: u64,
+}
+
+#[event]
+pub struct Burned {
+    pub user: Pubkey,
+    pub round: Pubkey,
+    pub amount: u64,
+    pub total_burn: u64,
+}
+
+#[event]
+pub struct Finalized {
+    pub seq: u64,
+    pub rollover: u64,
+}
+
+#[event]
+pub struct Claimed {
+    pub user: Pubkey,
+    pub round: Pubkey,
+    pub payout: u64,
+}
+
 #[error_code]
 pub enum MeltError {
     #[msg("unauthorized")]
@@ -539,6 +823,10 @@ pub enum MeltError {
     RoundNotEnded,
     #[msg("round not started yet")]
     RoundNotStarted,
+    #[msg("round already active")]
+    RoundAlreadyActive,
+    #[msg("vial not full")]
+    VialNotFull,
     #[msg("bad round status")]
     BadRoundStatus,
     #[msg("below burn min")]
@@ -551,4 +839,66 @@ pub enum MeltError {
     WithdrawDisabled,
     #[msg("insufficient vault balance")]
     InsufficientVaultBalance,
+}
+
+fn migrate_melt_config_account(
+    admin_ai: &AccountInfo,
+    config_ai: &AccountInfo,
+) -> Result<()> {
+    require_keys_eq!(*config_ai.owner, crate::id(), MeltError::InvalidParams);
+    let new_cfg = {
+        let data = config_ai.try_borrow_data()?;
+        require!(data.len() >= 8, MeltError::InvalidParams);
+        require!(
+            data[..8] == MeltConfig::DISCRIMINATOR,
+            MeltError::InvalidParams
+        );
+        let payload = &data[8..];
+        if payload.len() == MeltConfig::INIT_SPACE {
+            MeltConfig::try_from_slice(payload).map_err(|_| MeltError::InvalidParams)?
+        } else if payload.len() == MeltConfigLegacyV1::INIT_SPACE {
+            let old = MeltConfigLegacyV1::try_from_slice(payload)
+                .map_err(|_| MeltError::InvalidParams)?;
+            MeltConfig {
+                admin: old.admin,
+                mind_mint: old.mind_mint,
+                vault: old.vault,
+                vault_cap_lamports: old.vault_cap_lamports,
+                rollover_bps: old.rollover_bps,
+                burn_min: old.burn_min,
+                round_window_sec: old.round_window_sec,
+                test_mode: old.test_mode,
+                round_seq: old.round_seq,
+                vial_lamports: 0,
+                bonus_pool_lamports: 0,
+                active_round_seq: 0,
+                active_round_active: false,
+                pending_window_sec: 0,
+                bump_config: old.bump_config,
+                bump_vault: old.bump_vault,
+            }
+        } else {
+            return err!(MeltError::InvalidParams);
+        }
+    };
+
+    require_keys_eq!(new_cfg.admin, *admin_ai.key, MeltError::Unauthorized);
+
+    let new_len = 8 + MeltConfig::INIT_SPACE;
+    if config_ai.data_len() < new_len {
+        let rent_min = Rent::get()?.minimum_balance(new_len);
+        let current = config_ai.lamports();
+        require!(current >= rent_min, MeltError::InsufficientVaultBalance);
+        config_ai.realloc(new_len, false)?;
+    }
+
+    let mut out = vec![0u8; new_len];
+    out[..8].copy_from_slice(&MeltConfig::DISCRIMINATOR);
+    let body = new_cfg
+        .try_to_vec()
+        .map_err(|_| MeltError::InvalidParams)?;
+    require!(body.len() == MeltConfig::INIT_SPACE, MeltError::InvalidParams);
+    out[8..].copy_from_slice(&body);
+    config_ai.try_borrow_mut_data()?.copy_from_slice(&out);
+    Ok(())
 }

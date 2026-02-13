@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import * as anchor from '@coral-xyz/anchor';
 import { PublicKey, Keypair, SystemProgram } from '@solana/web3.js';
 import {
@@ -9,6 +10,19 @@ import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
 } from '@solana/spl-token';
+
+const TESTNET_RPC_URL = 'https://rpc.testnet.x1.xyz';
+
+function assertTestnetOnly(provider: anchor.AnchorProvider) {
+  const envRpc = (process.env.ANCHOR_PROVIDER_URL || '').trim();
+  if (envRpc !== TESTNET_RPC_URL) {
+    throw new Error('TESTNET ONLY: ANCHOR_PROVIDER_URL must be https://rpc.testnet.x1.xyz');
+  }
+  const rpc = provider.connection.rpcEndpoint;
+  if (rpc !== TESTNET_RPC_URL || rpc.includes('mainnet') || envRpc.includes('mainnet')) {
+    throw new Error('TESTNET ONLY');
+  }
+}
 
 function loadKeypair(p: string): Keypair {
   const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -23,6 +37,64 @@ function mustEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env ${name}`);
   return v;
+}
+
+function fixType(t: any): any {
+  if (!t) return t;
+  if (typeof t === 'string') {
+    if (t === 'publicKey') return 'pubkey';
+    return t;
+  }
+  if (t.defined && typeof t.defined === 'string') {
+    t.defined = { name: t.defined };
+  }
+  if (t.option) t.option = fixType(t.option);
+  if (t.coption) t.coption = fixType(t.coption);
+  if (t.vec) t.vec = fixType(t.vec);
+  if (t.array) t.array = [fixType(t.array[0]), t.array[1]];
+  return t;
+}
+
+function fixIdl(idl: any): any {
+  idl.types = idl.types || [];
+  for (const ix of idl.instructions || []) {
+    if (!ix.discriminator) {
+      const snake = ix.name.includes('_') ? ix.name : ix.name.replace(/([A-Z])/g, '_$1').toLowerCase();
+      const preimage = `global:${snake}`;
+      const hash = crypto.createHash('sha256').update(preimage).digest();
+      ix.discriminator = hash.subarray(0, 8);
+    }
+    for (const arg of ix.args || []) arg.type = fixType(arg.type);
+  }
+  for (const account of idl.accounts || []) {
+    if (!account.discriminator) {
+      const preimage = `account:${account.name}`;
+      const hash = crypto.createHash('sha256').update(preimage).digest();
+      account.discriminator = hash.subarray(0, 8);
+    }
+    if (account.type && !idl.types.find((t: any) => t.name === account.name)) {
+      idl.types.push({ name: account.name, type: account.type });
+    }
+    for (const field of account.type?.fields || []) field.type = fixType(field.type);
+  }
+  for (const t of idl.types || []) {
+    for (const field of t.type?.fields || []) field.type = fixType(field.type);
+  }
+  for (const ev of idl.events || []) {
+    if (!ev.discriminator) {
+      const preimage = `event:${ev.name}`;
+      const hash = crypto.createHash('sha256').update(preimage).digest();
+      ev.discriminator = hash.subarray(0, 8);
+    }
+    if (ev.fields && !idl.types.find((t: any) => t.name === ev.name)) {
+      idl.types.push({
+        name: ev.name,
+        type: { kind: 'struct', fields: ev.fields },
+      });
+    }
+    for (const field of ev.fields || []) field.type = fixType(field.type);
+  }
+  return idl;
 }
 
 async function ensureAtaIx(opts: {
@@ -41,6 +113,7 @@ async function ensureAtaIx(opts: {
 async function main() {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
+  assertTestnetOnly(provider);
   const connection = provider.connection;
 
   const programId = new PublicKey(mustEnv('MELT_V1_PROGRAM_ID'));
@@ -50,8 +123,9 @@ async function main() {
   const user = loadKeypair(userKeypairPath);
 
   const idlPath = path.join(__dirname, '..', 'target', 'idl', 'melt_v1.json');
-  const idl = JSON.parse(fs.readFileSync(idlPath, 'utf8'));
-  const program = new anchor.Program(idl, programId, provider);
+  const idl = fixIdl(JSON.parse(fs.readFileSync(idlPath, 'utf8')));
+  idl.address = programId.toBase58();
+  const program: any = new (anchor as any).Program(idl, provider);
 
   const adminPk = provider.wallet.publicKey;
   const userPk = user.publicKey;
@@ -70,9 +144,9 @@ async function main() {
   const cfgInfo = await connection.getAccountInfo(configPda);
   if (!cfgInfo) {
     console.log('init_melt: creating config/vault');
-    const vaultCapLamports = new anchor.BN(150n * 1_000_000_000n);
+    const vaultCapLamports = new anchor.BN(10n * 1_000_000_000n);
     const burnMin = new anchor.BN(10n * 1_000_000_000n); // 10 MIND
-    const roundWindowSec = new anchor.BN(24 * 3600);
+    const roundWindowSec = new anchor.BN(600);
     await program.methods
       .initMelt({
         vaultCapXnt: vaultCapLamports,
@@ -95,7 +169,12 @@ async function main() {
   }
 
   // 2) Topup vault (admin)
-  const topupLamports = BigInt(process.env.MELT_TEST_TOPUP_XNT || '5') * 1_000_000_000n;
+  const cfg = await (program.account as any).meltConfig.fetch(configPda);
+  const roundSeq = BigInt(cfg.roundSeq.toString());
+  const seqBuf = Buffer.alloc(8);
+  seqBuf.writeBigUInt64LE(roundSeq);
+  const [roundPda] = PublicKey.findProgramAddressSync([Buffer.from('melt_round'), seqBuf], programId);
+  const topupLamports = BigInt(process.env.MELT_TEST_TOPUP_XNT || '10') * 1_000_000_000n;
   console.log('admin_topup_vault', Number(topupLamports) / 1e9, 'XNT');
   await program.methods
     .adminTopupVault(new anchor.BN(topupLamports))
@@ -103,6 +182,7 @@ async function main() {
       admin: adminPk,
       config: configPda,
       vault: vaultPda,
+      round: roundPda,
       systemProgram: SystemProgram.programId,
     })
     .rpc();
@@ -128,12 +208,6 @@ async function main() {
   }
 
   // 4) Derive current round PDA (seq from config)
-  const cfg = await (program.account as any).meltConfig.fetch(configPda);
-  const roundSeq = BigInt(cfg.roundSeq.toString());
-  const seqBuf = Buffer.alloc(8);
-  seqBuf.writeBigUInt64LE(roundSeq);
-  const [roundPda] = PublicKey.findProgramAddressSync([Buffer.from('melt_round'), seqBuf], programId);
-
   console.log('roundSeq', roundSeq.toString(), 'roundPda', roundPda.toBase58());
 
   // 5) Set short schedule for tests (admin)

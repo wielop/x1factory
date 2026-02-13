@@ -4,7 +4,7 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import {
   AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -1833,7 +1833,7 @@ export function PublicDashboard() {
           meltProgramId
         );
       }
-      const sig = await program.methods
+      const baseIx = await program.methods
         .buyContract(contract.key, positionIndex)
         .accounts({
           owner: publicKey,
@@ -1847,7 +1847,35 @@ export function PublicDashboard() {
           meltRound: meltRoundPda,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .instruction();
+
+      // Defensive patch for stale IDL/client cache: ensure MELT accounts exist and are writable.
+      const keys = [...baseIx.keys];
+      const ensureWritableKey = (pubkey: PublicKey) => {
+        const idx = keys.findIndex((k) => k.pubkey.equals(pubkey));
+        if (idx >= 0) {
+          keys[idx] = { ...keys[idx], isWritable: true };
+          return;
+        }
+        const sysIdx = keys.findIndex((k) => k.pubkey.equals(SystemProgram.programId));
+        const entry = { pubkey, isSigner: false, isWritable: true };
+        if (sysIdx >= 0) {
+          keys.splice(sysIdx, 0, entry);
+        } else {
+          keys.push(entry);
+        }
+      };
+      ensureWritableKey(meltConfigPda);
+      ensureWritableKey(meltVaultPda);
+      ensureWritableKey(meltRoundPda);
+
+      const ix = new TransactionInstruction({
+        programId: baseIx.programId,
+        data: baseIx.data,
+        keys,
+      });
+      const tx = new Transaction().add(ix);
+      const sig = await (program.provider as any).sendAndConfirm(tx, []);
       return sig;
     });
   };

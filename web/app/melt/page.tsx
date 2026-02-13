@@ -246,6 +246,7 @@ export default function MeltPlayerPage() {
 
   const nextProgressPct = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
   const vialVisualPct = isLiveStatus ? 100 : nextProgressPct;
+  const vialShownLamports = isLiveStatus ? capLamports : vialLamports;
   const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
 
   const refreshLeaderboard = async (loadMore = false) => {
@@ -382,36 +383,27 @@ export default function MeltPlayerPage() {
 
             <div className="text-center">
               <div className="text-xl font-semibold">
-                Next Event: {formatAmount(vialLamports)} / {formatAmount(capLamports)} XNT
+                {isLiveStatus ? "Event Vial" : "Next Event"}: {formatAmount(vialShownLamports)} / {formatAmount(capLamports)} XNT
               </div>
               <div className="mt-1 text-sm text-white/70">
-                {isLiveStatus ? `EVENT LIVE${countdown ? ` • ${countdown}` : ""}` : "Event starts automatically when the vial is full."}
+                {isLiveStatus ? `EVENT LIVE — ${countdown}` : "Event starts automatically when the vial is full."}
               </div>
-              {isLiveStatus ? (
-                <div className="mt-2 inline-flex rounded-full border border-cyan-300/40 bg-cyan-500/15 px-3 py-1 text-xs text-cyan-100">
-                  Filling NEXT vial during the event
-                </div>
-              ) : null}
             </div>
           </div>
 
-          <div className="mt-5 rounded-xl border border-cyan-400/20 bg-black/25 p-3">
-            <div className="flex items-center gap-2 text-sm text-cyan-100">
-              <span>Next vial charging: {formatAmount(vialLamports)} / {formatAmount(capLamports)} XNT</span>
-              <span
-                className="inline-flex cursor-help rounded-full border border-cyan-300/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-200"
-                title="If a purchase overfills the vial, only the amount needed to reach CAP starts the event. The remainder rolls into the next vial. Example: 8/10 + 5 → event starts, and 3 XNT goes to the next vial."
-              >
-                i
-              </span>
+          {!isLiveStatus ? (
+            <div className="mt-5 rounded-xl border border-cyan-400/20 bg-black/25 p-3">
+              <div className="text-sm text-cyan-100">
+                Progress: {formatAmount(vialLamports)} / {formatAmount(capLamports)} XNT
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400/80 to-cyan-200/90"
+                  style={{ width: `${Math.max(0, Math.min(100, nextProgressPct))}%` }}
+                />
+              </div>
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full bg-gradient-to-r from-cyan-400/80 to-cyan-200/90"
-                style={{ width: `${Math.max(0, Math.min(100, nextProgressPct))}%` }}
-              />
-            </div>
-          </div>
+          ) : null}
         </section>
 
         {showEventSection ? (
@@ -422,7 +414,7 @@ export default function MeltPlayerPage() {
                 {isClaimPhase ? "CLAIM" : "LIVE"}
               </div>
             </div>
-            <div className="mt-3 text-2xl font-semibold">Payout this event (locked): {formatAmount(vPay)} XNT</div>
+            <div className="mt-3 text-2xl font-semibold">Payout locked: {formatAmount(vPay)} XNT</div>
             <div className="mt-2 text-sm text-white/70">Total burned: {formatAmount(totalBurn)} MIND</div>
             <div className="mt-2 text-xs text-cyan-100/90">
               New inflows fill the next vial while payout stays locked.

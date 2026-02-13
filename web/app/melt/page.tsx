@@ -56,6 +56,7 @@ type LeaderboardRow = {
   burned: bigint;
   payout: bigint;
 };
+type UiPhase = "CHARGING" | "LIVE" | "CLAIM";
 
 const shortWallet = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
 
@@ -70,8 +71,6 @@ export default function MeltPlayerPage() {
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
-  const [leaderboardCursor, setLeaderboardCursor] = useState<string | null>(null);
-  const leaderboardSeenRef = useRef<Set<string>>(new Set());
   const leaderboardRoundRef = useRef<string>("");
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
@@ -115,17 +114,21 @@ export default function MeltPlayerPage() {
     return nowTs >= start && nowTs <= end;
   }, [melt.round, nowTs, roundStatus]);
 
-  const isClaimPhase = roundStatus === "finalized";
-  const isLiveStatus = roundStatus === "active";
-  const showEventSection = roundStatus === "active" || roundStatus === "finalized";
+  const uiPhase: UiPhase =
+    roundStatus === "active" ? "LIVE" : roundStatus === "finalized" ? "CLAIM" : "CHARGING";
+  const isLiveStatus = uiPhase === "LIVE";
+  const isClaimPhase = uiPhase === "CLAIM";
+  const isChargingPhase = uiPhase === "CHARGING";
+  const showEventSection = !isChargingPhase;
 
   const countdown = useMemo(() => {
-    if (!showEventSection || !melt.round) return "";
-    if (isClaimPhase) return "Event ended - claim available";
+    if (uiPhase === "CHARGING") return "";
+    if (uiPhase === "CLAIM") return "Event ended";
+    if (!melt.round) return "";
     const end = Number(melt.round.endTs.toString());
     const left = Math.max(0, end - nowTs);
     return `Ends in ${left}s`;
-  }, [isClaimPhase, melt.round, nowTs, showEventSection]);
+  }, [melt.round, nowTs, uiPhase]);
 
   const totalBurn = melt.round ? BigInt(melt.round.totalBurn.toString()) : 0n;
   const vPay = melt.round ? BigInt(melt.round.vPay.toString()) : 0n;
@@ -275,20 +278,17 @@ export default function MeltPlayerPage() {
   const vialVisualPct = isLiveStatus ? 100 : nextProgressPct;
   const vialShownLamports = isLiveStatus ? capLamports : vialLamports;
   const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
+  const missingToStart = capLamports > vialLamports ? capLamports - vialLamports : 0n;
 
-  const refreshLeaderboard = async (_loadMore = false) => {
+  const refreshLeaderboard = async () => {
     if (!melt.roundPda || !roundSeq) {
       setLeaderboardRows([]);
-      setLeaderboardCursor(null);
-      leaderboardSeenRef.current.clear();
       leaderboardRoundRef.current = "";
       return;
     }
-    const currentRoundKey = melt.roundPda.toBase58();
+    const currentRoundKey = isLiveStatus ? melt.roundPda.toBase58() : "all-time";
     if (leaderboardRoundRef.current !== currentRoundKey) {
-      leaderboardSeenRef.current.clear();
       setLeaderboardRows([]);
-      setLeaderboardCursor(null);
       leaderboardRoundRef.current = currentRoundKey;
     }
     try {
@@ -359,7 +359,6 @@ export default function MeltPlayerPage() {
       }));
       nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
       setLeaderboardRows(nextRows);
-      setLeaderboardCursor(null);
       if (nextRows.length === 0) {
         setLeaderboardError(isLiveStatus ? "No burns recorded for this round yet." : "No finalized rounds data yet.");
       }
@@ -373,13 +372,13 @@ export default function MeltPlayerPage() {
 
   useEffect(() => {
     if (!showEventSection || !melt.roundPda || !roundSeq) return;
-    void refreshLeaderboard(false);
+    void refreshLeaderboard();
   }, [showEventSection, melt.roundPda, roundSeq]);
 
   useEffect(() => {
     if (!isLiveStatus || !melt.roundPda || !roundSeq) return;
     const id = window.setInterval(() => {
-      void refreshLeaderboard(false);
+      void refreshLeaderboard();
     }, 12_000);
     return () => window.clearInterval(id);
   }, [isLiveStatus, melt.roundPda, roundSeq]);
@@ -389,6 +388,13 @@ export default function MeltPlayerPage() {
     ? leaderboardRows.findIndex((r) => r.wallet === publicKey.toBase58())
     : -1;
   const yourOutsideTop = yourRowIndex >= 10 ? leaderboardRows[yourRowIndex] : null;
+  const rowAbove = yourRowIndex > 0 ? leaderboardRows[yourRowIndex - 1] : null;
+  const climbDelta =
+    yourRowIndex > 0 && rowAbove
+      ? rowAbove.burned > yourBurn
+        ? rowAbove.burned - yourBurn + 1n
+        : 1n
+      : 0n;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
@@ -431,19 +437,23 @@ export default function MeltPlayerPage() {
             </div>
 
             <div className="text-center">
-              <div className="text-xl font-semibold">
+              <div className="text-2xl font-semibold">
                 {isLiveStatus ? "Event Vial" : "Next Event"}: {formatAmount(vialShownLamports)} / {formatAmount(capLamports)} XNT
               </div>
               <div className="mt-1 text-sm text-white/70">
-                {isLiveStatus ? `EVENT LIVE — ${countdown}` : "Event starts automatically when the vial is full."}
+                {isLiveStatus
+                  ? `EVENT LIVE — ${countdown}`
+                  : isClaimPhase
+                    ? "Event ended. Rewards are ready to claim."
+                    : `Event starts instantly when the vial hits ${formatAmount(capLamports)}.`}
               </div>
             </div>
           </div>
 
-          {!isLiveStatus ? (
+          {isChargingPhase ? (
             <div className="mt-5 rounded-xl border border-cyan-400/20 bg-black/25 p-3">
-              <div className="text-sm text-cyan-100">
-                Progress: {formatAmount(vialLamports)} / {formatAmount(capLamports)} XNT
+              <div className="text-2xl font-semibold text-cyan-100">
+                Missing to start: {formatAmount(missingToStart)} XNT
               </div>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div
@@ -451,6 +461,7 @@ export default function MeltPlayerPage() {
                   style={{ width: `${Math.max(0, Math.min(100, nextProgressPct))}%` }}
                 />
               </div>
+              <div className="mt-2 text-xs text-white/60">Get ready for the next event.</div>
             </div>
           ) : null}
         </section>
@@ -463,12 +474,18 @@ export default function MeltPlayerPage() {
                 {isClaimPhase ? "CLAIM" : "LIVE"}
               </div>
             </div>
-            <div className="mt-3 text-2xl font-semibold">Payout locked: {formatAmount(vPay)} XNT</div>
-            <div className="mt-2 text-sm text-white/70">Total burned: {formatAmount(totalBurn)} MIND</div>
-            <div className="mt-2 text-xs text-cyan-100/90">
-              New inflows fill the next vial while payout stays locked.
-            </div>
-            <div className="mt-3 text-sm text-cyan-100">{countdown}</div>
+            {isLiveStatus ? (
+              <>
+                <div className="mt-3 text-3xl font-semibold">Payout locked: {formatAmount(vPay)} XNT</div>
+                <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn)} MIND</div>
+                <div className="mt-3 text-sm text-cyan-100">{countdown}</div>
+              </>
+            ) : (
+              <>
+                <div className="mt-3 text-3xl font-semibold">Event ended</div>
+                <div className="mt-2 text-lg text-white/80">Final payout pool: {formatAmount(vPay)} XNT</div>
+              </>
+            )}
           </section>
         ) : null}
 
@@ -485,57 +502,72 @@ export default function MeltPlayerPage() {
                 <div>Estimated payout: {formatAmount(estimatedPayout)} XNT</div>
               </div>
 
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
-                <div className="text-xs uppercase tracking-[0.2em] text-white/60">Burn MIND</div>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <input
-                    className="w-28 rounded-lg border border-white/10 bg-black/40 px-2 py-2 text-sm"
-                    value={burnInput}
-                    onChange={(e) => setBurnInput(e.target.value)}
-                    placeholder="10"
-                  />
-                  <input
-                    type="range"
-                    min={burnSliderMin}
-                    max={200}
-                    step={1}
-                    value={Math.max(burnSliderMin, Number(burnInput) || burnSliderMin)}
-                    onChange={(e) => setBurnInput(e.target.value)}
-                    className="w-44 accent-cyan-400"
-                  />
-                  <button
-                    className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
-                    disabled={!isLiveWindow || busy !== null}
-                    onClick={burnMind}
-                  >
-                    {busy === "BURN" ? "Burning..." : "BURN"}
-                  </button>
-                  <div className="text-xs text-white/60">{isLiveWindow ? "Live now" : "Event not live yet"}</div>
+              {isLiveStatus ? (
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
+                  <div className="text-xs uppercase tracking-[0.2em] text-white/60">Burn MIND</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <input
+                      className="w-28 rounded-lg border border-white/10 bg-black/40 px-2 py-2 text-sm"
+                      value={burnInput}
+                      onChange={(e) => setBurnInput(e.target.value)}
+                      placeholder="10"
+                    />
+                    <input
+                      type="range"
+                      min={burnSliderMin}
+                      max={200}
+                      step={1}
+                      value={Math.max(burnSliderMin, Number(burnInput) || burnSliderMin)}
+                      onChange={(e) => setBurnInput(e.target.value)}
+                      className="w-44 accent-cyan-400"
+                    />
+                    <button
+                      className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
+                      disabled={!isLiveWindow || busy !== null}
+                      onClick={burnMind}
+                    >
+                      {busy === "BURN" ? "Burning..." : "BURN NOW"}
+                    </button>
+                    <div className="text-xs text-white/60">{isLiveWindow ? "Live now" : "Event not live yet"}</div>
+                  </div>
+                  {yourRowIndex > 0 && climbDelta > 0n ? (
+                    <div className="mt-2 text-xs text-cyan-200">
+                      To reach #{yourRowIndex}, you need +{formatAmount(climbDelta)} MIND.
+                    </div>
+                  ) : yourRowIndex === 0 ? (
+                    <div className="mt-2 text-xs text-cyan-200">You are on top of the leaderboard.</div>
+                  ) : null}
                 </div>
-              </div>
+              ) : null}
 
-              <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-                <div className="text-xs uppercase tracking-[0.2em] text-white/60">Claim</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <button
-                    className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
-                    disabled={
-                      !canClaimAnyRound ||
-                      busy !== null
-                    }
-                    onClick={claim}
-                  >
-                    {busy === "CLAIM" ? "Claiming..." : `CLAIM${claimableCount > 1 ? ` ALL (${claimableCount})` : ""}`}
-                  </button>
-                  <div className="text-xs text-white/60">
-                    {canClaimAnyRound
-                      ? `Claim available${claimableCount > 1 ? ` (${claimableCount} rounds)` : ""}`
-                      : isClaimPhase
-                        ? "Nothing to claim for this event"
+              {isClaimPhase ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                  <div className="text-xs uppercase tracking-[0.2em] text-white/60">Claim</div>
+                  <div className="mt-2 text-2xl font-semibold text-emerald-100">
+                    Your final payout: {formatAmount(estimatedPayout)} XNT
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <button
+                      className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
+                      disabled={!canClaimAnyRound || busy !== null}
+                      onClick={claim}
+                    >
+                      {busy === "CLAIM" ? "Claiming..." : `CLAIM${claimableCount > 1 ? ` ALL (${claimableCount})` : ""}`}
+                    </button>
+                    <div className="text-xs text-white/60">
+                      {canClaimAnyRound
+                        ? `Claim available${claimableCount > 1 ? ` (${claimableCount} rounds)` : ""}`
                         : "No unclaimed rewards yet"}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : null}
+
+              {isChargingPhase ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white/70">
+                  Get ready. Event starts instantly once the vial is full.
+                </div>
+              ) : null}
             </>
           )}
         </section>
@@ -546,11 +578,11 @@ export default function MeltPlayerPage() {
               <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Leaderboard</div>
               <div className="flex items-center gap-2">
                 <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {isLiveStatus ? "LIVE" : "ALL-TIME"}
+                  {isLiveStatus ? "LIVE" : "FINAL RESULTS"}
                 </div>
                 <button
                   className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
-                  onClick={() => void refreshLeaderboard(false)}
+                  onClick={() => void refreshLeaderboard()}
                   disabled={leaderboardLoading}
                 >
                   Refresh
@@ -565,7 +597,7 @@ export default function MeltPlayerPage() {
                     <th className="pb-2">Rank</th>
                     <th className="pb-2">Wallet</th>
                     <th className="pb-2">Burned (MIND)</th>
-                    <th className="pb-2">Est. payout (XNT)</th>
+                    <th className="pb-2">Payout (XNT)</th>
                   </tr>
                 </thead>
                 <tbody className="text-white/85">
@@ -603,15 +635,8 @@ export default function MeltPlayerPage() {
 
             <div className="mt-3 flex items-center justify-between gap-3 text-xs text-white/60">
               <div>
-                {leaderboardLoading ? "Loading leaderboard..." : leaderboardError ?? `Round #${roundSeq?.toString() ?? "-"}`}
+                {leaderboardLoading ? "Loading leaderboard..." : leaderboardError ?? (isLiveStatus ? "Live event ranking" : "All finalized rounds")}
               </div>
-              <button
-                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
-                onClick={() => void refreshLeaderboard(true)}
-                disabled
-              >
-                Load more
-              </button>
             </div>
           </section>
         ) : null}

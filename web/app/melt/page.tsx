@@ -136,11 +136,9 @@ export default function MeltPlayerPage() {
 
   const burnMinMind = melt.config ? BigInt(melt.config.burnMin.toString()) : 0n;
   const burnSliderMin = Number((burnMinMind / 10n ** DECIMALS) || 1n);
-  const claimRoundPda = melt.claimContext?.roundPda ?? null;
-  const claimUserRound = melt.claimContext?.userRound ?? null;
-  const claimBurn = claimUserRound ? BigInt(claimUserRound.burned.toString()) : 0n;
-  const canClaimAnyRound =
-    !!claimRoundPda && !!claimUserRound && claimBurn > 0n && !claimUserRound.claimed;
+  const claimTargets = melt.claimContexts ?? [];
+  const claimableCount = claimTargets.length;
+  const canClaimAnyRound = claimableCount > 0;
 
   const burnError = (message: string) => {
     if (message.includes("BelowBurnMin")) {
@@ -207,25 +205,35 @@ export default function MeltPlayerPage() {
   };
 
   const claim = async () => {
-    if (!wallet || !publicKey || !claimRoundPda || !melt.config) return;
+    if (!wallet || !publicKey || !melt.config || claimTargets.length === 0) return;
     setBusy("CLAIM");
     try {
       const program = getMeltProgram(connection, wallet);
-      const userRoundPda = deriveMeltUserRoundPda(publicKey, claimRoundPda);
       const nextRoundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(melt.config.roundSeq.toString()));
-      const sig = await program.methods
-        .claim()
-        .accounts({
-          user: publicKey,
-          config: deriveMeltConfigPda(),
-          vault: melt.config.vault,
-          round: claimRoundPda,
-          nextRound: nextRoundPda,
-          userRound: userRoundPda,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-      toast.push({ title: "Claim submitted", description: sig, variant: "success" });
+      let claimedCount = 0;
+      let lastSig = "";
+      for (const target of claimTargets) {
+        const userRoundPda = deriveMeltUserRoundPda(publicKey, target.roundPda);
+        const sig = await program.methods
+          .claim()
+          .accounts({
+            user: publicKey,
+            config: deriveMeltConfigPda(),
+            vault: melt.config.vault,
+            round: target.roundPda,
+            nextRound: nextRoundPda,
+            userRound: userRoundPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+        claimedCount += 1;
+        lastSig = sig;
+      }
+      toast.push({
+        title: `Claimed ${claimedCount} round${claimedCount === 1 ? "" : "s"}`,
+        description: lastSig || undefined,
+        variant: "success",
+      });
       await melt.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -454,11 +462,11 @@ export default function MeltPlayerPage() {
                     }
                     onClick={claim}
                   >
-                    {busy === "CLAIM" ? "Claiming..." : "CLAIM"}
+                    {busy === "CLAIM" ? "Claiming..." : `CLAIM${claimableCount > 1 ? ` ALL (${claimableCount})` : ""}`}
                   </button>
                   <div className="text-xs text-white/60">
                     {canClaimAnyRound
-                      ? "Claim available"
+                      ? `Claim available${claimableCount > 1 ? ` (${claimableCount} rounds)` : ""}`
                       : isClaimPhase
                         ? "Nothing to claim for this event"
                         : "No unclaimed rewards yet"}

@@ -1791,6 +1791,10 @@ export function PublicDashboard() {
           errorMsg =
             "You reached the active rig HP limit. Claim/expire old rigs first or ask admin to raise max HP cap.";
         }
+        if (label === "Buy contract" && errorMsg.includes("not deployed on the selected RPC")) {
+          errorMsg =
+            "MELT funding is enabled but MELT program is missing on this RPC. Switch app RPC to testnet or disable MELT funding in mining admin.";
+        }
         setError(errorMsg);
       } finally {
         setBusy(null);
@@ -1819,6 +1823,14 @@ export function PublicDashboard() {
     await withTx("Buy contract", async () => {
       const miningMelt = await fetchMiningMeltConfig(connection);
       const meltProgramId = miningMelt?.meltProgramId ?? getMeltProgramId();
+      if (miningMelt?.meltEnabled) {
+        const meltProgramInfo = await connection.getAccountInfo(meltProgramId, "confirmed");
+        if (!meltProgramInfo || !meltProgramInfo.executable) {
+          throw new Error(
+            `MELT program ${meltProgramId.toBase58()} is not deployed on the selected RPC. Use testnet RPC or disable MELT funding in mining config.`
+          );
+        }
+      }
       const [meltConfigPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("melt_config")],
         meltProgramId

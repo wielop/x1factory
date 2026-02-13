@@ -162,6 +162,8 @@ export default function MeltPlayerPage() {
 
   const claimError = (message: string) => {
     if (message.includes("AlreadyClaimed")) return "Already claimed";
+    if (message.includes("NothingToClaim")) return "Nothing to claim for this event";
+    if (message.includes("AccountNotInitialized")) return "Nothing to claim for this event";
     if (message.includes("RoundNotEnded") || message.includes("BadRoundStatus")) {
       return "Claim available after event ends";
     }
@@ -473,13 +475,23 @@ export default function MeltPlayerPage() {
                 <div className="mt-2 flex items-center gap-3">
                   <button
                     className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
-                    disabled={!isClaimPhase || !!melt.userRound?.claimed || busy !== null}
+                    disabled={
+                      !isClaimPhase ||
+                      !melt.userRound ||
+                      yourBurn <= 0n ||
+                      !!melt.userRound?.claimed ||
+                      busy !== null
+                    }
                     onClick={claim}
                   >
                     {busy === "CLAIM" ? "Claiming..." : "CLAIM"}
                   </button>
                   <div className="text-xs text-white/60">
-                    {isClaimPhase ? "Claim available" : "Claim available after event ends"}
+                    {isClaimPhase
+                      ? melt.userRound && yourBurn > 0n
+                        ? "Claim available"
+                        : "Nothing to claim for this event"
+                      : "Claim available after event ends"}
                   </div>
                 </div>
               </div>

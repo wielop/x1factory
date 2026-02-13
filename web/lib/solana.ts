@@ -9,6 +9,9 @@ const RIG_BUFF_CONFIG_SEED = "rig_buff";
 const VAULT_SEED = "vault";
 const STAKING_REWARD_VAULT_SEED = "staking_reward_vault";
 const TREASURY_VAULT_SEED = "treasury_vault";
+const YIELD_CONFIG_SEED = "yield_config";
+const YIELD_VAULT_SEED = "yield_vault";
+const YIELD_USER_SEED = "yield_user";
 const POSITION_SEED = "position";
 const PROFILE_SEED = "profile";
 const STAKE_SEED = "stake";
@@ -136,6 +139,15 @@ export const deriveStakingRewardVaultPda = () =>
 
 export const deriveTreasuryVaultPda = () =>
   PublicKey.findProgramAddressSync([Buffer.from(TREASURY_VAULT_SEED)], getProgramId())[0];
+export const deriveYieldConfigPda = () =>
+  PublicKey.findProgramAddressSync([Buffer.from(YIELD_CONFIG_SEED)], getProgramId())[0];
+export const deriveYieldVaultPda = () =>
+  PublicKey.findProgramAddressSync([Buffer.from(YIELD_VAULT_SEED)], getProgramId())[0];
+export const deriveYieldUserPda = (owner: PublicKey) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from(YIELD_USER_SEED), owner.toBuffer()],
+    getProgramId()
+  )[0];
 
 export const derivePositionPda = (owner: PublicKey, positionIndex: bigint | number) => {
   const idx = typeof positionIndex === "bigint" ? positionIndex : BigInt(positionIndex);
@@ -191,6 +203,17 @@ export type DecodedRigBuffConfig = {
   mindTreasuryVault: PublicKey;
   mindPerHpPerDay: bigint;
   bump: number;
+};
+
+export type DecodedYieldConfig = {
+  admin: PublicKey;
+  currentPoolXnt: bigint;
+  nextPoolXnt: bigint;
+  epochId: bigint;
+  epochEndTs: number;
+  totalWeight: bigint;
+  bump: number;
+  vaultBump: number;
 };
 
 export async function fetchClockUnixTs(connection: Connection) {
@@ -350,4 +373,43 @@ export async function fetchRigBuffConfig(connection: Connection): Promise<Decode
   offset += 8;
   const bump = data.readUInt8(offset);
   return { admin, mindMint, mindBurnVault, mindTreasuryVault, mindPerHpPerDay, bump };
+}
+
+export async function fetchYieldConfig(connection: Connection): Promise<DecodedYieldConfig> {
+  const yieldConfigPda = deriveYieldConfigPda();
+  const info = await connection.getAccountInfo(yieldConfigPda, "confirmed");
+  if (!info) {
+    throw new Error(`Yield config not found: ${yieldConfigPda.toBase58()}`);
+  }
+  const data = info.data;
+  const minSize = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 1;
+  if (data.length < minSize) {
+    throw new Error(`Yield config too small: ${data.length} bytes`);
+  }
+  let offset = 8;
+  const admin = new PublicKey(data.subarray(offset, offset + 32));
+  offset += 32;
+  const currentPoolXnt = data.readBigUInt64LE(offset);
+  offset += 8;
+  const nextPoolXnt = data.readBigUInt64LE(offset);
+  offset += 8;
+  const epochId = data.readBigUInt64LE(offset);
+  offset += 8;
+  const epochEndTs = Number(data.readBigInt64LE(offset));
+  offset += 8;
+  const totalWeight = data.readBigUInt64LE(offset);
+  offset += 8;
+  const bump = data.readUInt8(offset);
+  offset += 1;
+  const vaultBump = data.readUInt8(offset);
+  return {
+    admin,
+    currentPoolXnt,
+    nextPoolXnt,
+    epochId,
+    epochEndTs,
+    totalWeight,
+    bump,
+    vaultBump,
+  };
 }

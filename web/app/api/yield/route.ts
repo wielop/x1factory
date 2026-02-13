@@ -9,16 +9,15 @@ import {
   USER_PROFILE_LEN_V4,
   decodeUserMiningProfileAccount,
 } from "@/lib/decoders";
-import { getProgramId, getRpcUrl } from "@/lib/solana";
+import { fetchYieldConfig, getProgramId, getRpcUrl } from "@/lib/solana";
 import {
   computeTotalWeight,
-  getWeeklyPoolXnt,
   LEVELS,
-  LEVEL_WEIGHTS,
   type CountsByLevel,
   type YieldSummary,
 } from "@/lib/yieldMath";
-import { getStoredPoolXnt } from "@/lib/yieldPoolStore";
+
+const XNT_DECIMALS = 9;
 
 const CACHE_TTL_MS = 60_000;
 let cached: { at: number; value: YieldSummary } | null = null;
@@ -64,24 +63,27 @@ async function loadYieldSummary(): Promise<YieldSummary> {
   }
 
   const totalWeight = computeTotalWeight(counts);
-  const weeklyPoolXnt = getStoredPoolXnt()?.value ?? getWeeklyPoolXnt();
-  const byLevel = LEVELS.reduce<YieldSummary["byLevel"]>((acc, level) => {
-    const count = counts[level] ?? 0;
-    const weight = count * LEVEL_WEIGHTS[level];
-    const share = totalWeight > 0 ? weight / totalWeight : 0;
-    acc[level] = {
-      count,
-      weight,
-      payoutXnt: share * weeklyPoolXnt,
-      sharePct: share * 100,
-    };
-    return acc;
-  }, {} as YieldSummary["byLevel"]);
+  let poolXnt = 0;
+  let nextPoolXnt = 0;
+  let epochEndTs: number | null = null;
+  try {
+    const yieldConfig = await fetchYieldConfig(connection);
+    const poolBase =
+      yieldConfig.currentPoolXnt > 0n ? yieldConfig.currentPoolXnt : yieldConfig.nextPoolXnt;
+    poolXnt = Number(poolBase) / 10 ** XNT_DECIMALS;
+    nextPoolXnt = Number(yieldConfig.nextPoolXnt) / 10 ** XNT_DECIMALS;
+    epochEndTs = yieldConfig.epochEndTs;
+  } catch {
+    poolXnt = 0;
+    nextPoolXnt = 0;
+    epochEndTs = null;
+  }
   return {
-    poolXnt: weeklyPoolXnt,
+    poolXnt,
+    nextPoolXnt,
+    epochEndTs,
     totalWeight,
     countsByLevel: counts,
-    byLevel,
     updatedAt: Date.now(),
   };
 }

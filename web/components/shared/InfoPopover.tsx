@@ -3,9 +3,19 @@
 import { rpcUrl, getProgramId } from "@/lib/solana";
 import { shortPk } from "@/lib/format";
 
-export function InfoPopover() {
-  const url = rpcUrl();
-  const programId = getProgramId().toBase58();
+export function InfoPopover({
+  rpc,
+  programId,
+  config,
+  mint,
+}: {
+  rpc?: string;
+  programId?: string;
+  config?: string;
+  mint?: string;
+}) {
+  const url = rpc ?? rpcUrl();
+  const program = programId ?? getProgramId().toBase58();
   return (
     <details className="relative">
       <summary className="cursor-pointer rounded-full border border-cyan-400/20 bg-ink/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-300">
@@ -15,9 +25,25 @@ export function InfoPopover() {
         <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">RPC</div>
         <div className="mt-1 font-mono">{url.replace(/^https?:\/\//, "")}</div>
         <div className="mt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Program</div>
-        <div className="mt-1 font-mono" title={programId}>
-          {shortPk(programId, 8)}
+        <div className="mt-1 font-mono" title={program}>
+          {shortPk(program, 8)}
         </div>
+        {config ? (
+          <>
+            <div className="mt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Config</div>
+            <div className="mt-1 font-mono" title={config}>
+              {shortPk(config, 8)}
+            </div>
+          </>
+        ) : null}
+        {mint ? (
+          <>
+            <div className="mt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Mint</div>
+            <div className="mt-1 font-mono" title={mint}>
+              {shortPk(mint, 8)}
+            </div>
+          </>
+        ) : null}
       </div>
     </details>
   );

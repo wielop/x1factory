@@ -1,11 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::{invoke, invoke_signed};
 use anchor_lang::system_program::{self, Transfer as SystemTransfer};
 use anchor_lang::Discriminator;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
-use borsh::BorshSerialize;
 use solana_program::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
-use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::program_option::COption;
 
 declare_id!("uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw");
@@ -20,132 +17,9 @@ const STAKE_SEED: &[u8] = b"stake";
 const LEVEL_CONFIG_SEED: &[u8] = b"level_config";
 const HP_SCALE_SEED: &[u8] = b"hp_scale";
 const RIG_BUFF_CONFIG_SEED: &[u8] = b"rig_buff";
-const METADATA_NAME_MAX: usize = 32;
-const METADATA_SYMBOL_MAX: usize = 10;
-const METADATA_URI_MAX: usize = 200;
-const METADATA_MAX_SELLER_FEE_BPS: u16 = 10_000;
-const METADATA_CREATE_V3_DISCRIMINANT: u8 = 33;
-const METADATA_UPDATE_V2_DISCRIMINANT: u8 = 15;
-const METADATA_PROGRAM_ID: Pubkey =
-    solana_program::pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
-
-#[derive(BorshSerialize, Clone)]
-struct MetadataCreator {
-    address: Pubkey,
-    verified: bool,
-    share: u8,
-}
-
-#[derive(BorshSerialize, Clone)]
-struct MetadataCollection {
-    verified: bool,
-    key: Pubkey,
-}
-
-#[derive(BorshSerialize, Clone)]
-enum MetadataUseMethod {
-    Burn,
-    Multiple,
-    Single,
-}
-
-#[derive(BorshSerialize, Clone)]
-struct MetadataUses {
-    use_method: MetadataUseMethod,
-    remaining: u64,
-    total: u64,
-}
-
-#[derive(BorshSerialize, Clone)]
-enum MetadataCollectionDetails {
-    V1 { size: u64 },
-}
-
-#[derive(BorshSerialize, Clone)]
-struct MetadataDataV2 {
-    name: String,
-    symbol: String,
-    uri: String,
-    seller_fee_basis_points: u16,
-    creators: Option<Vec<MetadataCreator>>,
-    collection: Option<MetadataCollection>,
-    uses: Option<MetadataUses>,
-}
-
-#[derive(BorshSerialize, Clone)]
-struct CreateMetadataAccountArgsV3 {
-    data: MetadataDataV2,
-    is_mutable: bool,
-    collection_details: Option<MetadataCollectionDetails>,
-}
-
-#[derive(BorshSerialize, Clone)]
-struct UpdateMetadataAccountArgsV2 {
-    data: Option<MetadataDataV2>,
-    update_authority: Option<Pubkey>,
-    primary_sale_happened: Option<bool>,
-    is_mutable: Option<bool>,
-}
-
-fn build_create_metadata_accounts_v3_ix(
-    metadata: Pubkey,
-    mint: Pubkey,
-    mint_authority: Pubkey,
-    payer: Pubkey,
-    update_authority: Pubkey,
-    data: MetadataDataV2,
-    is_mutable: bool,
-) -> Result<Instruction> {
-    let args = CreateMetadataAccountArgsV3 {
-        data,
-        is_mutable,
-        collection_details: None,
-    };
-    let mut ix_data = vec![METADATA_CREATE_V3_DISCRIMINANT];
-    ix_data.extend(
-        args.try_to_vec()
-            .map_err(|_| ErrorCode::MetadataSerializationFailed)?,
-    );
-    Ok(Instruction {
-        program_id: METADATA_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(metadata, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(mint_authority, true),
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(update_authority, true),
-            AccountMeta::new_readonly(system_program::ID, false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-        ],
-        data: ix_data,
-    })
-}
-
-fn build_update_metadata_accounts_v2_ix(
-    metadata: Pubkey,
-    update_authority: Pubkey,
-    data: MetadataDataV2,
-) -> Result<Instruction> {
-    let args = UpdateMetadataAccountArgsV2 {
-        data: Some(data),
-        update_authority: None,
-        primary_sale_happened: None,
-        is_mutable: None,
-    };
-    let mut ix_data = vec![METADATA_UPDATE_V2_DISCRIMINANT];
-    ix_data.extend(
-        args.try_to_vec()
-            .map_err(|_| ErrorCode::MetadataSerializationFailed)?,
-    );
-    Ok(Instruction {
-        program_id: METADATA_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(metadata, false),
-            AccountMeta::new_readonly(update_authority, true),
-        ],
-        data: ix_data,
-    })
-}
+const YIELD_CONFIG_SEED: &[u8] = b"yield_config";
+const YIELD_VAULT_SEED: &[u8] = b"yield_vault";
+const YIELD_USER_SEED: &[u8] = b"yield_user";
 
 const BPS_DENOMINATOR: u128 = 10_000;
 const ACC_SCALE: u128 = 1_000_000_000_000_000_000;
@@ -175,6 +49,8 @@ const MIND_DECIMALS_U8: u8 = 9;
 const XP_SECONDS_PER_POINT_DENOMINATOR: u64 = 36_000;
 const RIG_BUFF_CAP_BPS: u16 = 1_500; // 15%
 const LEVELING_ENABLED: bool = true;
+const YIELD_EPOCH_SECONDS: i64 = 7 * 24 * 60 * 60;
+const YIELD_EPOCH_TARGET_SECONDS: i64 = 20 * 60 * 60;
 
 #[program]
 pub mod mining_v2 {
@@ -301,6 +177,114 @@ pub mod mining_v2 {
             ErrorCode::Unauthorized
         );
         ctx.accounts.rig_buff_config.mind_per_hp_per_day = params.mind_per_hp_per_day;
+        Ok(())
+    }
+
+    pub fn init_yield_config(ctx: Context<InitYieldConfig>) -> Result<()> {
+        let cfg = &ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        let now = Clock::get()?.unix_timestamp;
+        let yield_cfg = &mut ctx.accounts.yield_config;
+        yield_cfg.admin = cfg.admin;
+        yield_cfg.current_pool_xnt = 0;
+        yield_cfg.next_pool_xnt = 0;
+        yield_cfg.epoch_id = 0;
+        yield_cfg.epoch_end_ts = next_yield_epoch_end(now)?;
+        yield_cfg.total_weight = 0;
+        yield_cfg.bump = *ctx.bumps.get("yield_config").unwrap();
+        yield_cfg.vault_bump = *ctx.bumps.get("yield_vault").unwrap();
+        Ok(())
+    }
+
+    pub fn admin_set_yield_next_pool(
+        ctx: Context<AdminSetYieldNextPool>,
+        next_pool_xnt: u64,
+    ) -> Result<()> {
+        let cfg = &mut ctx.accounts.yield_config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        if next_pool_xnt > cfg.next_pool_xnt {
+            let delta = next_pool_xnt
+                .checked_sub(cfg.next_pool_xnt)
+                .ok_or(ErrorCode::MathOverflow)?;
+            if delta > 0 {
+                system_program::transfer(
+                    CpiContext::new(
+                        ctx.accounts.system_program.to_account_info(),
+                        SystemTransfer {
+                            from: ctx.accounts.admin.to_account_info(),
+                            to: ctx.accounts.yield_vault.to_account_info(),
+                        },
+                    ),
+                    delta,
+                )?;
+            }
+        }
+        cfg.next_pool_xnt = next_pool_xnt;
+        Ok(())
+    }
+
+    pub fn roll_yield_epoch(ctx: Context<RollYieldEpoch>, total_weight: u64) -> Result<()> {
+        let cfg = &mut ctx.accounts.yield_config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= cfg.epoch_end_ts, ErrorCode::YieldEpochNotEnded);
+        cfg.current_pool_xnt = cfg.next_pool_xnt;
+        cfg.next_pool_xnt = 0;
+        cfg.total_weight = total_weight;
+        cfg.epoch_id = cfg.epoch_id.checked_add(1).ok_or(ErrorCode::MathOverflow)?;
+        cfg.epoch_end_ts = next_yield_epoch_end(now)?;
+        let available = vault_available_lamports(&ctx.accounts.yield_vault)?;
+        require!(
+            available >= cfg.current_pool_xnt,
+            ErrorCode::InsufficientVaultBalance
+        );
+        Ok(())
+    }
+
+    pub fn claim_yield(ctx: Context<ClaimYield>) -> Result<()> {
+        let cfg = &ctx.accounts.yield_config;
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            now >= cfg.epoch_end_ts.saturating_sub(YIELD_EPOCH_SECONDS),
+            ErrorCode::YieldEpochNotStarted
+        );
+        require!(cfg.current_pool_xnt > 0, ErrorCode::YieldPoolEmpty);
+        require!(cfg.total_weight > 0, ErrorCode::YieldPoolEmpty);
+        let profile = load_user_profile_any(&ctx.accounts.user_profile.to_account_info())?;
+        require_keys_eq!(profile.owner, ctx.accounts.owner.key(), ErrorCode::Unauthorized);
+        let weight = yield_level_weight(profile.level);
+        require!(weight > 0, ErrorCode::YieldNotEligible);
+        let yield_user = &mut ctx.accounts.yield_user;
+        if yield_user.owner == Pubkey::default() {
+            yield_user.owner = ctx.accounts.owner.key();
+            yield_user.last_claimed_epoch = 0;
+            yield_user.bump = *ctx.bumps.get("yield_user").unwrap();
+        } else {
+            require_keys_eq!(
+                yield_user.owner,
+                ctx.accounts.owner.key(),
+                ErrorCode::Unauthorized
+            );
+        }
+        require!(
+            yield_user.last_claimed_epoch < cfg.epoch_id,
+            ErrorCode::YieldAlreadyClaimed
+        );
+        let reward = (cfg.current_pool_xnt as u128)
+            .checked_mul(weight as u128)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(cfg.total_weight as u128)
+            .ok_or(ErrorCode::MathOverflow)?;
+        require!(reward > 0, ErrorCode::NothingToClaim);
+        let reward_u64 = u64::try_from(reward).map_err(|_| ErrorCode::MathOverflow)?;
+        let available = vault_available_lamports(&ctx.accounts.yield_vault)?;
+        require!(available >= reward_u64, ErrorCode::InsufficientVaultBalance);
+        transfer_lamports(
+            &ctx.accounts.yield_vault.to_account_info(),
+            &ctx.accounts.owner.to_account_info(),
+            reward_u64,
+        )?;
+        yield_user.last_claimed_epoch = cfg.epoch_id;
         Ok(())
     }
 
@@ -494,6 +478,33 @@ pub mod mining_v2 {
                 update_mining_global(cfg, now)?;
             }
 
+            let base_total_scaled_other = profile.active_hp as u128;
+            let buffed_total_scaled_other = profile.buffed_hp as u128;
+
+            let renewed_base_hp_scaled = base_hp_scaled as u128;
+            let renewed_buff_bps = rig_buff_bps(rig_type, new_buff_level);
+            let renewed_buffed_hp_scaled = apply_bps(renewed_base_hp_scaled, renewed_buff_bps)?;
+
+            let base_total_after = base_total_scaled_other
+                .checked_add(renewed_base_hp_scaled)
+                .ok_or(ErrorCode::MathOverflow)?;
+            let buffed_total_after = buffed_total_scaled_other
+                .checked_add(renewed_buffed_hp_scaled)
+                .ok_or(ErrorCode::MathOverflow)?;
+            if base_total_after > 0 {
+                let bonus_bps = buffed_total_after
+                    .checked_sub(base_total_after)
+                    .ok_or(ErrorCode::MathOverflow)?
+                    .checked_mul(BPS_DENOMINATOR)
+                    .ok_or(ErrorCode::MathOverflow)?
+                    .checked_div(base_total_after)
+                    .ok_or(ErrorCode::MathOverflow)?;
+                require!(
+                    bonus_bps <= RIG_BUFF_CAP_BPS as u128,
+                    ErrorCode::RigBuffCapExceeded
+                );
+            }
+
             let new_active_hp = profile
                 .active_hp
                 .checked_add(base_hp_scaled)
@@ -638,6 +649,44 @@ pub mod mining_v2 {
             expire_position(cfg, &mut position, &mut profile, now)?;
         } else {
             update_mining_global(cfg, now)?;
+        }
+
+        let base_hp_scaled_current = position_base_hp_scaled(&position)?;
+        let profile_active = profile.active_hp as u128;
+        let profile_buffed = profile.buffed_hp as u128;
+        let (base_total_scaled_other, buffed_total_scaled_other) = if is_early {
+            let buff_bps = position_buff_bps(&position, rig_type, now);
+            let buffed_current = apply_bps(base_hp_scaled_current, buff_bps)?;
+            (
+                profile_active.saturating_sub(base_hp_scaled_current),
+                profile_buffed.saturating_sub(buffed_current),
+            )
+        } else {
+            (profile_active, profile_buffed)
+        };
+
+        let renewed_base_hp_scaled = base_hp_scaled as u128;
+        let renewed_buff_bps = rig_buff_bps(rig_type, new_buff_level);
+        let renewed_buffed_hp_scaled = apply_bps(renewed_base_hp_scaled, renewed_buff_bps)?;
+
+        let base_total_after = base_total_scaled_other
+            .checked_add(renewed_base_hp_scaled)
+            .ok_or(ErrorCode::MathOverflow)?;
+        let buffed_total_after = buffed_total_scaled_other
+            .checked_add(renewed_buffed_hp_scaled)
+            .ok_or(ErrorCode::MathOverflow)?;
+        if base_total_after > 0 {
+            let bonus_bps = buffed_total_after
+                .checked_sub(base_total_after)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_mul(BPS_DENOMINATOR)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(base_total_after)
+                .ok_or(ErrorCode::MathOverflow)?;
+            require!(
+                bonus_bps <= RIG_BUFF_CAP_BPS as u128,
+                ErrorCode::RigBuffCapExceeded
+            );
         }
 
         let system_program = ctx.accounts.system_program.to_account_info();
@@ -1412,108 +1461,6 @@ pub mod mining_v2 {
         Ok(())
     }
 
-    pub fn admin_set_metadata(
-        ctx: Context<AdminSetMetadata>,
-        params: MetadataParams,
-    ) -> Result<()> {
-        let cfg = &ctx.accounts.config;
-        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
-        require_keys_eq!(
-            cfg.mind_mint,
-            ctx.accounts.mind_mint.key(),
-            ErrorCode::InvalidMint
-        );
-        require!(
-            ctx.accounts.mind_mint.mint_authority
-                == COption::Some(ctx.accounts.vault_authority.key()),
-            ErrorCode::InvalidMintAuthority
-        );
-
-        let (expected_metadata, _) = Pubkey::find_program_address(
-            &[
-                b"metadata",
-                METADATA_PROGRAM_ID.as_ref(),
-                ctx.accounts.mind_mint.key().as_ref(),
-            ],
-            &METADATA_PROGRAM_ID,
-        );
-        require_keys_eq!(
-            expected_metadata,
-            ctx.accounts.metadata.key(),
-            ErrorCode::InvalidMetadataPda
-        );
-
-        require!(
-            params.name.len() <= METADATA_NAME_MAX,
-            ErrorCode::MetadataFieldTooLong
-        );
-        require!(
-            params.symbol.len() <= METADATA_SYMBOL_MAX,
-            ErrorCode::MetadataFieldTooLong
-        );
-        require!(
-            params.uri.len() <= METADATA_URI_MAX,
-            ErrorCode::MetadataFieldTooLong
-        );
-        require!(
-            params.seller_fee_basis_points <= METADATA_MAX_SELLER_FEE_BPS,
-            ErrorCode::InvalidSellerFeeBps
-        );
-
-        let data = MetadataDataV2 {
-            name: params.name,
-            symbol: params.symbol,
-            uri: params.uri,
-            seller_fee_basis_points: params.seller_fee_basis_points,
-            creators: None,
-            collection: None,
-            uses: None,
-        };
-
-        if ctx.accounts.metadata.data_is_empty() {
-            let ix = build_create_metadata_accounts_v3_ix(
-                ctx.accounts.metadata.key(),
-                ctx.accounts.mind_mint.key(),
-                ctx.accounts.vault_authority.key(),
-                ctx.accounts.admin.key(),
-                ctx.accounts.admin.key(),
-                data,
-                true,
-            )?;
-            let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[cfg.bumps.vault_authority]];
-            invoke_signed(
-                &ix,
-                &[
-                    ctx.accounts.metadata.to_account_info(),
-                    ctx.accounts.mind_mint.to_account_info(),
-                    ctx.accounts.vault_authority.to_account_info(),
-                    ctx.accounts.admin.to_account_info(),
-                    ctx.accounts.admin.to_account_info(),
-                    ctx.accounts.system_program.to_account_info(),
-                    ctx.accounts.rent.to_account_info(),
-                    ctx.accounts.metadata_program.to_account_info(),
-                ],
-                &[signer_seeds],
-            )?;
-        } else {
-            let ix = build_update_metadata_accounts_v2_ix(
-                ctx.accounts.metadata.key(),
-                ctx.accounts.admin.key(),
-                data,
-            )?;
-            invoke(
-                &ix,
-                &[
-                    ctx.accounts.metadata.to_account_info(),
-                    ctx.accounts.admin.to_account_info(),
-                    ctx.accounts.metadata_program.to_account_info(),
-                ],
-            )?;
-        }
-
-        Ok(())
-    }
-
     pub fn admin_withdraw_staking_rewards(
         ctx: Context<AdminWithdrawStakingRewards>,
         amount: u64,
@@ -1678,14 +1625,6 @@ pub struct UpdateRigBuffConfigParams {
     pub mind_per_hp_per_day: u64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct MetadataParams {
-    pub name: String,
-    pub symbol: String,
-    pub uri: String,
-    pub seller_fee_basis_points: u16,
-}
-
 #[derive(Accounts)]
 pub struct InitLevelConfig<'info> {
     #[account(mut)]
@@ -1759,6 +1698,106 @@ pub struct AdminUpdateRigBuffConfig<'info> {
         bump = rig_buff_config.bump
     )]
     pub rig_buff_config: Box<Account<'info, RigBuffConfig>>,
+}
+
+#[derive(Accounts)]
+pub struct InitYieldConfig<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + YieldConfig::INIT_SPACE,
+        seeds = [YIELD_CONFIG_SEED],
+        bump
+    )]
+    pub yield_config: Box<Account<'info, YieldConfig>>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + NativeVault::INIT_SPACE,
+        seeds = [YIELD_VAULT_SEED],
+        bump
+    )]
+    pub yield_vault: Box<Account<'info, NativeVault>>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AdminSetYieldNextPool<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [YIELD_CONFIG_SEED],
+        bump = yield_config.bump
+    )]
+    pub yield_config: Box<Account<'info, YieldConfig>>,
+    #[account(
+        mut,
+        seeds = [YIELD_VAULT_SEED],
+        bump = yield_config.vault_bump
+    )]
+    pub yield_vault: Box<Account<'info, NativeVault>>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RollYieldEpoch<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [YIELD_CONFIG_SEED],
+        bump = yield_config.bump
+    )]
+    pub yield_config: Box<Account<'info, YieldConfig>>,
+    #[account(
+        mut,
+        seeds = [YIELD_VAULT_SEED],
+        bump = yield_config.vault_bump
+    )]
+    pub yield_vault: Box<Account<'info, NativeVault>>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimYield<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        seeds = [YIELD_CONFIG_SEED],
+        bump = yield_config.bump
+    )]
+    pub yield_config: Box<Account<'info, YieldConfig>>,
+    #[account(
+        mut,
+        seeds = [YIELD_VAULT_SEED],
+        bump = yield_config.vault_bump
+    )]
+    pub yield_vault: Box<Account<'info, NativeVault>>,
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = 8 + YieldUser::INIT_SPACE,
+        seeds = [YIELD_USER_SEED, owner.key().as_ref()],
+        bump
+    )]
+    pub yield_user: Box<Account<'info, YieldUser>>,
+    #[account(
+        seeds = [PROFILE_SEED, owner.key().as_ref()],
+        bump
+    )]
+    /// CHECK: PDA derived from PROFILE_SEED; validated in instruction handlers.
+    pub user_profile: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -2272,32 +2311,6 @@ pub struct AdminUseNativeXnt<'info> {
 }
 
 #[derive(Accounts)]
-pub struct AdminSetMetadata<'info> {
-    #[account(mut)]
-    pub admin: Signer<'info>,
-    #[account(
-        seeds = [CONFIG_SEED],
-        bump = config.bumps.config
-    )]
-    pub config: Box<Account<'info, Config>>,
-    #[account(seeds = [VAULT_SEED], bump = config.bumps.vault_authority)]
-    /// CHECK: PDA used as mint authority signer for metadata creation.
-    pub vault_authority: UncheckedAccount<'info>,
-    #[account(
-        constraint = mind_mint.key() == config.mind_mint
-    )]
-    pub mind_mint: Account<'info, Mint>,
-    #[account(mut)]
-    /// CHECK: Metaplex metadata PDA for the MIND mint.
-    pub metadata: UncheckedAccount<'info>,
-    #[account(address = METADATA_PROGRAM_ID)]
-    /// CHECK: Metaplex token metadata program.
-    pub metadata_program: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
-}
-
-#[derive(Accounts)]
 pub struct AdminWithdrawStakingRewards<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -2477,6 +2490,27 @@ pub struct RigBuffConfig {
 
 #[account]
 #[derive(InitSpace)]
+pub struct YieldConfig {
+    pub admin: Pubkey,
+    pub current_pool_xnt: u64,
+    pub next_pool_xnt: u64,
+    pub epoch_id: u64,
+    pub epoch_end_ts: i64,
+    pub total_weight: u64,
+    pub bump: u8,
+    pub vault_bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct YieldUser {
+    pub owner: Pubkey,
+    pub last_claimed_epoch: u64,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
 pub struct HpScaleConfig {
     pub enabled: bool,
     pub bump: u8,
@@ -2621,11 +2655,41 @@ fn level_bonus_bps(level: u8) -> u16 {
     }
 }
 
+fn yield_level_weight(level: u8) -> u64 {
+    match level {
+        2 => 67,
+        3 => 134,
+        4 => 300,
+        5 => 670,
+        6 => 1340,
+        _ => 0,
+    }
+}
+
+fn next_yield_epoch_end(now: i64) -> Result<i64> {
+    let seconds_per_day = 86_400i64;
+    let days_since_epoch = now.div_euclid(seconds_per_day);
+    let seconds_in_day = now.rem_euclid(seconds_per_day);
+    let weekday = (days_since_epoch + 4).rem_euclid(7); // 0 = Sunday
+    let mut days_until = (7 - weekday) % 7;
+    if days_until == 0 && seconds_in_day >= YIELD_EPOCH_TARGET_SECONDS {
+        days_until = 7;
+    }
+    let target_day = days_since_epoch
+        .checked_add(days_until)
+        .ok_or(ErrorCode::MathOverflow)?;
+    target_day
+        .checked_mul(seconds_per_day)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_add(YIELD_EPOCH_TARGET_SECONDS)
+        .ok_or(ErrorCode::MathOverflow.into())
+}
+
 fn level_threshold(level: u8) -> u64 {
     match level {
         1 => 0,
-        2 => 500,
-        3 => 2_000,
+        2 => 1,
+        3 => 3,
         4 => 5_000,
         5 => 10_000,
         _ => 16_000,
@@ -2634,8 +2698,8 @@ fn level_threshold(level: u8) -> u64 {
 
 fn level_up_cost(level: u8) -> u64 {
     match level {
-        1 => 100_u64 * MIND_DECIMALS,
-        2 => 200_u64 * MIND_DECIMALS,
+        1 => 75_u64 * MIND_DECIMALS,
+        2 => 175_u64 * MIND_DECIMALS,
         3 => 450_u64 * MIND_DECIMALS,
         4 => 1_000_u64 * MIND_DECIMALS,
         5 => 2_000_u64 * MIND_DECIMALS,
@@ -3691,14 +3755,6 @@ pub enum ErrorCode {
     InvalidContractType,
     #[msg("Invalid mint")]
     InvalidMint,
-    #[msg("Invalid metadata PDA")]
-    InvalidMetadataPda,
-    #[msg("Metadata field too long")]
-    MetadataFieldTooLong,
-    #[msg("Invalid seller fee basis points")]
-    InvalidSellerFeeBps,
-    #[msg("Metadata serialization failed")]
-    MetadataSerializationFailed,
     #[msg("Invalid program data")]
     InvalidProgramData,
     #[msg("Invalid user profile owner")]
@@ -3757,4 +3813,14 @@ pub enum ErrorCode {
     ProfileSyncRequired,
     #[msg("Invalid sync positions")]
     InvalidSyncPositions,
+    #[msg("Yield epoch has not ended")]
+    YieldEpochNotEnded,
+    #[msg("Yield epoch has not started")]
+    YieldEpochNotStarted,
+    #[msg("Yield already claimed for this epoch")]
+    YieldAlreadyClaimed,
+    #[msg("Not eligible for yield")]
+    YieldNotEligible,
+    #[msg("Yield pool is empty")]
+    YieldPoolEmpty,
 }

@@ -4,7 +4,7 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction, type AccountMeta } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import {
   AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -30,6 +30,9 @@ import {
   deriveUserProfilePda,
   deriveUserStakePda,
   deriveVaultPda,
+  deriveYieldConfigPda,
+  deriveYieldUserPda,
+  deriveYieldVaultPda,
   fetchClockUnixTs,
   fetchConfig,
   fetchLevelConfig,
@@ -44,10 +47,6 @@ import {
   MINER_POSITION_LEN_V1,
   MINER_POSITION_LEN_V2,
   MINER_POSITION_LEN_V3,
-  USER_PROFILE_LEN_V1,
-  USER_PROFILE_LEN_V2,
-  USER_PROFILE_LEN_V3,
-  USER_PROFILE_LEN_V4,
   USER_STAKE_LEN,
   tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
@@ -55,7 +54,7 @@ import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk 
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
-import { computeEstWeeklyXnt, getWeeklyPoolXnt, LEVELS, type Level } from "@/lib/yieldMath";
+import { computeEstWeeklyXnt } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
   RIPPER_POOL_ADDRESS,
@@ -74,9 +73,9 @@ const RIG_BUFF_CAP_BPS = 1500n;
 const RIPPER_FEE_BPS = 20n;
 const BADGE_BONUS_CAP_BPS = 2_000n;
 const LEVEL_CAP = 6;
-const LEVEL_THRESHOLDS = [0n, 500n, 2_000n, 5_000n, 10_000n, 16_000n] as const;
+const LEVEL_THRESHOLDS = [0n, 1n, 3n, 5_000n, 10_000n, 16_000n] as const;
 const LEVEL_BONUS_BPS = [0, 160, 340, 550, 780, 1000] as const;
-const LEVEL_UP_COSTS = [100, 200, 450, 1_000, 2_000] as const;
+const LEVEL_UP_COSTS = [75, 175, 450, 1_000, 2_000] as const;
 const DAY_SECONDS = 86_400n;
 const STAKING_SECONDS_PER_YEAR = 31_536_000;
 const XNT_DECIMALS = 9;
@@ -88,10 +87,8 @@ type RigType = "starter" | "pro" | "industrial";
 type LeaderboardRow = {
   owner: string;
   hp: bigint;
-  buffedHp: bigint;
   stakedMind: bigint;
   activeRigs: number;
-  level: number;
 };
 
 interface RigPlan {
@@ -503,7 +500,7 @@ function isTxTooLargeError(err: unknown) {
 export function PublicDashboard() {
   const { connection } = useConnection();
   const { publicKey: walletPublicKey, signAllTransactions, signTransaction } = useWallet();
-  const { data: yieldSummary, loading: yieldLoading } = useYieldSummary();
+  const { data: yieldSummary } = useYieldSummary();
   const anchorWallet = useAnchorWallet();
   const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
@@ -527,28 +524,6 @@ export function PublicDashboard() {
   const [mindBalance, setMindBalance] = useState<bigint>(0n);
   const [stakingRewardBalance, setStakingRewardBalance] = useState<bigint>(0n);
   const [stakingMindBalance, setStakingMindBalance] = useState<bigint>(0n);
-  const [claimStats, setClaimStats] = useState<{
-    totalXnt: string;
-    total7dXnt: string;
-    last24hXnt: string;
-    apr7dPct: number | null;
-    events: number;
-    updatedAt: string;
-    tvlUsd?: number;
-    priceMindUsd?: number;
-  } | null>({
-    totalXnt: "0",
-    total7dXnt: "0",
-    last24hXnt: "0",
-    apr7dPct: null,
-    events: 0,
-    updatedAt: new Date().toISOString(),
-  });
-  const [claimStatsError, setClaimStatsError] = useState<string | null>(null);
-  const [statsTab, setStatsTab] = useState<"payouts" | "vault">("payouts");
-  const [statsTabFilter, setStatsTabFilter] = useState<"performance" | "staking" | "network">(
-    "performance"
-  );
   const [stakingShareOfCirculating, setStakingShareOfCirculating] = useState<number | null>(null);
   const [networkTrend, setNetworkTrend] = useState<{ delta: bigint; pct: number } | null>(null);
   const [activeMinerTotal, setActiveMinerTotal] = useState(0);
@@ -565,9 +540,6 @@ export function PublicDashboard() {
     updated: ACTIVE_STAKERS_SUMMARY.updated,
   });
   const [activeStakers, setActiveStakers] = useState<ActiveStaker[]>(ACTIVE_STAKERS);
-
-  const isAdmin = Boolean(publicKey && config && publicKey.equals(config.admin));
-  const levelingEnabled = LEVELING_ENABLED || isAdmin;
 
   const [selectedContract, setSelectedContract] = useState<number>(1);
   const [openRigDetails, setOpenRigDetails] = useState<RigType | null>(null);
@@ -801,10 +773,6 @@ export function PublicDashboard() {
         allPositionsV1,
         allPositionsV2,
         allPositionsV3,
-        allProfilesV1,
-        allProfilesV2,
-        allProfilesV3,
-        allProfilesV4,
         allStakes,
       ] = await Promise.all([
         connection.getProgramAccounts(programId, {
@@ -844,28 +812,11 @@ export function PublicDashboard() {
         }),
         connection.getProgramAccounts(programId, {
           commitment: "confirmed",
-          filters: [{ dataSize: USER_PROFILE_LEN_V1 }],
-        }),
-        connection.getProgramAccounts(programId, {
-          commitment: "confirmed",
-          filters: [{ dataSize: USER_PROFILE_LEN_V2 }],
-        }),
-        connection.getProgramAccounts(programId, {
-          commitment: "confirmed",
-          filters: [{ dataSize: USER_PROFILE_LEN_V3 }],
-        }),
-        connection.getProgramAccounts(programId, {
-          commitment: "confirmed",
-          filters: [{ dataSize: USER_PROFILE_LEN_V4 }],
-        }),
-        connection.getProgramAccounts(programId, {
-          commitment: "confirmed",
           filters: [{ dataSize: USER_STAKE_LEN }],
         }),
       ]);
       const posGpa = [...posGpaV1, ...posGpaV2, ...posGpaV3];
       const allPositions = [...allPositionsV1, ...allPositionsV2, ...allPositionsV3];
-      const allProfiles = [...allProfilesV1, ...allProfilesV2, ...allProfilesV3, ...allProfilesV4];
       if (isStale()) return;
 
       const decodedPositions = posGpa
@@ -888,18 +839,6 @@ export function PublicDashboard() {
         const unique = new Set<string>();
         let rigs = 0;
         const leaderboardMap = new Map<string, LeaderboardRow>();
-        const levelByOwner = new Map<string, number>();
-        const secondsPerDay = config ? Number(config.secondsPerDay) : 0;
-        for (const entry of allProfiles) {
-          try {
-            const decoded = decodeUserMiningProfileAccount(Buffer.from(entry.account.data));
-            const ownerKey = new PublicKey(decoded.owner).toBase58();
-            const level = Math.max(decoded.level ?? 1, 1);
-            levelByOwner.set(ownerKey, level);
-          } catch {
-            // ignore malformed profile accounts
-          }
-        }
         for (const entry of allPositions) {
           const decoded = decodeMinerPositionAccount(Buffer.from(entry.account.data));
           if (decoded.deactivated || decoded.expired || decoded.endTs <= now) continue;
@@ -908,29 +847,8 @@ export function PublicDashboard() {
           rigs += 1;
           const current =
             leaderboardMap.get(ownerKey) ??
-            {
-              owner: ownerKey,
-              hp: 0n,
-              buffedHp: 0n,
-              stakedMind: 0n,
-              activeRigs: 0,
-              level: levelByOwner.get(ownerKey) ?? 1,
-            };
-          if (!current.level) {
-            current.level = levelByOwner.get(ownerKey) ?? 1;
-          }
-          const rigType = decoded.hpScaled
-            ? decoded.rigType
-            : rigTypeFromDuration(decoded.startTs, decoded.endTs, secondsPerDay);
-          const buffBpsBase = rigBuffBps(rigType, decoded.buffLevel);
-          const buffApplied =
-            decoded.buffLevel > 0 &&
-            (decoded.buffAppliedFromCycle === 0n ||
-              BigInt(now) >= decoded.buffAppliedFromCycle);
-          const buffBps = buffApplied ? BigInt(buffBpsBase) : 0n;
-          const buffedHp = (decoded.hp * (BPS_DENOMINATOR + buffBps)) / BPS_DENOMINATOR;
+            { owner: ownerKey, hp: 0n, stakedMind: 0n, activeRigs: 0 };
           current.hp += decoded.hp;
-          current.buffedHp += buffedHp;
           current.activeRigs += 1;
           leaderboardMap.set(ownerKey, current);
         }
@@ -943,17 +861,7 @@ export function PublicDashboard() {
           const ownerKey = new PublicKey(decoded.owner).toBase58();
           const current =
             leaderboardMap.get(ownerKey) ??
-            {
-              owner: ownerKey,
-              hp: 0n,
-              buffedHp: 0n,
-              stakedMind: 0n,
-              activeRigs: 0,
-              level: levelByOwner.get(ownerKey) ?? 1,
-            };
-          if (!current.level) {
-            current.level = levelByOwner.get(ownerKey) ?? 1;
-          }
+            { owner: ownerKey, hp: 0n, stakedMind: 0n, activeRigs: 0 };
           current.stakedMind = decoded.stakedMind;
           leaderboardMap.set(ownerKey, current);
         }
@@ -1041,61 +949,6 @@ export function PublicDashboard() {
 
   useEffect(() => {
     let active = true;
-    const loadClaimStats = async () => {
-      try {
-        setClaimStatsError(null);
-        const res = await fetch("/api/stats/staking", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!active) return;
-        const totalXnt =
-          typeof data.totalXnt === "string" ? data.totalXnt : (data.totalBase ?? "0").toString();
-        const total7dXnt =
-          typeof data.total7dXnt === "string"
-            ? data.total7dXnt
-            : (data.total7dBase ?? "0").toString();
-        const last24hXnt =
-          typeof data.last24hXnt === "string"
-            ? data.last24hXnt
-            : (data.last24hBase ?? "0").toString();
-        const events = typeof data.events === "number" ? data.events : 0;
-        const updatedAt =
-          typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString();
-        const tvlUsd =
-          typeof data.tvlUsd === "number"
-            ? data.tvlUsd
-            : typeof data.tvlUsd === "string"
-            ? Number(data.tvlUsd)
-            : undefined;
-        const priceMindUsd =
-          data.price && typeof data.price.mindUsd === "number"
-            ? data.price.mindUsd
-            : undefined;
-        setClaimStats({
-          totalXnt,
-          total7dXnt,
-          last24hXnt,
-          apr7dPct: typeof data.apr7dPct === "number" ? data.apr7dPct : null,
-          events,
-          updatedAt,
-          tvlUsd,
-          priceMindUsd,
-        });
-      } catch (err) {
-        if (!active) return;
-        setClaimStatsError("Failed to load payout stats");
-      }
-    };
-    void loadClaimStats();
-    const id = window.setInterval(loadClaimStats, 600_000);
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
     const loadBreakdown = async () => {
       try {
         const res = await fetch("/api/network/hp-breakdown", { cache: "no-store" });
@@ -1164,9 +1017,9 @@ export function PublicDashboard() {
   }, [refresh]);
 
   const rawUserLevel = Math.max(userProfile?.level ?? 1, 1);
-  const userLevel = levelingEnabled ? rawUserLevel : 1;
-  const userXp = levelingEnabled ? userProfile?.xp ?? 0n : 0n;
-  const lastXpUpdateTs = levelingEnabled ? userProfile?.lastXpUpdateTs ?? 0 : 0;
+  const userLevel = LEVELING_ENABLED ? rawUserLevel : 1;
+  const userXp = LEVELING_ENABLED ? userProfile?.xp ?? 0n : 0n;
+  const lastXpUpdateTs = LEVELING_ENABLED ? userProfile?.lastXpUpdateTs ?? 0 : 0;
   const profileHpScaled =
     userProfile == null
       ? 0n
@@ -1175,7 +1028,7 @@ export function PublicDashboard() {
       : userProfile.activeHp * HP_SCALE;
 
   useEffect(() => {
-    if (!levelingEnabled) return;
+    if (!LEVELING_ENABLED) return;
     if (!nowTs || !userProfile) return;
     if (lastXpUpdateTs > 0) {
       xpEstimateStartRef.current = null;
@@ -1216,10 +1069,10 @@ export function PublicDashboard() {
       }
     }
   }, [lastXpUpdateTs, nowTs, profileHpScaled, userProfile, xpEstimateKey]);
-  const levelIdx = levelingEnabled
+  const levelIdx = LEVELING_ENABLED
     ? Math.min(Math.max(userLevel, 1), LEVEL_CAP) - 1
     : 0;
-  const levelBonusBps = levelingEnabled
+  const levelBonusBps = LEVELING_ENABLED
     ? LEVEL_BONUS_BPS[levelIdx] ?? LEVEL_BONUS_BPS[LEVEL_BONUS_BPS.length - 1]
     : 0;
   const levelBonusFor = useCallback(
@@ -1229,33 +1082,39 @@ export function PublicDashboard() {
     },
     []
   );
-  const nextLevelXp = levelingEnabled && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
+  const nextLevelXp = LEVELING_ENABLED && userLevel < LEVEL_CAP ? LEVEL_THRESHOLDS[userLevel] : null;
   const levelBonusPct = (levelBonusBps / 100).toFixed(1);
-  const weeklyPoolXnt = yieldSummary?.poolXnt;
-  const fallbackWeeklyPoolXnt = getWeeklyPoolXnt();
+  const weeklyPoolXnt = yieldSummary?.poolXnt ?? 0;
+  const nextPoolXnt = yieldSummary?.nextPoolXnt ?? 0;
+  const nextEpochLabel =
+    yieldSummary?.epochEndTs != null && yieldSummary.epochEndTs > 0
+      ? new Date(yieldSummary.epochEndTs * 1000).toUTCString()
+      : null;
   const yieldTotalWeight = yieldSummary?.totalWeight ?? 0;
-  const userLevelKey = LEVELS.includes(userLevel as Level) ? (userLevel as Level) : null;
-  const levelYield = userLevelKey && yieldSummary?.byLevel ? yieldSummary.byLevel[userLevelKey] : null;
-  const yieldDataReady =
-    yieldSummary != null && weeklyPoolXnt != null && Number.isFinite(weeklyPoolXnt) && yieldTotalWeight > 0;
-  const personalYieldEst = yieldDataReady
-    ? computeEstWeeklyXnt(userLevel, yieldTotalWeight, weeklyPoolXnt ?? fallbackWeeklyPoolXnt)
-    : null;
-  const personalSharePct =
-    levelYield?.sharePct ??
-    (personalYieldEst != null && weeklyPoolXnt != null && weeklyPoolXnt > 0
-      ? (personalYieldEst / weeklyPoolXnt) * 100
-      : null);
+  const personalCountAtLevel =
+    yieldSummary?.countsByLevel?.[userLevel as 2 | 3 | 4 | 5 | 6];
+  const personalYieldEst = computeEstWeeklyXnt(
+    userLevel,
+    yieldTotalWeight,
+    weeklyPoolXnt,
+    personalCountAtLevel
+  );
   const personalYieldLine = walletPublicKey
-    ? yieldDataReady && personalYieldEst != null
-      ? `Est. weekly XNT (LVL yield): ${personalYieldEst.toFixed(2)} XNT`
-      : yieldLoading
-        ? "Loading LVL yield from on-chain snapshot..."
-        : "LVL yield unavailable"
+    ? `Est. weekly XNT (LVL yield): ${
+        personalYieldEst != null ? `${personalYieldEst.toFixed(2)} XNT` : "—"
+      }`
     : "Connect wallet to see your estimated weekly XNT";
+  const nextPoolLine =
+    nextPoolXnt > 0
+      ? `Next pool: ${nextPoolXnt.toFixed(2)} XNT${
+          nextEpochLabel ? ` (starts ${nextEpochLabel})` : ""
+        }`
+      : null;
+  const canClaimYield =
+    Boolean(walletPublicKey) && userLevel >= 2 && weeklyPoolXnt > 0 && yieldTotalWeight > 0;
   const levelBonusBpsBig = BigInt(levelBonusBps);
   const xpEstimate = useMemo(() => {
-    if (!levelingEnabled) {
+    if (!LEVELING_ENABLED) {
       return { whole: 0n, hundredths: 0n };
     }
     if (!nowTs || !userProfile) {
@@ -1301,7 +1160,7 @@ export function PublicDashboard() {
   const hasMindForLevelUp =
     levelUpCostBase != null ? mindBalance >= levelUpCostBase : false;
   const canLevelUp =
-    levelingEnabled &&
+    LEVELING_ENABLED &&
     userProfile != null &&
     nextLevelXp != null &&
     xpDisplay >= nextLevelXp &&
@@ -1311,8 +1170,8 @@ export function PublicDashboard() {
   const requiredMindLabel = levelUpCostTokens != null ? `${levelUpCostTokens}` : "0";
   const maxLevel = userLevel >= LEVEL_CAP || nextLevelXp == null;
   const levelUpDisabled =
-    !levelingEnabled || !canTransact || !canLevelUp || busy != null || maxLevel;
-  const levelUpButtonLabel = !levelingEnabled
+    !LEVELING_ENABLED || !canTransact || !canLevelUp || busy != null || maxLevel;
+  const levelUpButtonLabel = !LEVELING_ENABLED
     ? "Levels disabled"
     : maxLevel
     ? "Max level reached"
@@ -1336,11 +1195,11 @@ export function PublicDashboard() {
       ? `≈ ${formatFixed2(xpPerHourHundredths)} XP/hour`
       : null;
   const bonusLine = `HP bonus: +${levelBonusPct}%`;
-  const progressionDescription = levelingEnabled
+  const progressionDescription = LEVELING_ENABLED
     ? "Your account earns XP while your rigs are mining. Higher levels give a small HP bonus on top of your rigs."
     : LEVELING_DISABLED_MESSAGE;
   const xpEstimateNote =
-    levelingEnabled && lastXpUpdateTs <= 0 && profileHpScaled
+    LEVELING_ENABLED && lastXpUpdateTs <= 0 && profileHpScaled
       ? "XP is estimated until your next on-chain interaction (claim, buy, renew)."
       : null;
   const levelProgressLabel = `Progress: ${levelProgressPct.toFixed(2)}%`;
@@ -1628,7 +1487,12 @@ export function PublicDashboard() {
     const apr = (rewardPerSec * STAKING_SECONDS_PER_YEAR) / totalStaked;
     return apr * 100;
   }, [config, mintDecimals]);
-  // APY removed from UI; APR is shown directly in stats.
+  const stakingApyPct = useMemo(() => {
+    if (stakingAprPct == null) return null;
+    const aprRate = stakingAprPct / 100;
+    const apyRate = Math.pow(1 + aprRate / 365, 365) - 1;
+    return apyRate * 100;
+  }, [stakingAprPct]);
   const totalClaimedMind = mindBalance + (userStake?.stakedMind ?? 0n);
   const secondsPerDayNumber = config ? Number(config.secondsPerDay) : 86_400;
   const secondsIntoDay =
@@ -1818,62 +1682,23 @@ export function PublicDashboard() {
       mintDecimals != null
         ? `${formatRoundedToken(row.stakedMind, mintDecimals.mind, 2)}${shareLabel}`
         : "-";
-    const levelBonusBpsRow = levelBonusFor(row.level);
-    const baseForBonus = row.buffedHp ?? row.hp;
-    const levelBonusHp =
-      levelBonusBpsRow > 0 ? (baseForBonus * BigInt(levelBonusBpsRow)) / BPS_DENOMINATOR : 0n;
-    const levelBonusLabel = levelBonusHp > 0n ? `(+${formatFixed2(levelBonusHp)})` : null;
-    const stakedClass = stakedLabel === "-" ? "text-zinc-500" : "text-zinc-300";
-    const levelLabel =
-      row.level === 2
-        ? "BRONZE Miner - LVL 2"
-        : row.level === 3
-          ? "SILVER Miner - LVL 3"
-          : row.level === 4
-            ? "GOLD Miner - LVL 4"
-            : row.level === 5
-              ? "PLATINUM Miner - LVL 5"
-              : row.level === 6
-                ? "DIAMOND Miner - LVL 6"
-                : `LVL ${row.level}`;
-    const levelClassName =
-      row.level === 2
-        ? "text-transparent bg-clip-text bg-gradient-to-r from-[#8c4b1f] via-[#c57f3a] to-[#ffcc8f] drop-shadow-[0_0_8px_rgba(197,127,58,0.75)]"
-        : row.level === 3
-          ? "text-transparent bg-clip-text bg-gradient-to-r from-[#c0c0c0] via-[#f7f7f7] to-[#9ea3ad] drop-shadow-[0_0_7px_rgba(192,192,192,0.7)]"
-          : row.level === 4
-            ? "text-transparent bg-clip-text bg-gradient-to-r from-[#b88900] via-[#ffd966] to-[#f4c430] drop-shadow-[0_0_10px_rgba(244,196,48,0.8)]"
-            : row.level === 5
-              ? "text-transparent bg-clip-text bg-gradient-to-r from-[#9fb6c3] via-[#e4ecf1] to-[#6f8898] drop-shadow-[0_0_10px_rgba(159,182,195,0.75)]"
-              : row.level === 6
-                ? "text-transparent bg-clip-text bg-gradient-to-r from-[#dff3ff] via-[#9dd5ff] to-[#5ab4ff] drop-shadow-[0_0_12px_rgba(90,180,255,0.9)]"
-                : "text-emerald-200";
     return (
-      <div
-        key={row.owner}
-        className="grid grid-cols-[32px_32px_1fr_140px_110px_140px] items-center text-xs text-zinc-200"
-      >
-        <div className="text-zinc-500">{idx + 1}</div>
-        <div className="text-center font-mono text-sm">{medal ?? ""}</div>
-        <div className="font-mono" title={row.owner}>
-          <span>{shortPk(row.owner, 4)}</span>
-          {row.level > 1 ? (
-            <span className={`ml-2 text-[12px] font-semibold tracking-wide ${levelClassName}`}>
-              {levelLabel}
-            </span>
-          ) : null}
-        </div>
-        <div className="text-right text-white tabular-nums">{formatFixed2(row.hp)}</div>
-        <div
-          className={`text-right tabular-nums ${levelBonusLabel ? "text-emerald-200" : "text-zinc-500"}`}
-        >
-          {levelBonusLabel ?? "—"}
-        </div>
-        <div className={`text-right ${stakedClass}`}>{stakedLabel}</div>
+    <div
+      key={row.owner}
+      className="grid grid-cols-[32px_32px_1fr_120px_140px] items-center text-xs text-zinc-200"
+    >
+      <div className="text-zinc-500">{idx + 1}</div>
+      <div className="text-center font-mono text-sm">{medal ?? ""}</div>
+      <div className="font-mono" title={row.owner}>
+        {shortPk(row.owner, 4)}
       </div>
+      <div className="text-right text-white">{formatFixed2(row.hp)}</div>
+      <div className="text-right text-zinc-300">{stakedLabel}</div>
+    </div>
   );
 });
   const stakingAprDisplay = formatPercent(stakingAprPct);
+  const stakingApyDisplay = formatPercent(stakingApyPct);
   const lastClaimRounded =
     mintDecimals && lastClaimAmount != null
       ? formatRoundedToken(lastClaimAmount, mintDecimals.mind, 6)
@@ -1920,6 +1745,8 @@ export function PublicDashboard() {
         return "unstake_mind";
       case "Claim XNT":
         return "claim_xnt";
+      case "Claim LVL XNT":
+        return "claim_yield";
       case "Claim + stake rXNT":
         return "claim_xnt_rxnt";
       case "Level up":
@@ -2270,6 +2097,25 @@ export function PublicDashboard() {
     });
   };
 
+  const onClaimYield = async () => {
+    if (!anchorWallet || !publicKey) return;
+    const program = getProgram(connection, anchorWallet);
+    await withTx("Claim LVL XNT", async () => {
+      const sig = await program.methods
+        .claimYield()
+        .accounts({
+          owner: publicKey,
+          yieldConfig: deriveYieldConfigPda(),
+          yieldVault: deriveYieldVaultPda(),
+          yieldUser: deriveYieldUserPda(publicKey),
+          userProfile: deriveUserProfilePda(publicKey),
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      return sig;
+    });
+  };
+
   const onClaimRipperSplit = async () => {
     if (busy != null) return;
     if (!anchorWallet || !publicKey || !config) return;
@@ -2353,7 +2199,7 @@ export function PublicDashboard() {
   };
 
   const onLevelUp = async () => {
-    if (!levelingEnabled) {
+    if (!LEVELING_ENABLED) {
       setError(LEVELING_DISABLED_MESSAGE);
       return;
     }
@@ -2412,7 +2258,7 @@ export function PublicDashboard() {
       ? "rXNT pool is unavailable right now."
       : "Claim rewards and optionally auto-stake to rXNT.";
 
-  const progressionLabel = levelingEnabled ? `LVL ${userLevel}` : "Levels paused";
+  const progressionLabel = LEVELING_ENABLED ? `LVL ${userLevel}` : "Levels paused";
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -2753,23 +2599,9 @@ export function PublicDashboard() {
               <div className="mt-3 text-xs text-zinc-500" title={hashpowerTooltip}>
                 Hashpower gives you a share of daily emission. Your share changes if the network hashpower changes.
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="mt-4">
                 <Button size="lg" className="h-12" onClick={() => void onBuy()} disabled={buyDisabled}>
                   {busy === "Buy contract" ? "Submitting..." : "Start mining"}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="secondary"
-                  className="h-12"
-                  onClick={() => {
-                    window.open(
-                      "https://app.xdex.xyz/swap?fromTokenAddress=111111111111111111111111111111111111111111&toTokenAddress=DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT",
-                      "_blank",
-                      "noopener,noreferrer"
-                    );
-                  }}
-                >
-                  Buy MIND
                 </Button>
               </div>
             </div>
@@ -3301,171 +3133,6 @@ export function PublicDashboard() {
           </Card>
         </section>
 
-        <section className="mt-10">
-          <Card className="border-cyan-400/20 bg-ink/90 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Stats</div>
-                  <div className="text-xl font-semibold text-white">Protocol pulse</div>
-                  <div className="text-[11px] text-zinc-500">
-                    Live on-chain reads; refresh cadence every 10 minutes.
-                  </div>
-                </div>
-              </div>
-
-            {statsTab === "payouts" ? (
-              <div className="mt-6 space-y-4">
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  {[
-                    { key: "performance", label: "Performance" },
-                    { key: "staking", label: "Staking" },
-                    { key: "network", label: "Network" },
-                  ].map((tab) => (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setStatsTabFilter(tab.key as typeof statsTabFilter)}
-                      className={`rounded-full border px-3 py-1 text-xs transition ${
-                        statsTabFilter === tab.key
-                          ? "border-cyan-300/50 bg-cyan-400/10 text-white shadow-[0_0_0_1px_rgba(34,211,238,0.35)]"
-                          : "border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:text-white"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 xl:auto-rows-fr">
-                  {statsTabFilter === "performance" && (
-                    <>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          Total paid out
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {claimStats
-                            ? `${Number(claimStats.totalXnt).toFixed(2)} XNT`
-                            : claimStatsError
-                            ? "—"
-                            : "…"}
-                        </div>
-                        {claimStats?.updatedAt ? (
-                          <div className="mt-1 text-[11px] text-zinc-500">
-                            Updated {new Date(claimStats.updatedAt).toLocaleTimeString()}
-                          </div>
-                        ) : null}
-                        {claimStatsError ? (
-                          <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
-                        ) : null}
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          Rewards last 24h
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {claimStats ? `+${Number(claimStats.last24hXnt).toFixed(2)} XNT` : "—"}
-                        </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">Distributed in last 24h.</div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          7d realized APR
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {claimStats?.apr7dPct != null ? `${claimStats.apr7dPct.toFixed(2)}%` : "—"}
-                        </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          From last 7d XNT claims vs current staked base.
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {statsTabFilter === "staking" && (
-                    <>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          Active stakers
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {activeStakersSummary.unique ?? ACTIVE_STAKERS_SUMMARY.unique}
-                        </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          Unique wallets with staked MIND.
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          TVL (staked)
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {config && mintDecimals
-                            ? `${formatTokenAmount(config.stakingTotalStakedMind, mintDecimals.mind, 1)} MIND`
-                            : "—"}
-                        </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">
-                          Current total MIND locked in staking.
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          TVL (USD)
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {claimStats?.tvlUsd != null
-                            ? `$${claimStats.tvlUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-                            : "—"}
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {statsTabFilter === "staking" && (
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        Current staking APR
-                      </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">
-                        {stakingAprPct != null ? `${stakingAprPct.toFixed(2)}%` : "—"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-zinc-500">
-                        Based on on-chain reward rate vs total staked MIND.
-                      </div>
-                    </div>
-                  )}
-
-                  {statsTabFilter === "network" && (
-                    <>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          Emission / day
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">
-                          {mintDecimals ? `${formatRoundedToken(emissionPerDay, mintDecimals.mind, 0)} MIND` : "—"}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          Active miners
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-white">{activeMinerTotal}</div>
-                        <div className="mt-1 text-[11px] text-zinc-500">Unique addresses mining now.</div>
-                      </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        Active rigs
-                      </div>
-                      <div className="mt-2 text-2xl font-semibold text-white">{activeRigTotal}</div>
-                      <div className="mt-1 text-[11px] text-zinc-500">Rigs currently earning.</div>
-                    </div>
-                  </>
-                )}
-                </div>
-              </div>
-            ) : null}
-          </Card>
-        </section>
-
         <section className="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr]">
           <Card className="border-emerald-400/20 bg-ink/90 p-6">
             <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Staking</div>
@@ -3474,13 +3141,6 @@ export function PublicDashboard() {
             <div className="mt-3 text-xs text-zinc-400">
               Claimable: {mintDecimals ? formatTokenAmount(finalPendingXnt, mintDecimals.xnt, 4) : "-"} XNT
             </div>
-            <div className="mt-2 text-xs text-emerald-200">
-              Total paid out:{" "}
-              {claimStats ? `${claimStats.totalXnt} XNT` : claimStatsError ? "—" : "…"}
-            </div>
-            {claimStatsError ? (
-              <div className="mt-1 text-[11px] text-amber-300">{claimStatsError}</div>
-            ) : null}
             {!loading && mintDecimals && userStake?.stakedMind ? (
               userStake.stakedMind > 0n ? (
                 <div className="mt-2 text-[11px] text-zinc-500">
@@ -3706,13 +3366,17 @@ export function PublicDashboard() {
         </section>
 
         <section className="mt-6">
-          {levelingEnabled ? (
+          {LEVELING_ENABLED ? (
             <AccountProgressionPanel
               level={userLevel}
               xpLine={xpLine}
               rateLine={xpRateLine}
               bonusLine={bonusLine}
               yieldLine={personalYieldLine}
+              yieldMetaLine={nextPoolLine}
+              yieldActionLabel={walletPublicKey ? "Claim XNT" : null}
+              yieldActionDisabled={!canClaimYield || busy != null}
+              onYieldAction={walletPublicKey ? onClaimYield : undefined}
               yieldLinkHref="/progression#level-overview"
               description={xpEstimateNote ? `${progressionDescription} ${xpEstimateNote}` : progressionDescription}
               progressLabel={levelProgressLabel}
@@ -3740,22 +3404,19 @@ export function PublicDashboard() {
               </div>
               <Badge variant="muted">Top {leaderboardRows.length}</Badge>
             </div>
-            <div className="mt-4 max-h-[360px] overflow-y-auto overflow-x-auto pr-2">
-              <div className="min-w-[720px]">
-                <div className="grid grid-cols-[32px_32px_1fr_140px_110px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                  <div>#</div>
-                  <div></div>
-                  <div>Wallet</div>
-                  <div className="text-right">HP</div>
-                  <div className="text-right">HP (bonus)</div>
-                  <div className="text-right">Staked MIND</div>
-                </div>
-                {leaderboardRows.length === 0 ? (
-                  <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
-                ) : (
-                  <div className="mt-3 space-y-2">{leaderboardRowElements}</div>
-                )}
+            <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
+              <div className="grid grid-cols-[32px_32px_1fr_120px_140px] text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                <div>#</div>
+                <div></div>
+                <div>Wallet</div>
+                <div className="text-right">HP</div>
+                <div className="text-right">Staked MIND</div>
               </div>
+              {leaderboardRows.length === 0 ? (
+                <div className="mt-3 text-xs text-zinc-500">Leaderboard unavailable.</div>
+              ) : (
+                <div className="mt-3 space-y-2">{leaderboardRowElements}</div>
+              )}
             </div>
           </Card>
         </section>

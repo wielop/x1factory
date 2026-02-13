@@ -9,6 +9,10 @@ export function AccountProgressionPanel({
   rateLine,
   bonusLine,
   yieldLine,
+  yieldActionLabel,
+  yieldActionDisabled,
+  onYieldAction,
+  yieldMetaLine,
   yieldLinkHref,
   description,
   progressLabel,
@@ -24,6 +28,10 @@ export function AccountProgressionPanel({
   rateLine?: string | null;
   bonusLine: string;
   yieldLine?: string | null;
+  yieldActionLabel?: string | null;
+  yieldActionDisabled?: boolean;
+  onYieldAction?: () => void;
+  yieldMetaLine?: string | null;
   yieldLinkHref?: string | null;
   description: string;
   progressLabel: string;
@@ -44,6 +52,20 @@ export function AccountProgressionPanel({
           {rateLine ? <div className="mt-1 text-sm text-zinc-300">{rateLine}</div> : null}
           <div className="mt-1 text-sm text-zinc-300">{bonusLine}</div>
           {yieldLine ? <div className="mt-1 text-sm text-zinc-300">{yieldLine}</div> : null}
+          {yieldMetaLine ? (
+            <div className="mt-1 text-[11px] text-zinc-400">{yieldMetaLine}</div>
+          ) : null}
+          {yieldActionLabel ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="mt-2"
+              onClick={onYieldAction}
+              disabled={yieldActionDisabled}
+            >
+              {yieldActionLabel}
+            </Button>
+          ) : null}
           {yieldLinkHref ? (
             <a
               href={yieldLinkHref}
@@ -68,20 +90,9 @@ export function AccountProgressionPanel({
             </div>
           </div>
           <div className="mt-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={onLevelUp} disabled={buttonDisabled}>
-                {buttonLabel}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  window.location.assign("https://x1factory.xyz/progression");
-                }}
-              >
-                Costs &amp; bonuses
-              </Button>
-            </div>
+            <Button size="sm" onClick={onLevelUp} disabled={buttonDisabled}>
+              {buttonLabel}
+            </Button>
             {requirements ? (
               <div className="mt-3 text-xs text-zinc-400">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">

@@ -1,0 +1,597 @@
+{
+  "version": "0.1.0",
+  "name": "x1mind",
+  "instructions": [
+    {
+      "name": "initConfig",
+      "accounts": [
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "mindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "buybackWallet",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "adminWallet",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "motherlodeVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": "InitConfigParams"
+          }
+        }
+      ]
+    },
+    {
+      "name": "startRound",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "admin",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "round",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "roundId",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "enterRound",
+      "accounts": [
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "round",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userEntry",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "roundId",
+          "type": "u64"
+        },
+        {
+          "name": "cells",
+          "type": "bytes"
+        },
+        {
+          "name": "amountPerCell",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finalizeRound",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "admin",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "round",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "buybackWallet",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "adminWallet",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "motherlodeVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "roundId",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "payoutWinner",
+      "accounts": [
+        {
+          "name": "round",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userEntry",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ownerMindAta",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mindVaultAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindMint",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "buybackWallet",
+            "type": "publicKey"
+          },
+          {
+            "name": "adminWallet",
+            "type": "publicKey"
+          },
+          {
+            "name": "motherlodeVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "gridSize",
+            "type": "u8"
+          },
+          {
+            "name": "roundLengthSecs",
+            "type": "u64"
+          },
+          {
+            "name": "dailyRateBps",
+            "type": "u16"
+          },
+          {
+            "name": "buybackBps",
+            "type": "u16"
+          },
+          {
+            "name": "motherlodeBps",
+            "type": "u16"
+          },
+          {
+            "name": "adminBps",
+            "type": "u16"
+          },
+          {
+            "name": "referralBps",
+            "type": "u16"
+          },
+          {
+            "name": "currentRoundId",
+            "type": "u64"
+          },
+          {
+            "name": "roundRewardRemainder",
+            "type": "u64"
+          },
+          {
+            "name": "mindVaultAuthorityBump",
+            "type": "u8"
+          },
+          {
+            "name": "motherlodeVaultBump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Round",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "roundId",
+            "type": "u64"
+          },
+          {
+            "name": "startTs",
+            "type": "i64"
+          },
+          {
+            "name": "endTs",
+            "type": "i64"
+          },
+          {
+            "name": "totalXnt",
+            "type": "u64"
+          },
+          {
+            "name": "poolXnt",
+            "type": "u64"
+          },
+          {
+            "name": "buybackFee",
+            "type": "u64"
+          },
+          {
+            "name": "adminFee",
+            "type": "u64"
+          },
+          {
+            "name": "referralFee",
+            "type": "u64"
+          },
+          {
+            "name": "motherlodeFee",
+            "type": "u64"
+          },
+          {
+            "name": "motherlodePayoutXnt",
+            "type": "u64"
+          },
+          {
+            "name": "mindReward",
+            "type": "u64"
+          },
+          {
+            "name": "finalized",
+            "type": "bool"
+          },
+          {
+            "name": "winningCell",
+            "type": "u8"
+          },
+          {
+            "name": "motherlodeHit",
+            "type": "bool"
+          },
+          {
+            "name": "mindMint",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindVault",
+            "type": "publicKey"
+          },
+          {
+            "name": "mindVaultAuthorityBump",
+            "type": "u8"
+          },
+          {
+            "name": "totalPerCell",
+            "type": {
+              "array": [
+                "u64",
+                25
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "publicKey"
+          },
+          {
+            "name": "roundId",
+            "type": "u64"
+          },
+          {
+            "name": "deposits",
+            "type": {
+              "array": [
+                "u64",
+                25
+              ]
+            }
+          },
+          {
+            "name": "totalDeposit",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MotherlodeVault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "InitConfigParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "gridSize",
+            "type": "u8"
+          },
+          {
+            "name": "roundLengthSecs",
+            "type": "u64"
+          },
+          {
+            "name": "dailyRateBps",
+            "type": "u16"
+          },
+          {
+            "name": "buybackBps",
+            "type": "u16"
+          },
+          {
+            "name": "motherlodeBps",
+            "type": "u16"
+          },
+          {
+            "name": "adminBps",
+            "type": "u16"
+          },
+          {
+            "name": "referralBps",
+            "type": "u16"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidGridSize",
+      "msg": "Invalid grid size"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidRoundTiming",
+      "msg": "Invalid round timing"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidFees",
+      "msg": "Invalid fee configuration"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidRoundId",
+      "msg": "Invalid round id"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidCell",
+      "msg": "Invalid cell index"
+    },
+    {
+      "code": 6005,
+      "name": "RoundNotFinalized",
+      "msg": "Round not finalized"
+    },
+    {
+      "code": 6006,
+      "name": "RoundFinalized",
+      "msg": "Round already finalized"
+    },
+    {
+      "code": 6007,
+      "name": "AlreadyCommitted",
+      "msg": "Already committed"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6009,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidMint",
+      "msg": "Invalid mint"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidVaultAuthority",
+      "msg": "Invalid vault authority"
+    },
+    {
+      "code": 6012,
+      "name": "RevealWindowOpen",
+      "msg": "Round window still open"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidAccountCount",
+      "msg": "Invalid account count"
+    },
+    {
+      "code": 6014,
+      "name": "AlreadyClaimed",
+      "msg": "Already claimed"
+    },
+    {
+      "code": 6015,
+      "name": "NotWinner",
+      "msg": "Entry has no win on this round"
+    },
+    {
+      "code": 6016,
+      "name": "NoWinners",
+      "msg": "Round has no winners"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidOwner",
+      "msg": "Invalid owner"
+    }
+  ]
+}

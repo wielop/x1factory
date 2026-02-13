@@ -290,7 +290,6 @@ pub mod melt_v1 {
     /// Finalize a round after it ends. Computes v_pay = (1-rollover)*v_round.
     pub fn finalize_round(ctx: Context<FinalizeRound>) -> Result<()> {
         let cfg = &mut ctx.accounts.config;
-        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), MeltError::Unauthorized);
 
         let now = Clock::get()?.unix_timestamp;
         let round = &mut ctx.accounts.round;

@@ -418,8 +418,10 @@ export default function MeltPage() {
   const burnAmount = userRound ? BigInt(userRound.burned.toString()) : 0n;
   const totalBurn = round ? BigInt(round.totalBurn.toString()) : 0n;
   const vPay = round ? BigInt(round.vPay.toString()) : 0n;
+  const vRound = round ? BigInt(round.vRound.toString()) : 0n;
+  const payoutBase = isFinalized ? vPay : vRound;
   const payoutEstimate =
-    totalBurn > 0n ? (vPay * burnAmount) / totalBurn : 0n;
+    totalBurn > 0n ? (payoutBase * burnAmount) / totalBurn : 0n;
 
   const startTs = round ? Number(round.startTs.toString()) : null;
   const endTs = round ? Number(round.endTs.toString()) : null;
@@ -549,7 +551,7 @@ export default function MeltPage() {
                     {formatAmount(payoutEstimate)} XNT
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">
-                    v_pay * (yourBurn / totalBurn)
+                    {isFinalized ? "v_pay" : "v_round"} * (yourBurn / totalBurn)
                   </div>
                 </div>
               </div>

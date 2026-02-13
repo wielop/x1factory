@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BN, EventParser } from "@coral-xyz/anchor";
+import { BN } from "@coral-xyz/anchor";
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -26,9 +26,6 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
-const LEADERBOARD_PAGE_SIZE = 25;
-const LEADERBOARD_REFRESH_PAGES = 4;
-
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
   if (!trimmed) return 0n;
@@ -79,18 +76,6 @@ export default function MeltPlayerPage() {
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
   const meltProgramId = useMemo(() => getMeltProgramId(), []);
-  const readOnlyWallet = useMemo(
-    () => ({
-      publicKey: PublicKey.default,
-      signTransaction: async (tx: unknown) => tx as never,
-      signAllTransactions: async (txs: unknown) => txs as never,
-    }),
-    []
-  );
-  const parserProgram = useMemo(
-    () => getMeltProgram(connection, wallet ?? (readOnlyWallet as any)),
-    [connection, readOnlyWallet, wallet]
-  );
 
   const melt = useMeltState({
     connection,
@@ -273,73 +258,27 @@ export default function MeltPlayerPage() {
     try {
       setLeaderboardLoading(true);
       setLeaderboardError(null);
+      const program = getMeltProgram(connection, wallet ?? ({
+        publicKey: PublicKey.default,
+        signTransaction: async (tx: unknown) => tx as never,
+        signAllTransactions: async (txs: unknown) => txs as never,
+      } as any));
+      const roundFilterOffset = 8 + 32; // discriminator + user pubkey
+      const userRounds = await (program.account as any).meltUserRound.all([
+        {
+          memcmp: {
+            offset: roundFilterOffset,
+            bytes: melt.roundPda.toBase58(),
+          },
+        },
+      ]);
+
       const burnedMap = new Map<string, bigint>();
-      if (loadMore) {
-        for (const row of leaderboardRows) burnedMap.set(row.wallet, row.burned);
-      }
-
-      const seen = leaderboardSeenRef.current;
-      let cursor = loadMore ? leaderboardCursor : null;
-      let pages = 0;
-      let latestTail: string | null = cursor;
-      let totalFetched = 0;
-      while (pages < (loadMore ? 1 : LEADERBOARD_REFRESH_PAGES)) {
-        const signatures = await connection.getSignaturesForAddress(melt.roundPda, {
-          limit: LEADERBOARD_PAGE_SIZE,
-          ...(cursor ? { before: cursor } : {}),
-        });
-        if (signatures.length === 0) break;
-        totalFetched += signatures.length;
-        latestTail = signatures[signatures.length - 1]?.signature ?? latestTail;
-        pages += 1;
-
-        for (const sig of signatures) {
-          if (seen.has(sig.signature)) continue;
-          const tx = await connection.getTransaction(sig.signature, {
-            commitment: "confirmed",
-            maxSupportedTransactionVersion: 0,
-          });
-          seen.add(sig.signature);
-          const logs = tx?.meta?.logMessages;
-          if (!logs || logs.length === 0) continue;
-          const parser = new EventParser(meltProgramId, parserProgram.coder);
-          for (const evt of parser.parseLogs(logs)) {
-            if (evt.name !== "Burned") continue;
-            const eventRound = new PublicKey((evt.data as any).round);
-            if (!eventRound.equals(melt.roundPda)) continue;
-            const user = new PublicKey((evt.data as any).user).toBase58();
-            const amount = BigInt((evt.data as any).amount.toString());
-            burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
-          }
-        }
-        cursor = latestTail;
-      }
-
-      // Some RPC nodes do not reliably index signatures by PDA; fallback to program scan.
-      if (!loadMore && totalFetched === 0) {
-        const fallbackSigs = await connection.getSignaturesForAddress(meltProgramId, {
-          limit: LEADERBOARD_PAGE_SIZE,
-        });
-        latestTail = fallbackSigs[fallbackSigs.length - 1]?.signature ?? latestTail;
-        for (const sig of fallbackSigs) {
-          if (seen.has(sig.signature)) continue;
-          const tx = await connection.getTransaction(sig.signature, {
-            commitment: "confirmed",
-            maxSupportedTransactionVersion: 0,
-          });
-          seen.add(sig.signature);
-          const logs = tx?.meta?.logMessages;
-          if (!logs || logs.length === 0) continue;
-          const parser = new EventParser(meltProgramId, parserProgram.coder);
-          for (const evt of parser.parseLogs(logs)) {
-            if (evt.name !== "Burned") continue;
-            const eventRound = new PublicKey((evt.data as any).round);
-            if (!eventRound.equals(melt.roundPda)) continue;
-            const user = new PublicKey((evt.data as any).user).toBase58();
-            const amount = BigInt((evt.data as any).amount.toString());
-            burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
-          }
-        }
+      for (const entry of userRounds as any[]) {
+        const user = new PublicKey(entry.account.user).toBase58();
+        const burned = BigInt(entry.account.burned.toString());
+        if (burned <= 0n) continue;
+        burnedMap.set(user, (burnedMap.get(user) ?? 0n) + burned);
       }
 
       const nextRows: LeaderboardRow[] = Array.from(burnedMap.entries()).map(([walletAddr, burned]) => ({
@@ -348,10 +287,10 @@ export default function MeltPlayerPage() {
       }));
       nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
       setLeaderboardRows(nextRows);
-      setLeaderboardCursor(latestTail);
+      setLeaderboardCursor(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setLeaderboardError(`Leaderboard unavailable (RPC limits): ${msg}`);
+      setLeaderboardError(`Leaderboard unavailable: ${msg}`);
     } finally {
       setLeaderboardLoading(false);
     }

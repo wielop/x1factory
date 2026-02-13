@@ -1787,6 +1787,10 @@ export function PublicDashboard() {
           errorMsg =
             "Mining was inactive for too long on testnet. Ask admin to run one 'Update Config' to resync, then retry buy.";
         }
+        if (label === "Buy contract" && errorMsg.includes("MaxEffectiveHpExceeded")) {
+          errorMsg =
+            "You reached the active rig HP limit. Claim/expire old rigs first or ask admin to raise max HP cap.";
+        }
         setError(errorMsg);
       } finally {
         setBusy(null);

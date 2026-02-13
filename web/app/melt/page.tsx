@@ -119,10 +119,8 @@ export default function MeltPage() {
   const isActive = useMemo(() => {
     if (!round) return false;
     const label = statusLabel(round.status);
-    const start = Number(round.startTs.toString());
-    const end = Number(round.endTs.toString());
-    return label === "Active" && nowTs >= start && nowTs <= end;
-  }, [round, nowTs]);
+    return label === "Active";
+  }, [round]);
 
   const isFinalized = useMemo(() => statusLabel(round?.status ?? null) === "Finalized", [round]);
 

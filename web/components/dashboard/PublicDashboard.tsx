@@ -4,7 +4,7 @@ import "@/lib/polyfillBufferClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import {
   AccountLayout,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -54,7 +54,7 @@ import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk 
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
-import { fetchMiningMeltConfig, getMeltProgramId } from "@/lib/melt";
+import { fetchMiningMeltConfig, getMeltProgramId, getMeltRpcUrl } from "@/lib/melt";
 import { computeEstWeeklyXnt } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
@@ -1817,14 +1817,15 @@ export function PublicDashboard() {
 
   const onBuy = async () => {
     if (!anchorWallet || !publicKey || !config) return;
-    const program = getProgram(connection, anchorWallet);
+    const buyConnection = new Connection(getMeltRpcUrl(), "confirmed");
+    const program = getProgram(buyConnection, anchorWallet);
     const nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);
     const positionIndex = new BN(nextIndex.toString());
     await withTx("Buy contract", async () => {
-      const miningMelt = await fetchMiningMeltConfig(connection);
+      const miningMelt = await fetchMiningMeltConfig(buyConnection);
       const meltProgramId = miningMelt?.meltProgramId ?? getMeltProgramId();
       if (miningMelt?.meltEnabled) {
-        const meltProgramInfo = await connection.getAccountInfo(meltProgramId, "confirmed");
+        const meltProgramInfo = await buyConnection.getAccountInfo(meltProgramId, "confirmed");
         if (!meltProgramInfo || !meltProgramInfo.executable) {
           throw new Error(
             `MELT program ${meltProgramId.toBase58()} is not deployed on the selected RPC. Use testnet RPC or disable MELT funding in mining config.`
@@ -1839,7 +1840,7 @@ export function PublicDashboard() {
         [Buffer.from("melt_vault")],
         meltProgramId
       );
-      const meltConfigInfo = await connection.getAccountInfo(meltConfigPda, "confirmed");
+      const meltConfigInfo = await buyConnection.getAccountInfo(meltConfigPda, "confirmed");
       if (!meltConfigInfo) {
         throw new Error("MELT config is not initialized on this testnet.");
       }

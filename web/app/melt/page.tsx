@@ -127,8 +127,27 @@ export default function MeltPage() {
 
   const refresh = useCallback(async () => {
     try {
+      const configPda = deriveMeltConfigPda();
+      const configInfo = await connection.getAccountInfo(configPda, "confirmed");
+      if (!configInfo) {
+        setInitState("NOT_INITIALIZED");
+        setConfig(null);
+        setRound(null);
+        setRoundPda(null);
+        setUserRound(null);
+        setVaultBalance(0n);
+        if (!initToastShownRef.current) {
+          initToastShownRef.current = true;
+          toast.push({
+            title: "MELT config not initialized",
+            description: "Connect admin wallet and initialize.",
+            variant: "info",
+          });
+        }
+        return;
+      }
       const program = getMeltProgram(connection, anchorWallet ?? (readonlyWallet as any));
-      const cfg = (await program.account.meltConfig.fetch(deriveMeltConfigPda())) as MeltConfig;
+      const cfg = (await program.account.meltConfig.fetch(configPda)) as MeltConfig;
       setInitState("READY");
       setConfig(cfg);
       const currentSeq = BigInt(cfg.roundSeq.toString());

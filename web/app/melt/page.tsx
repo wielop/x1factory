@@ -97,6 +97,7 @@ export default function MeltPage() {
   const [config, setConfig] = useState<MeltConfig | null>(null);
   const [round, setRound] = useState<MeltRound | null>(null);
   const [roundPda, setRoundPda] = useState<PublicKey | null>(null);
+  const [nextRoundPda, setNextRoundPda] = useState<PublicKey | null>(null);
   const [vaultBalance, setVaultBalance] = useState<bigint>(0n);
   const [userRound, setUserRound] = useState<MeltUserRound | null>(null);
   const [nowTs, setNowTs] = useState<number>(() => Math.floor(Date.now() / 1000));
@@ -150,22 +151,36 @@ export default function MeltPage() {
       const cfg = (await program.account.meltConfig.fetch(configPda)) as MeltConfig;
       setInitState("READY");
       setConfig(cfg);
-      const currentSeq = BigInt(cfg.roundSeq.toString());
-      const rpda = deriveMeltRoundPda(currentSeq);
-      setRoundPda(rpda);
-      const roundInfo = await connection.getAccountInfo(rpda, "confirmed");
-      if (roundInfo) {
-        const r = (await program.account.meltRound.fetch(rpda)) as MeltRound;
-        setRound(r);
-      } else {
-        setRound(null);
+      const nextSeq = BigInt(cfg.roundSeq.toString());
+      const nextPda = deriveMeltRoundPda(nextSeq);
+      setNextRoundPda(nextPda);
+
+      let displayRound: MeltRound | null = null;
+      let displayPda: PublicKey | null = null;
+      if (nextSeq > 0n) {
+        const currentSeq = nextSeq - 1n;
+        const currentPda = deriveMeltRoundPda(currentSeq);
+        const currentInfo = await connection.getAccountInfo(currentPda, "confirmed");
+        if (currentInfo) {
+          displayRound = (await program.account.meltRound.fetch(currentPda)) as MeltRound;
+          displayPda = currentPda;
+        }
       }
+      if (!displayRound) {
+        const nextInfo = await connection.getAccountInfo(nextPda, "confirmed");
+        if (nextInfo) {
+          displayRound = (await program.account.meltRound.fetch(nextPda)) as MeltRound;
+          displayPda = nextPda;
+        }
+      }
+      setRound(displayRound);
+      setRoundPda(displayPda);
       const vaultBal = BigInt(await connection.getBalance(cfg.vault, "confirmed"));
       setVaultBalance(vaultBal);
 
-      if (publicKey && anchorWallet) {
+      if (publicKey && anchorWallet && displayPda) {
         const userProgram = getMeltProgram(connection, anchorWallet);
-        const urPda = deriveMeltUserRoundPda(publicKey, rpda);
+        const urPda = deriveMeltUserRoundPda(publicKey, displayPda);
         const ur = (await userProgram.account.meltUserRound.fetchNullable(urPda)) as
           | MeltUserRound
           | null;
@@ -335,7 +350,7 @@ export default function MeltPage() {
   };
 
   const adminSetSchedule = async () => {
-    if (!anchorWallet || !roundPda) return;
+    if (!anchorWallet || !nextRoundPda) return;
     const startDelta = Number(startIn);
     const dur = Number(duration);
     if (!Number.isFinite(startDelta) || !Number.isFinite(dur) || dur <= 0) {
@@ -351,7 +366,7 @@ export default function MeltPage() {
         .accounts({
           admin: anchorWallet.publicKey,
           config: deriveMeltConfigPda(),
-          round: roundPda,
+          round: nextRoundPda,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -361,7 +376,7 @@ export default function MeltPage() {
   };
 
   const adminStartRound = async () => {
-    if (!anchorWallet || !roundPda || !config) return;
+    if (!anchorWallet || !nextRoundPda || !config) return;
     await withBusy("Start round", async () => {
       const program = getMeltProgram(connection, anchorWallet);
       const sig = await program.methods
@@ -370,7 +385,7 @@ export default function MeltPage() {
           admin: anchorWallet.publicKey,
           config: deriveMeltConfigPda(),
           vault: config.vault,
-          round: roundPda,
+          round: nextRoundPda,
           systemProgram: SystemProgram.programId,
         })
         .rpc();

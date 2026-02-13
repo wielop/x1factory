@@ -258,25 +258,26 @@ export default function MeltPlayerPage() {
     try {
       setLeaderboardLoading(true);
       setLeaderboardError(null);
-      const program = getMeltProgram(connection, wallet ?? ({
-        publicKey: PublicKey.default,
-        signTransaction: async (tx: unknown) => tx as never,
-        signAllTransactions: async (txs: unknown) => txs as never,
-      } as any));
       const roundFilterOffset = 8 + 32; // discriminator + user pubkey
-      const userRounds = await (program.account as any).meltUserRound.all([
-        {
-          memcmp: {
-            offset: roundFilterOffset,
-            bytes: melt.roundPda.toBase58(),
+      const userRounds = await connection.getProgramAccounts(meltProgramId, {
+        commitment: "confirmed",
+        filters: [
+          { dataSize: 82 }, // MeltUserRound size = 8 + 32 + 32 + 8 + 1 + 1
+          {
+            memcmp: {
+              offset: roundFilterOffset,
+              bytes: melt.roundPda.toBase58(),
+            },
           },
-        },
-      ]);
+        ],
+      });
 
       const burnedMap = new Map<string, bigint>();
-      for (const entry of userRounds as any[]) {
-        const user = new PublicKey(entry.account.user).toBase58();
-        const burned = BigInt(entry.account.burned.toString());
+      for (const entry of userRounds) {
+        const data = entry.account.data;
+        if (data.length < 82) continue;
+        const user = new PublicKey(data.subarray(8, 40)).toBase58();
+        const burned = data.readBigUInt64LE(72);
         if (burned <= 0n) continue;
         burnedMap.set(user, (burnedMap.get(user) ?? 0n) + burned);
       }
@@ -288,6 +289,9 @@ export default function MeltPlayerPage() {
       nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
       setLeaderboardRows(nextRows);
       setLeaderboardCursor(null);
+      if (nextRows.length === 0) {
+        setLeaderboardError("No burns recorded for this round yet.");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLeaderboardError(`Leaderboard unavailable: ${msg}`);

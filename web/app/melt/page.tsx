@@ -75,7 +75,12 @@ const formatAmount = (value: bigint, decimals = 9n) => {
 const statusLabel = (status: Record<string, unknown> | null) => {
   if (!status) return "-";
   const key = Object.keys(status)[0];
-  return key ?? "-";
+  return key ? key.toLowerCase() : "-";
+};
+
+const formatStatus = (label: string) => {
+  if (!label || label === "-") return "-";
+  return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
 export default function MeltPage() {
@@ -119,10 +124,10 @@ export default function MeltPage() {
   const isActive = useMemo(() => {
     if (!round) return false;
     const label = statusLabel(round.status);
-    return label === "Active";
+    return label === "active";
   }, [round]);
 
-  const isFinalized = useMemo(() => statusLabel(round?.status ?? null) === "Finalized", [round]);
+  const isFinalized = useMemo(() => statusLabel(round?.status ?? null) === "finalized", [round]);
 
   const refresh = useCallback(async () => {
     try {
@@ -516,7 +521,7 @@ export default function MeltPage() {
                 </div>
                 <div className="mt-4 grid gap-3 text-sm text-white/70 sm:grid-cols-2">
                   <div>Round seq: {round ? round.seq.toString() : "-"}</div>
-                  <div>Status: {statusLabel(round?.status ?? null)}</div>
+                  <div>Status: {formatStatus(statusLabel(round?.status ?? null))}</div>
                   <div>Start: {startTs ?? "-"}</div>
                   <div>End: {endTs ?? "-"}</div>
                   <div>v_round: {round ? formatAmount(BigInt(round.vRound.toString())) : "-"}</div>

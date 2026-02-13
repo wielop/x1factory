@@ -164,7 +164,13 @@ export default function MeltPlayerPage() {
     if (message.includes("ConstraintSeeds")) {
       return "Claim failed for one round (seed mismatch). Refresh and try again.";
     }
-    return "Claim failed. Please try again.";
+    const codeMatch = message.match(/Error Code:\\s*([A-Za-z0-9_]+)/);
+    if (codeMatch?.[1]) return `Claim failed (${codeMatch[1]}).`;
+    const anchorLine = message
+      .split("\n")
+      .find((line) => line.includes("AnchorError") || line.includes("custom program error"));
+    if (anchorLine) return anchorLine.slice(0, 180);
+    return `Claim failed: ${message.slice(0, 120)}`;
   };
 
   const burnMind = async () => {

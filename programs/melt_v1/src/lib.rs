@@ -445,7 +445,14 @@ fn try_start_round(
     round.v_pay = v_pay_u64;
     round.total_burn = 0;
     round.status = RoundStatus::Active;
-    round.bump = *bumps.get("round").unwrap();
+    // Depending on instruction context, the initialized round account can be named
+    // either `round` or `next_round`.
+    let round_bump = bumps
+        .get("round")
+        .copied()
+        .or_else(|| bumps.get("next_round").copied())
+        .ok_or(MeltError::InvalidParams)?;
+    round.bump = round_bump;
 
     cfg.active_round_seq = seq;
     cfg.active_round_active = true;

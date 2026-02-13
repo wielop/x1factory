@@ -202,7 +202,7 @@ const MELT_IDL = {
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
         { name: "config", isMut: true, isSigner: false },
-        { name: "vault", isMut: false, isSigner: false },
+        { name: "vault", isMut: true, isSigner: false },
         { name: "round", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],

@@ -210,17 +210,19 @@ export default function MeltPlayerPage() {
     setBusy("CLAIM");
     try {
       const program = getMeltProgram(connection, wallet);
-      const nextRoundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(melt.config.roundSeq.toString()));
+      const configPda = deriveMeltConfigPda();
       let claimedCount = 0;
       let lastSig = "";
       for (const target of claimTargets) {
+        const cfgNow = await (program.account as any).meltConfig.fetch(configPda);
+        const nextRoundPda = deriveMeltRoundPda(BigInt(cfgNow.roundSeq.toString()));
         const userRoundPda = deriveMeltUserRoundPda(publicKey, target.roundPda);
         const sig = await program.methods
           .claim()
           .accounts({
             user: publicKey,
-            config: deriveMeltConfigPda(),
-            vault: melt.config.vault,
+            config: configPda,
+            vault: cfgNow.vault,
             round: target.roundPda,
             nextRound: nextRoundPda,
             userRound: userRoundPda,

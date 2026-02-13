@@ -54,6 +54,7 @@ const percent = (num: bigint, den: bigint) => {
 type LeaderboardRow = {
   wallet: string;
   burned: bigint;
+  payout: bigint;
 };
 
 const shortWallet = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
@@ -248,7 +249,7 @@ export default function MeltPlayerPage() {
   const vialShownLamports = isLiveStatus ? capLamports : vialLamports;
   const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
 
-  const refreshLeaderboard = async (loadMore = false) => {
+  const refreshLeaderboard = async (_loadMore = false) => {
     if (!melt.roundPda || !roundSeq) {
       setLeaderboardRows([]);
       setLeaderboardCursor(null);
@@ -266,39 +267,74 @@ export default function MeltPlayerPage() {
     try {
       setLeaderboardLoading(true);
       setLeaderboardError(null);
-      const roundFilterOffset = 8 + 32; // discriminator + user pubkey
+      const roundFilterOffset = 8 + 32;
+      const filters = isLiveStatus
+        ? [
+            { dataSize: 82 },
+            { memcmp: { offset: roundFilterOffset, bytes: melt.roundPda.toBase58() } },
+          ]
+        : [{ dataSize: 82 }];
       const userRounds = await connection.getProgramAccounts(meltProgramId, {
         commitment: "confirmed",
-        filters: [
-          { dataSize: 82 }, // MeltUserRound size = 8 + 32 + 32 + 8 + 1 + 1
-          {
-            memcmp: {
-              offset: roundFilterOffset,
-              bytes: melt.roundPda.toBase58(),
-            },
-          },
-        ],
+        filters,
       });
 
-      const burnedMap = new Map<string, bigint>();
+      const roundBurns = new Map<string, Map<string, bigint>>();
       for (const entry of userRounds) {
         const data = entry.account.data;
         if (data.length < 82) continue;
         const user = new PublicKey(data.subarray(8, 40)).toBase58();
+        const round = new PublicKey(data.subarray(40, 72)).toBase58();
         const burned = data.readBigUInt64LE(72);
         if (burned <= 0n) continue;
-        burnedMap.set(user, (burnedMap.get(user) ?? 0n) + burned);
+        if (!roundBurns.has(round)) roundBurns.set(round, new Map<string, bigint>());
+        const byUser = roundBurns.get(round)!;
+        byUser.set(user, (byUser.get(user) ?? 0n) + burned);
       }
 
-      const nextRows: LeaderboardRow[] = Array.from(burnedMap.entries()).map(([walletAddr, burned]) => ({
+      const totals = new Map<string, { burned: bigint; payout: bigint }>();
+      if (isLiveStatus) {
+        const byUser = roundBurns.get(melt.roundPda.toBase58()) ?? new Map<string, bigint>();
+        for (const [walletAddr, burned] of byUser.entries()) {
+          const payout = totalBurn > 0n ? (vPay * burned) / totalBurn : 0n;
+          totals.set(walletAddr, { burned, payout });
+        }
+      } else {
+        const roundKeys = Array.from(roundBurns.keys()).map((k) => new PublicKey(k));
+        for (let i = 0; i < roundKeys.length; i += 100) {
+          const chunk = roundKeys.slice(i, i + 100);
+          const infos = await connection.getMultipleAccountsInfo(chunk, "confirmed");
+          infos.forEach((info, idx) => {
+            if (!info || info.data.length < 58) return;
+            const status = info.data.readUInt8(56);
+            if (status !== 2) return; // Finalized
+            const roundKey = chunk[idx].toBase58();
+            const vPayRound = info.data.readBigUInt64LE(40);
+            const totalBurnRound = info.data.readBigUInt64LE(48);
+            const byUser = roundBurns.get(roundKey);
+            if (!byUser) return;
+            for (const [walletAddr, burned] of byUser.entries()) {
+              const payout = totalBurnRound > 0n ? (vPayRound * burned) / totalBurnRound : 0n;
+              const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n };
+              totals.set(walletAddr, {
+                burned: prev.burned + burned,
+                payout: prev.payout + payout,
+              });
+            }
+          });
+        }
+      }
+
+      const nextRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
         wallet: walletAddr,
-        burned,
+        burned: v.burned,
+        payout: v.payout,
       }));
       nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
       setLeaderboardRows(nextRows);
       setLeaderboardCursor(null);
       if (nextRows.length === 0) {
-        setLeaderboardError("No burns recorded for this round yet.");
+        setLeaderboardError(isLiveStatus ? "No burns recorded for this round yet." : "No finalized rounds data yet.");
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -483,7 +519,7 @@ export default function MeltPlayerPage() {
               <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Leaderboard</div>
               <div className="flex items-center gap-2">
                 <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {isLiveStatus ? "LIVE" : "FINAL"}
+                  {isLiveStatus ? "LIVE" : "ALL-TIME"}
                 </div>
                 <button
                   className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
@@ -508,7 +544,6 @@ export default function MeltPlayerPage() {
                 <tbody className="text-white/85">
                   {topRows.map((row, idx) => {
                     const mine = publicKey?.toBase58() === row.wallet;
-                    const est = totalBurn > 0n ? (vPay * row.burned) / totalBurn : 0n;
                     return (
                       <tr key={row.wallet} className={mine ? "bg-cyan-500/10" : ""}>
                         <td className="py-1.5 pr-3">#{idx + 1}</td>
@@ -525,7 +560,7 @@ export default function MeltPlayerPage() {
                           </div>
                         </td>
                         <td className="py-1.5 pr-3">{formatAmount(row.burned)}</td>
-                        <td className="py-1.5 pr-3">{formatAmount(est)}</td>
+                        <td className="py-1.5 pr-3">{formatAmount(row.payout)}</td>
                       </tr>
                     );
                   })}
@@ -546,7 +581,7 @@ export default function MeltPlayerPage() {
               <button
                 className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
                 onClick={() => void refreshLeaderboard(true)}
-                disabled={leaderboardLoading || !leaderboardCursor}
+                disabled
               >
                 Load more
               </button>

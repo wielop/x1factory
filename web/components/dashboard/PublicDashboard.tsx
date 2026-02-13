@@ -1866,6 +1866,7 @@ export function PublicDashboard() {
           meltConfig: meltConfigPda,
           meltVault: meltVaultPda,
           meltRound: meltRoundPda,
+          meltProgram: meltProgramId,
           systemProgram: SystemProgram.programId,
         })
         .instruction();
@@ -1889,6 +1890,17 @@ export function PublicDashboard() {
       ensureWritableKey(meltConfigPda);
       ensureWritableKey(meltVaultPda);
       ensureWritableKey(meltRoundPda);
+      const ensureReadonlyKey = (pubkey: PublicKey) => {
+        if (keys.some((k) => k.pubkey.equals(pubkey))) return;
+        const sysIdx = keys.findIndex((k) => k.pubkey.equals(SystemProgram.programId));
+        const entry = { pubkey, isSigner: false, isWritable: false };
+        if (sysIdx >= 0) {
+          keys.splice(sysIdx, 0, entry);
+        } else {
+          keys.push(entry);
+        }
+      };
+      ensureReadonlyKey(meltProgramId);
 
       const ix = new TransactionInstruction({
         programId: baseIx.programId,

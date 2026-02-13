@@ -429,6 +429,7 @@ pub mod mining_v2 {
                 .ok_or(ErrorCode::MathOverflow)?;
         }
         if melt_share > 0 {
+            let melt_program_ai = ctx.accounts.melt_program.to_account_info();
             let melt_config_ai = ctx.accounts.melt_config.to_account_info();
             let melt_vault_ai = ctx.accounts.melt_vault.to_account_info();
             let melt_round_ai = ctx.accounts.melt_round.to_account_info();
@@ -436,6 +437,8 @@ pub mod mining_v2 {
                 Pubkey::find_program_address(&[MELT_CONFIG_SEED], &cfg.melt_program_id);
             let (melt_vault_pda, _) =
                 Pubkey::find_program_address(&[MELT_VAULT_SEED], &cfg.melt_program_id);
+            require!(melt_program_ai.key() == cfg.melt_program_id, ErrorCode::InvalidMeltConfig);
+            require!(melt_program_ai.executable, ErrorCode::InvalidMeltConfig);
             require!(melt_config_ai.key() == melt_config_pda, ErrorCode::InvalidMeltConfig);
             require!(melt_vault_ai.key() == melt_vault_pda, ErrorCode::InvalidMeltConfig);
             let owner_ai = ctx.accounts.owner.to_account_info();
@@ -473,6 +476,7 @@ pub mod mining_v2 {
                     melt_vault_ai.clone(),
                     melt_round_ai.clone(),
                     system_ai,
+                    melt_program_ai,
                 ],
             )?;
         }
@@ -1952,6 +1956,8 @@ pub struct BuyContract<'info> {
     /// CHECK: Passed to MELT record_funding CPI; verified by MELT program.
     #[account(mut)]
     pub melt_round: UncheckedAccount<'info>,
+    /// CHECK: Verified against config.melt_program_id and executable before CPI.
+    pub melt_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 

@@ -231,6 +231,15 @@ const MELT_IDL = {
       args: [{ name: "params", type: { defined: "AdminSetParamsParams" } }],
     },
     {
+      name: "adminMigrateConfig",
+      accounts: [
+        { name: "admin", isMut: true, isSigner: true },
+        { name: "config", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [],
+    },
+    {
       name: "startRound",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },

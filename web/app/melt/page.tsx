@@ -52,6 +52,7 @@ type MeltUserRound = {
 
 const DECIMALS = 9n;
 const CONFIG_NOT_INITIALIZED = "NOT_INITIALIZED";
+const HISTORY_LIMIT = 5;
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -72,6 +73,12 @@ const formatAmount = (value: bigint, decimals = 9n) => {
   return `${negative ? "-" : ""}${whole.toString()}.${fracStr}`;
 };
 
+const formatPct = (num: bigint, den: bigint) => {
+  if (den === 0n) return "0.00%";
+  const pct = Number((num * 10_000n) / den) / 100;
+  return `${pct.toFixed(2)}%`;
+};
+
 const statusLabel = (status: Record<string, unknown> | null) => {
   if (!status) return "-";
   const key = Object.keys(status)[0];
@@ -81,6 +88,17 @@ const statusLabel = (status: Record<string, unknown> | null) => {
 const formatStatus = (label: string) => {
   if (!label || label === "-") return "-";
   return label.charAt(0).toUpperCase() + label.slice(1);
+};
+
+const humanError = (message: string) => {
+  if (message.includes("BelowBurnMin")) return "Below minimum burn. Try 10+ MIND.";
+  if (message.includes("RoundNotActive")) return "Round is not active.";
+  if (message.includes("BadRoundStatus")) return "Round not in the right phase.";
+  if (message.includes("AlreadyClaimed")) return "Already claimed this round.";
+  if (message.includes("NothingToClaim")) return "Nothing to claim yet.";
+  if (message.includes("RoundNotEnded")) return "Round hasn’t ended yet.";
+  if (message.includes("RoundNotStarted")) return "Round hasn’t started yet.";
+  return message;
 };
 
 export default function MeltPage() {
@@ -105,6 +123,7 @@ export default function MeltPage() {
   const [nextRoundPda, setNextRoundPda] = useState<PublicKey | null>(null);
   const [vaultBalance, setVaultBalance] = useState<bigint>(0n);
   const [userRound, setUserRound] = useState<MeltUserRound | null>(null);
+  const [history, setHistory] = useState<MeltRound[]>([]);
   const [nowTs, setNowTs] = useState<number>(() => Math.floor(Date.now() / 1000));
   const [busy, setBusy] = useState<string | null>(null);
   const [initState, setInitState] = useState<"READY" | "NOT_INITIALIZED">("READY");
@@ -219,7 +238,7 @@ export default function MeltPage() {
       console.error(e);
       toast.push({
         title: "Failed to refresh",
-        description: message,
+        description: humanError(message),
         variant: "error",
       });
     }
@@ -227,7 +246,7 @@ export default function MeltPage() {
 
   useEffect(() => {
     refresh();
-    const id = window.setInterval(refresh, 12_000);
+    const id = window.setInterval(refresh, 4_000);
     return () => window.clearInterval(id);
   }, [refresh]);
 
@@ -280,7 +299,7 @@ export default function MeltPage() {
         });
       if (ix) method.preInstructions([ix]);
       const sig = await method.rpc();
-      toast.push({ title: "Burn submitted", description: sig, variant: "success" });
+      toast.push({ title: "Burn locked", description: sig, variant: "success" });
       await refresh();
     });
   };
@@ -301,7 +320,7 @@ export default function MeltPage() {
           systemProgram: SystemProgram.programId,
         })
         .rpc();
-      toast.push({ title: "Claim submitted", description: sig, variant: "success" });
+      toast.push({ title: "Claimed", description: sig, variant: "success" });
       await refresh();
     });
   };
@@ -324,7 +343,7 @@ export default function MeltPage() {
           systemProgram: SystemProgram.programId,
         })
         .rpc();
-      toast.push({ title: "Topup submitted", description: sig, variant: "success" });
+      toast.push({ title: "Vault topped up", description: sig, variant: "success" });
       await refresh();
     });
   };
@@ -347,7 +366,7 @@ export default function MeltPage() {
           systemProgram: SystemProgram.programId,
         })
         .rpc();
-      toast.push({ title: "Withdraw submitted", description: sig, variant: "success" });
+      toast.push({ title: "Vault withdrawn", description: sig, variant: "success" });
       await refresh();
     });
   };
@@ -373,7 +392,7 @@ export default function MeltPage() {
           systemProgram: SystemProgram.programId,
         })
         .rpc();
-      toast.push({ title: "Schedule set", description: sig, variant: "success" });
+      toast.push({ title: "Schedule locked", description: sig, variant: "success" });
       await refresh();
     });
   };
@@ -422,6 +441,7 @@ export default function MeltPage() {
   const payoutBase = isFinalized ? vPay : vRound;
   const denom = totalBurn > 0n ? totalBurn : burnAmount;
   const payoutEstimate = denom > 0n ? (payoutBase * burnAmount) / denom : 0n;
+  const sharePct = formatPct(burnAmount, totalBurn);
 
   const startTs = round ? Number(round.startTs.toString()) : null;
   const endTs = round ? Number(round.endTs.toString()) : null;
@@ -463,27 +483,103 @@ export default function MeltPage() {
       } catch (e) {
         toast.push({
           title: "Init failed",
-          description: e instanceof Error ? e.message : String(e),
+          description: humanError(e instanceof Error ? e.message : String(e)),
           variant: "error",
         });
       }
     });
   };
 
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!config) {
+        setHistory([]);
+        return;
+      }
+      const program = getMeltProgram(connection, anchorWallet ?? (readonlyWallet as any));
+      const nextSeq = BigInt(config.roundSeq.toString());
+      const rounds: MeltRound[] = [];
+      for (let i = 1; i <= HISTORY_LIMIT; i += 1) {
+        const seq = nextSeq >= BigInt(i) ? nextSeq - BigInt(i) : null;
+        if (seq === null) continue;
+        const pda = deriveMeltRoundPda(seq);
+        const info = await connection.getAccountInfo(pda, "confirmed");
+        if (!info) continue;
+        const r = (await program.account.meltRound.fetch(pda)) as MeltRound;
+        rounds.push(r);
+      }
+      setHistory(rounds);
+    };
+    loadHistory();
+  }, [anchorWallet, connection, config, readonlyWallet]);
+
+  const capLamports = config ? BigInt(config.vaultCapLamports.toString()) : 0n;
+  const vialFill = capLamports > 0n ? Number((vaultBalance * 100n) / capLamports) : 0;
+  const jackpotEstimate =
+    round && (statusLabel(round.status) === "active" || statusLabel(round.status) === "finalized")
+      ? vPay
+      : capLamports > 0n
+        ? (BigInt(Math.min(Number(vaultBalance), Number(capLamports))) *
+            BigInt(10_000 - (config?.rolloverBps ?? 0))) /
+          10_000n
+        : 0n;
+
+  const ctaLabel =
+    statusLabel(round?.status ?? null) === "finalized"
+      ? "CLAIM XNT"
+      : statusLabel(round?.status ?? null) === "active"
+        ? "BURN MIND"
+        : isAdmin
+          ? "Initialize / Set schedule"
+          : "Wait";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
       <TopBar />
       <div className="mx-auto max-w-5xl px-6 pb-24 pt-10">
-        <div className="rounded-3xl border border-cyan-500/30 bg-cyan-950/40 p-6 shadow-[0_0_30px_rgba(34,242,255,0.12)]">
+        <div className="rounded-[28px] border border-cyan-500/30 bg-gradient-to-br from-cyan-950/70 via-slate-950/80 to-black p-7 shadow-[0_0_40px_rgba(34,242,255,0.2)]">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <div className="text-xs uppercase tracking-[0.3em] text-cyan-300">Testnet / Experimental</div>
-              <h1 className="mt-2 text-3xl font-semibold">MELT MVP — Pro-rata Vault</h1>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">MELT EVENT</h1>
               <p className="mt-2 max-w-xl text-sm text-white/70">
-                Public testnet UI for MELT v1. All balances are on X1 testnet only.
+                Pro-rata burn event. Feed the vial, raise the jackpot, and claim XNT.
               </p>
+              <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-white/60">
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1">
+                  Jackpot: {formatAmount(jackpotEstimate)} XNT
+                </div>
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1">
+                  {countdown}
+                </div>
+              </div>
             </div>
-            <WalletMultiButton />
+            <div className="flex flex-col items-end gap-3">
+              <WalletMultiButton />
+              <div className="rounded-full border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                {ctaLabel}
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 flex items-center gap-6">
+            <div className="relative h-32 w-10 overflow-hidden rounded-full border border-cyan-400/30 bg-black/60">
+              <div
+                className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-cyan-500 to-cyan-300"
+                style={{ height: `${Math.min(100, Math.max(4, vialFill))}%` }}
+              />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Vial</div>
+              <div className="mt-2 text-sm text-white/70">
+                {formatAmount(vaultBalance)} / {formatAmount(capLamports)} XNT
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-200"
+                  style={{ width: `${Math.min(100, Math.max(4, vialFill))}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -537,13 +633,9 @@ export default function MeltPage() {
             <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Your position</div>
-                  <div className="mt-2 text-xl font-semibold">
-                    Burned: {formatAmount(burnAmount)} MIND
-                  </div>
-                  <div className="mt-1 text-sm text-white/60">
-                    Claimed: {userRound?.claimed ? "Yes" : "No"}
-                  </div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Player Panel</div>
+                  <div className="mt-2 text-xl font-semibold">Burned: {formatAmount(burnAmount)} MIND</div>
+                  <div className="mt-1 text-sm text-white/60">Claimed: {userRound?.claimed ? "Yes" : "No"}</div>
                 </div>
                 <div className="text-right text-sm text-white/60">
                   Estimate
@@ -558,6 +650,7 @@ export default function MeltPage() {
                       Using yourBurn as temporary denominator
                     </div>
                   ) : null}
+                  <div className="mt-2 text-xs text-white/60">Your share: {sharePct}</div>
                 </div>
               </div>
             </div>
@@ -571,6 +664,15 @@ export default function MeltPage() {
                   onChange={(e) => setBurnInput(e.target.value)}
                   placeholder="20"
                 />
+                <input
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={1}
+                  value={Number(burnInput) || 10}
+                  onChange={(e) => setBurnInput(e.target.value)}
+                  className="w-40 accent-cyan-400"
+                />
                 <button
                   className="rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={!anchorWallet || !isActive || busy !== null}
@@ -579,7 +681,7 @@ export default function MeltPage() {
                   {busy === "Burn" ? "Burning..." : "Burn"}
                 </button>
                 <span className="text-xs text-white/50">
-                  {isActive ? "Round Active" : "Burn disabled (inactive round)"}
+                  {isActive ? "Round Active — raise your share" : "Burn disabled (inactive round)"}
                 </span>
               </div>
             </div>
@@ -597,6 +699,46 @@ export default function MeltPage() {
                 <span className="text-xs text-white/50">
                   {isFinalized ? "Finalized" : "Claim disabled (not finalized)"}
                 </span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+              <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Round Story</div>
+              <div className="mt-3 grid gap-3 text-xs text-white/70">
+                <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">This round</div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <div>Seq: {round ? round.seq.toString() : "-"}</div>
+                    <div>Status: {formatStatus(statusLabel(round?.status ?? null))}</div>
+                    <div>Start: {startTs ?? "-"}</div>
+                    <div>End: {endTs ?? "-"}</div>
+                    <div>v_round: {round ? formatAmount(BigInt(round.vRound.toString())) : "-"}</div>
+                    <div>v_pay: {round ? formatAmount(BigInt(round.vPay.toString())) : "-"}</div>
+                    <div>total_burn: {round ? formatAmount(BigInt(round.totalBurn.toString())) : "-"}</div>
+                  </div>
+                </div>
+                {history.length === 0 ? (
+                  <div className="text-white/50">No previous rounds yet.</div>
+                ) : (
+                  history.map((r) => (
+                    <div key={r.seq.toString()} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">
+                          Round #{r.seq.toString()}
+                        </div>
+                        <div className="text-[10px] text-white/50">
+                          {formatStatus(statusLabel(r.status))}
+                        </div>
+                      </div>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div>v_round: {formatAmount(BigInt(r.vRound.toString()))}</div>
+                        <div>v_pay: {formatAmount(BigInt(r.vPay.toString()))}</div>
+                        <div>burn: {formatAmount(BigInt(r.totalBurn.toString()))}</div>
+                        <div>start: {Number(r.startTs.toString())}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -693,12 +835,28 @@ export default function MeltPage() {
                     <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">
                       Debug (admin)
                     </div>
-                    <div className="mt-2 space-y-1 break-all">
-                      <div>RPC: {getMeltRpcUrl()}</div>
-                      <div>ProgramId: {programId.toBase58()}</div>
-                      <div>configPda: {deriveMeltConfigPda().toBase58()}</div>
-                      <div>vaultPda: {deriveMeltVaultPda().toBase58()}</div>
-                      <div>roundPda: {roundPda ? roundPda.toBase58() : "-"}</div>
+                    <div className="mt-2 space-y-2 break-all">
+                      {[
+                        ["RPC", getMeltRpcUrl()],
+                        ["ProgramId", programId.toBase58()],
+                        ["configPda", deriveMeltConfigPda().toBase58()],
+                        ["vaultPda", deriveMeltVaultPda().toBase58()],
+                        ["roundPda", roundPda ? roundPda.toBase58() : "-"],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex items-center gap-2">
+                          <div className="min-w-20 text-[10px] uppercase tracking-[0.2em] text-cyan-300">
+                            {label}
+                          </div>
+                          <div className="flex-1 truncate">{value}</div>
+                          <button
+                            className="rounded-md border border-cyan-400/30 px-2 py-1 text-[10px] text-cyan-100 hover:bg-cyan-500/10"
+                            onClick={() => navigator.clipboard.writeText(String(value))}
+                            type="button"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : null}

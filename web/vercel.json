@@ -3,10 +3,6 @@
     {
       "path": "/api/x1mind/cron",
       "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/melt/cron/finalize?secret=__SET_IN_DASHBOARD__",
-      "schedule": "*/1 * * * *"
     }
   ]
 }

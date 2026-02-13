@@ -161,6 +161,9 @@ export default function MeltPlayerPage() {
     if (message.includes("ConstraintMut")) {
       return "App update required. Refresh the page and try claim again.";
     }
+    if (message.includes("ConstraintSeeds")) {
+      return "Claim failed for one round (seed mismatch). Refresh and try again.";
+    }
     return "Claim failed. Please try again.";
   };
 
@@ -213,30 +216,43 @@ export default function MeltPlayerPage() {
       const configPda = deriveMeltConfigPda();
       let claimedCount = 0;
       let lastSig = "";
+      const failed: string[] = [];
       for (const target of claimTargets) {
         const cfgNow = await (program.account as any).meltConfig.fetch(configPda);
         const nextRoundPda = deriveMeltRoundPda(BigInt(cfgNow.roundSeq.toString()));
         const userRoundPda = deriveMeltUserRoundPda(publicKey, target.roundPda);
-        const sig = await program.methods
-          .claim()
-          .accounts({
-            user: publicKey,
-            config: configPda,
-            vault: cfgNow.vault,
-            round: target.roundPda,
-            nextRound: nextRoundPda,
-            userRound: userRoundPda,
-            systemProgram: SystemProgram.programId,
-          })
-          .rpc();
-        claimedCount += 1;
-        lastSig = sig;
+        try {
+          const sig = await program.methods
+            .claim()
+            .accounts({
+              user: publicKey,
+              config: configPda,
+              vault: cfgNow.vault,
+              round: target.roundPda,
+              nextRound: nextRoundPda,
+              userRound: userRoundPda,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+          claimedCount += 1;
+          lastSig = sig;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          failed.push(`#${target.round.seq.toString()}: ${claimError(msg)}`);
+        }
       }
-      toast.push({
-        title: `Claimed ${claimedCount} round${claimedCount === 1 ? "" : "s"}`,
-        description: lastSig || undefined,
-        variant: "success",
-      });
+      if (claimedCount > 0) {
+        toast.push({
+          title: `Claimed ${claimedCount} round${claimedCount === 1 ? "" : "s"}`,
+          description: failed.length > 0 ? failed[0] : (lastSig || undefined),
+          variant: failed.length > 0 ? "error" : "success",
+        });
+      } else {
+        toast.push({
+          title: failed[0] ?? "Claim failed. Please try again.",
+          variant: "error",
+        });
+      }
       await melt.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

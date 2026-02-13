@@ -26,7 +26,8 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
-const LEADERBOARD_PAGE_SIZE = 40;
+const LEADERBOARD_PAGE_SIZE = 25;
+const LEADERBOARD_REFRESH_PAGES = 4;
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -272,45 +273,52 @@ export default function MeltPlayerPage() {
     try {
       setLeaderboardLoading(true);
       setLeaderboardError(null);
-      const signatures = await connection.getSignaturesForAddress(meltProgramId, {
-        limit: LEADERBOARD_PAGE_SIZE,
-        ...(loadMore && leaderboardCursor ? { before: leaderboardCursor } : {}),
-      });
-      if (signatures.length === 0) {
-        setLeaderboardLoading(false);
-        return;
+      const burnedMap = new Map<string, bigint>();
+      if (loadMore) {
+        for (const row of leaderboardRows) burnedMap.set(row.wallet, row.burned);
       }
 
       const seen = leaderboardSeenRef.current;
-      const burnedMap = new Map<string, bigint>();
-      for (const row of leaderboardRows) burnedMap.set(row.wallet, row.burned);
-
-      for (const sig of signatures) {
-        if (!loadMore && seen.has(sig.signature)) continue;
-        const tx = await connection.getTransaction(sig.signature, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0,
+      let cursor = loadMore ? leaderboardCursor : null;
+      let pages = 0;
+      let latestTail: string | null = cursor;
+      while (pages < (loadMore ? 1 : LEADERBOARD_REFRESH_PAGES)) {
+        const signatures = await connection.getSignaturesForAddress(melt.roundPda, {
+          limit: LEADERBOARD_PAGE_SIZE,
+          ...(cursor ? { before: cursor } : {}),
         });
-        seen.add(sig.signature);
-        const logs = tx?.meta?.logMessages ?? [];
-        for (const logLine of logs) {
-          const prefix = "Program data: ";
-          const idx = logLine.indexOf(prefix);
-          if (idx < 0) continue;
-          const payload = logLine.slice(idx + prefix.length).trim();
-          let evt: any = null;
-          try {
-            evt = (parserProgram.coder.events as any).decode(payload);
-          } catch {
-            evt = null;
+        if (signatures.length === 0) break;
+        latestTail = signatures[signatures.length - 1]?.signature ?? latestTail;
+        pages += 1;
+
+        for (const sig of signatures) {
+          if (seen.has(sig.signature)) continue;
+          const tx = await connection.getTransaction(sig.signature, {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          });
+          seen.add(sig.signature);
+          const logs = tx?.meta?.logMessages ?? [];
+          for (const logLine of logs) {
+            const prefix = "Program data: ";
+            const idx = logLine.indexOf(prefix);
+            if (idx < 0) continue;
+            const payload = logLine.slice(idx + prefix.length).trim();
+            let evt: any = null;
+            try {
+              evt = (parserProgram.coder.events as any).decode(payload);
+            } catch {
+              evt = null;
+            }
+            if (!evt || evt.name !== "Burned") continue;
+            const eventRound = new PublicKey(evt.data.round);
+            if (!eventRound.equals(melt.roundPda)) continue;
+            const user = new PublicKey(evt.data.user).toBase58();
+            const amount = BigInt(evt.data.amount.toString());
+            burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
           }
-          if (!evt || evt.name !== "Burned") continue;
-          const eventRound = new PublicKey(evt.data.round);
-          if (!eventRound.equals(melt.roundPda)) continue;
-          const user = new PublicKey(evt.data.user).toBase58();
-          const amount = BigInt(evt.data.amount.toString());
-          burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
         }
+        cursor = latestTail;
       }
 
       const nextRows: LeaderboardRow[] = Array.from(burnedMap.entries()).map(([walletAddr, burned]) => ({
@@ -319,9 +327,10 @@ export default function MeltPlayerPage() {
       }));
       nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
       setLeaderboardRows(nextRows);
-      setLeaderboardCursor(signatures[signatures.length - 1]?.signature ?? null);
-    } catch {
-      setLeaderboardError("Leaderboard unavailable (RPC limits)");
+      setLeaderboardCursor(latestTail);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setLeaderboardError(`Leaderboard unavailable (RPC limits): ${msg}`);
     } finally {
       setLeaderboardLoading(false);
     }

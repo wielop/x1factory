@@ -283,9 +283,9 @@ const MELT_IDL = {
       name: "claim",
       accounts: [
         { name: "user", isMut: true, isSigner: true },
-        { name: "config", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
         { name: "vault", isMut: true, isSigner: false },
-        { name: "round", isMut: false, isSigner: false },
+        { name: "round", isMut: true, isSigner: false },
         { name: "userRound", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],

@@ -165,6 +165,9 @@ export default function MeltPlayerPage() {
     if (message.includes("RoundNotEnded") || message.includes("BadRoundStatus")) {
       return "Claim available after event ends";
     }
+    if (message.includes("ConstraintMut")) {
+      return "App update required. Refresh the page and try claim again.";
+    }
     return "Claim failed. Please try again.";
   };
 

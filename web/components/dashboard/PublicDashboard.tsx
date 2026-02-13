@@ -80,6 +80,7 @@ const LEVEL_UP_COSTS = [75, 175, 450, 1_000, 2_000] as const;
 const DAY_SECONDS = 86_400n;
 const STAKING_SECONDS_PER_YEAR = 31_536_000;
 const XNT_DECIMALS = 9;
+const LAMPORTS_PER_XNT = 1_000_000_000n;
 const NATIVE_VAULT_SPACE = 9;
 const HP_SCALE = 100n;
 const GRACE_DAYS = 2;
@@ -1795,6 +1796,15 @@ export function PublicDashboard() {
           errorMsg =
             "MELT funding is enabled but MELT program is missing on this RPC. Switch app RPC to testnet or disable MELT funding in mining admin.";
         }
+        if (
+          label === "Buy contract" &&
+          (errorMsg.includes("InsufficientXntBalance") ||
+            errorMsg.includes("insufficient lamports") ||
+            errorMsg.includes("custom program error: 0x1"))
+        ) {
+          errorMsg =
+            "Insufficient XNT balance for this rig purchase. Add XNT to wallet or choose a cheaper rig.";
+        }
         setError(errorMsg);
       } finally {
         setBusy(null);
@@ -1824,6 +1834,16 @@ export function PublicDashboard() {
     await withTx("Buy contract", async () => {
       const miningMelt = await fetchMiningMeltConfig(buyConnection);
       const meltProgramId = miningMelt?.meltProgramId ?? getMeltProgramId();
+      const costLamports = BigInt(contract.costXnt) * LAMPORTS_PER_XNT;
+      const balanceLamports = BigInt(await buyConnection.getBalance(publicKey, "confirmed"));
+      const feeAndRentBufferLamports = 2_000_000n;
+      if (balanceLamports < costLamports + feeAndRentBufferLamports) {
+        const costXnt = Number(costLamports) / 1e9;
+        const balanceXnt = Number(balanceLamports) / 1e9;
+        throw new Error(
+          `InsufficientXntBalance: need ~${costXnt.toFixed(4)} XNT (+fees/rent), wallet has ${balanceXnt.toFixed(4)} XNT`
+        );
+      }
       if (miningMelt?.meltEnabled) {
         const meltProgramInfo = await buyConnection.getAccountInfo(meltProgramId, "confirmed");
         if (!meltProgramInfo || !meltProgramInfo.executable) {

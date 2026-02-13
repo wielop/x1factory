@@ -290,34 +290,24 @@ pub mod melt_v1 {
     /// Finalize a round after it ends. Computes v_pay = (1-rollover)*v_round.
     pub fn finalize_round(ctx: Context<FinalizeRound>) -> Result<()> {
         let cfg = &mut ctx.accounts.config;
-
         let now = Clock::get()?.unix_timestamp;
         let round = &mut ctx.accounts.round;
-        require!(round.status == RoundStatus::Active, MeltError::BadRoundStatus);
-        require!(cfg.active_round_active, MeltError::BadRoundStatus);
-        require!(round.seq == cfg.active_round_seq, MeltError::InvalidParams);
-        require!(now > round.end_ts, MeltError::RoundNotEnded);
-
-        let rollover = round
-            .v_round
-            .checked_sub(round.v_pay)
-            .ok_or(MeltError::MathOverflow)?;
-        cfg.bonus_pool_lamports = cfg
-            .bonus_pool_lamports
-            .checked_add(rollover)
-            .ok_or(MeltError::MathOverflow)?;
-        round.status = RoundStatus::Finalized;
-        cfg.active_round_active = false;
-        emit!(Finalized {
-            seq: round.seq,
-            rollover,
-        });
+        let rollover = finalize_active_round_if_ended(cfg, round, now)?;
+        emit!(Finalized { seq: round.seq, rollover });
         Ok(())
     }
 
     /// Claim pro-rata XNT for a finalized round.
+    /// If the active round already ended, this call auto-finalizes it first.
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
-        let round = &ctx.accounts.round;
+        let now = Clock::get()?.unix_timestamp;
+        let cfg = &mut ctx.accounts.config;
+        let round = &mut ctx.accounts.round;
+
+        if round.status == RoundStatus::Active {
+            let rollover = finalize_active_round_if_ended(cfg, round, now)?;
+            emit!(Finalized { seq: round.seq, rollover });
+        }
         require!(round.status == RoundStatus::Finalized, MeltError::BadRoundStatus);
 
         let ur = &mut ctx.accounts.user_round;
@@ -339,7 +329,6 @@ pub mod melt_v1 {
             .ok_or(MeltError::MathOverflow)?;
         let payout_u64 = u64::try_from(payout).map_err(|_| MeltError::MathOverflow)?;
 
-        let cfg = &ctx.accounts.config;
         let vault_balance = ctx.accounts.vault.to_account_info().lamports();
         require!(vault_balance >= payout_u64, MeltError::InsufficientVaultBalance);
 
@@ -451,6 +440,29 @@ fn try_start_round(
         pot,
         v_pay: v_pay_u64,
     }))
+}
+
+fn finalize_active_round_if_ended(
+    cfg: &mut Account<MeltConfig>,
+    round: &mut Account<MeltRound>,
+    now: i64,
+) -> Result<u64> {
+    require!(round.status == RoundStatus::Active, MeltError::BadRoundStatus);
+    require!(cfg.active_round_active, MeltError::BadRoundStatus);
+    require!(round.seq == cfg.active_round_seq, MeltError::InvalidParams);
+    require!(now > round.end_ts, MeltError::RoundNotEnded);
+
+    let rollover = round
+        .v_round
+        .checked_sub(round.v_pay)
+        .ok_or(MeltError::MathOverflow)?;
+    cfg.bonus_pool_lamports = cfg
+        .bonus_pool_lamports
+        .checked_add(rollover)
+        .ok_or(MeltError::MathOverflow)?;
+    round.status = RoundStatus::Finalized;
+    cfg.active_round_active = false;
+    Ok(rollover)
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -757,13 +769,13 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    #[account(seeds = [CONFIG_SEED], bump = config.bump_config)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
     pub config: Account<'info, MeltConfig>,
 
     #[account(mut, seeds = [VAULT_SEED], bump = config.bump_vault)]
     pub vault: Account<'info, MeltVault>,
 
-    #[account(seeds = [ROUND_SEED, &round.seq.to_le_bytes()], bump = round.bump)]
+    #[account(mut, seeds = [ROUND_SEED, &round.seq.to_le_bytes()], bump = round.bump)]
     pub round: Account<'info, MeltRound>,
 
     #[account(mut, seeds = [USER_ROUND_SEED, user.key().as_ref(), round.key().as_ref()], bump = user_round.bump)]

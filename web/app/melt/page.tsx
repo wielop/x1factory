@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BN } from "@coral-xyz/anchor";
+import { BN, EventParser } from "@coral-xyz/anchor";
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -282,12 +282,14 @@ export default function MeltPlayerPage() {
       let cursor = loadMore ? leaderboardCursor : null;
       let pages = 0;
       let latestTail: string | null = cursor;
+      let totalFetched = 0;
       while (pages < (loadMore ? 1 : LEADERBOARD_REFRESH_PAGES)) {
         const signatures = await connection.getSignaturesForAddress(melt.roundPda, {
           limit: LEADERBOARD_PAGE_SIZE,
           ...(cursor ? { before: cursor } : {}),
         });
         if (signatures.length === 0) break;
+        totalFetched += signatures.length;
         latestTail = signatures[signatures.length - 1]?.signature ?? latestTail;
         pages += 1;
 
@@ -298,27 +300,46 @@ export default function MeltPlayerPage() {
             maxSupportedTransactionVersion: 0,
           });
           seen.add(sig.signature);
-          const logs = tx?.meta?.logMessages ?? [];
-          for (const logLine of logs) {
-            const prefix = "Program data: ";
-            const idx = logLine.indexOf(prefix);
-            if (idx < 0) continue;
-            const payload = logLine.slice(idx + prefix.length).trim();
-            let evt: any = null;
-            try {
-              evt = (parserProgram.coder.events as any).decode(payload);
-            } catch {
-              evt = null;
-            }
-            if (!evt || evt.name !== "Burned") continue;
-            const eventRound = new PublicKey(evt.data.round);
+          const logs = tx?.meta?.logMessages;
+          if (!logs || logs.length === 0) continue;
+          const parser = new EventParser(meltProgramId, parserProgram.coder);
+          for (const evt of parser.parseLogs(logs)) {
+            if (evt.name !== "Burned") continue;
+            const eventRound = new PublicKey((evt.data as any).round);
             if (!eventRound.equals(melt.roundPda)) continue;
-            const user = new PublicKey(evt.data.user).toBase58();
-            const amount = BigInt(evt.data.amount.toString());
+            const user = new PublicKey((evt.data as any).user).toBase58();
+            const amount = BigInt((evt.data as any).amount.toString());
             burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
           }
         }
         cursor = latestTail;
+      }
+
+      // Some RPC nodes do not reliably index signatures by PDA; fallback to program scan.
+      if (!loadMore && totalFetched === 0) {
+        const fallbackSigs = await connection.getSignaturesForAddress(meltProgramId, {
+          limit: LEADERBOARD_PAGE_SIZE,
+        });
+        latestTail = fallbackSigs[fallbackSigs.length - 1]?.signature ?? latestTail;
+        for (const sig of fallbackSigs) {
+          if (seen.has(sig.signature)) continue;
+          const tx = await connection.getTransaction(sig.signature, {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          });
+          seen.add(sig.signature);
+          const logs = tx?.meta?.logMessages;
+          if (!logs || logs.length === 0) continue;
+          const parser = new EventParser(meltProgramId, parserProgram.coder);
+          for (const evt of parser.parseLogs(logs)) {
+            if (evt.name !== "Burned") continue;
+            const eventRound = new PublicKey((evt.data as any).round);
+            if (!eventRound.equals(melt.roundPda)) continue;
+            const user = new PublicKey((evt.data as any).user).toBase58();
+            const amount = BigInt((evt.data as any).amount.toString());
+            burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
+          }
+        }
       }
 
       const nextRows: LeaderboardRow[] = Array.from(burnedMap.entries()).map(([walletAddr, burned]) => ({

@@ -15,6 +15,7 @@ import { TopBar } from "@/components/shared/TopBar";
 import { useToast } from "@/components/shared/ToastProvider";
 import {
   deriveMeltConfigPda,
+  deriveMeltRoundPda,
   deriveMeltUserRoundPda,
   getMindMint,
   getMeltProgram,
@@ -220,6 +221,7 @@ export default function MeltPlayerPage() {
     try {
       const program = getMeltProgram(connection, wallet);
       const userRoundPda = deriveMeltUserRoundPda(publicKey, melt.roundPda);
+      const nextRoundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(melt.config.roundSeq.toString()));
       const sig = await program.methods
         .claim()
         .accounts({
@@ -227,6 +229,7 @@ export default function MeltPlayerPage() {
           config: deriveMeltConfigPda(),
           vault: melt.config.vault,
           round: melt.roundPda,
+          nextRound: nextRoundPda,
           userRound: userRoundPda,
           systemProgram: SystemProgram.programId,
         })

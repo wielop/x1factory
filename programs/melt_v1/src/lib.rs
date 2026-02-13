@@ -294,6 +294,15 @@ pub mod melt_v1 {
         let round = &mut ctx.accounts.round;
         let rollover = finalize_active_round_if_ended(cfg, round, now)?;
         emit!(Finalized { seq: round.seq, rollover });
+        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.next_round, &ctx.bumps, false)? {
+            emit!(RoundStarted {
+                seq: info.seq,
+                start_ts: info.start_ts,
+                end_ts: info.end_ts,
+                pot: info.pot,
+                v_pay: info.v_pay,
+            });
+        }
         Ok(())
     }
 
@@ -307,6 +316,15 @@ pub mod melt_v1 {
         if round.status == RoundStatus::Active {
             let rollover = finalize_active_round_if_ended(cfg, round, now)?;
             emit!(Finalized { seq: round.seq, rollover });
+        }
+        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.next_round, &ctx.bumps, false)? {
+            emit!(RoundStarted {
+                seq: info.seq,
+                start_ts: info.start_ts,
+                end_ts: info.end_ts,
+                pot: info.pot,
+                v_pay: info.v_pay,
+            });
         }
         require!(round.status == RoundStatus::Finalized, MeltError::BadRoundStatus);
 
@@ -755,6 +773,7 @@ pub struct BurnMind<'info> {
 
 #[derive(Accounts)]
 pub struct FinalizeRound<'info> {
+    #[account(mut)]
     pub admin: Signer<'info>,
     #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
     pub config: Account<'info, MeltConfig>,
@@ -762,6 +781,15 @@ pub struct FinalizeRound<'info> {
     pub round: Account<'info, MeltRound>,
     #[account(seeds = [VAULT_SEED], bump = config.bump_vault)]
     pub vault: Account<'info, MeltVault>,
+    #[account(
+        init_if_needed,
+        payer = admin,
+        space = 8 + MeltRound::INIT_SPACE,
+        seeds = [ROUND_SEED, &config.round_seq.to_le_bytes()],
+        bump
+    )]
+    pub next_round: Account<'info, MeltRound>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -777,6 +805,14 @@ pub struct Claim<'info> {
 
     #[account(mut, seeds = [ROUND_SEED, &round.seq.to_le_bytes()], bump = round.bump)]
     pub round: Account<'info, MeltRound>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + MeltRound::INIT_SPACE,
+        seeds = [ROUND_SEED, &config.round_seq.to_le_bytes()],
+        bump
+    )]
+    pub next_round: Account<'info, MeltRound>,
 
     #[account(mut, seeds = [USER_ROUND_SEED, user.key().as_ref(), round.key().as_ref()], bump = user_round.bump)]
     pub user_round: Account<'info, MeltUserRound>,

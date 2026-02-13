@@ -263,6 +263,7 @@ export default function MeltAdminPage() {
     const cfg = melt.config;
     await withBusy("FINALIZE", async () => {
       const program = getMeltProgram(connection, wallet);
+      const nextRoundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(cfg.roundSeq.toString()));
       const sig = await program.methods
         .finalizeRound()
         .accounts({
@@ -270,6 +271,8 @@ export default function MeltAdminPage() {
           config: deriveMeltConfigPda(),
           round: melt.roundPda,
           vault: cfg.vault,
+          nextRound: nextRoundPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
       toast.push({ title: "Finalize sent", description: sig, variant: "success" });

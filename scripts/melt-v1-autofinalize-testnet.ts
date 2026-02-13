@@ -62,6 +62,10 @@ async function runOnce(program: any, provider: anchor.AnchorProvider, programId:
   const seqLe = Buffer.alloc(8);
   seqLe.writeBigUInt64LE(activeSeq);
   const [roundPda] = PublicKey.findProgramAddressSync([Buffer.from(ROUND_SEED), seqLe], programId);
+  const cfgNextSeq = BigInt(config.roundSeq.toString());
+  const nextSeqLe = Buffer.alloc(8);
+  nextSeqLe.writeBigUInt64LE(cfgNextSeq);
+  const [derivedNextRoundPda] = PublicKey.findProgramAddressSync([Buffer.from(ROUND_SEED), nextSeqLe], programId);
   const round = await program.account.meltRound.fetch(roundPda);
   const nowTs = Math.floor(Date.now() / 1000);
   const endTs = Number(round.endTs.toString());
@@ -93,6 +97,8 @@ async function runOnce(program: any, provider: anchor.AnchorProvider, programId:
       config: configPda,
       round: roundPda,
       vault: config.vault,
+      nextRound: derivedNextRoundPda,
+      systemProgram: anchor.web3.SystemProgram.programId,
     })
     .rpc();
 
@@ -134,4 +140,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

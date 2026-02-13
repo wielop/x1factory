@@ -465,21 +465,22 @@ export default function MeltPage() {
                     <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Vault</div>
                     <div className="mt-2 text-2xl font-semibold">
                       {formatAmount(vaultBalance)} XNT
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-cyan-400/30 bg-cyan-950/40 px-3 py-1 text-xs text-cyan-100">
+                    {countdown}
                   </div>
                 </div>
-                <div className="rounded-full border border-cyan-400/30 bg-cyan-950/40 px-3 py-1 text-xs text-cyan-100">
-                  {countdown}
+                <div className="mt-4 grid gap-3 text-sm text-white/70 sm:grid-cols-2">
+                  <div>Round seq: {round ? round.seq.toString() : "-"}</div>
+                  <div>Status: {statusLabel(round?.status ?? null)}</div>
+                  <div>Start: {startTs ?? "-"}</div>
+                  <div>End: {endTs ?? "-"}</div>
+                  <div>v_round: {round ? formatAmount(BigInt(round.vRound.toString())) : "-"}</div>
+                  <div>v_pay: {round ? formatAmount(BigInt(round.vPay.toString())) : "-"}</div>
+                  <div>total_burn: {round ? formatAmount(BigInt(round.totalBurn.toString())) : "-"}</div>
+                  <div>rollover: {config ? `${config.rolloverBps} bps` : "-"}</div>
                 </div>
-              </div>
-              <div className="mt-4 grid gap-3 text-sm text-white/70 sm:grid-cols-2">
-                <div>Round seq: {round ? round.seq.toString() : "-"}</div>
-                <div>Status: {statusLabel(round?.status ?? null)}</div>
-                <div>Start: {startTs ?? "-"}</div>
-                <div>End: {endTs ?? "-"}</div>
-                <div>v_round: {round ? formatAmount(BigInt(round.vRound.toString())) : "-"}</div>
-                <div>v_pay: {round ? formatAmount(BigInt(round.vPay.toString())) : "-"}</div>
-                <div>total_burn: {round ? formatAmount(BigInt(round.totalBurn.toString())) : "-"}</div>
-                <div>rollover: {config ? `${config.rolloverBps} bps` : "-"}</div>
               </div>
             )}
 

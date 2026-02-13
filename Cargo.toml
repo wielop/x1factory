@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "programs/mining_v2",
+    "programs/melt_v1",
 ]
 resolver = "2"
 
@@ -24,3 +25,7 @@ indexmap = { path = "vendor/indexmap-2.0.0" }
 toml = { path = "vendor/toml-0.8.12" }
 proc-macro-error = { path = "vendor/proc-macro-error-1.0.4" }
 solana-program = { path = "vendor/solana-program-1.16.27" }
+wasip2 = { path = "vendor/wasip2-1.0.1+wasi-0.2.4" }
+wit-bindgen = { path = "vendor/wit-bindgen-0.46.0" }
+wasi = { path = "vendor/wasi-0.14.7+wasi-0.2.4" }
+blake3 = { path = "vendor/blake3-1.7.0" }

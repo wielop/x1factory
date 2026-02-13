@@ -8,7 +8,11 @@
     "mainnet:deploy": "bash scripts/mainnet-v2-deploy.sh",
     "mainnet:smoke": "ts-node scripts/mainnet-v2-smoke.ts",
     "claim-mind-bot": "ts-node scripts/claim-mind-bot.ts",
-    "withdraw-staking-rewards": "ts-node scripts/withdraw-staking-rewards.ts"
+    "withdraw-staking-rewards": "ts-node scripts/withdraw-staking-rewards.ts",
+    "melt:testnet:flow": "ts-node scripts/melt-v1-flow-testnet.ts",
+    "melt:testnet:admin": "ts-node scripts/melt-v1-flow-admin-only.ts",
+    "melt:testnet:2users": "ts-node scripts/melt-v1-flow-2users-testnet.ts",
+    "melt:testnet:scenarios": "ts-node scripts/melt-v1-scenarios-testnet.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

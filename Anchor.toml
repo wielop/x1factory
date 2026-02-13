@@ -11,7 +11,10 @@ mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 
 [programs.testnet]
-mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
+# Deploy ONLY MELT on testnet for now (do not redeploy mining_v2 during MELT MVP tests)
+# mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
+# melt_v1 will be deployed on testnet only (no mainnet entry on purpose)
+melt_v1 = "HAWdiMtvTfiFhENgxPdWEgBQmoa3A5oN1KV9N3LSmxXz"
 
 [registry]
 url = "https://api.apr.dev"

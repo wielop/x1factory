@@ -30,6 +30,30 @@ yarn install
 yarn dev
 ```
 
+## MELT Cron Keeper (testnet)
+
+Server-side env vars required on Vercel:
+
+- `CRON_SECRET` - long random secret for cron auth
+- `CRON_DRY_RUN=1` on first deployment (no transaction send)
+- `KEEPER_PRIVATE_KEY` - keeper secret key (base58 or JSON array), never commit this
+- `MELT_RPC_URL=https://rpc.testnet.x1.xyz`
+- `MELT_PROGRAM_ID=<melt_program_id>`
+
+Endpoints:
+
+- `GET /api/melt/cron/health` - returns `ok`, rpc url, program id, detected keeper pubkey
+- `GET /api/melt/cron/finalize` - cron finalize endpoint (requires secret)
+
+Auth for finalize endpoint:
+
+- query `?secret=<CRON_SECRET>` or header `x-cron-secret: <CRON_SECRET>`
+
+Notes:
+
+- `KEEPER_PRIVATE_KEY` is hard-checked to pubkey `Ahe1dJs48PWozTDfBg7a3X3AFrUafnGkcoBg7NMNKSCA`.
+- `web/vercel.json` contains a placeholder cron path. In production, set the real cron URL in Vercel Dashboard with the real secret.
+
 ## UI redesign notes
 
 - Visual direction: near-black base with cyan/teal glow, thin outlines, and large-number summary cards.

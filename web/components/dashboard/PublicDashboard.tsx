@@ -1783,6 +1783,10 @@ export function PublicDashboard() {
           errorMsg =
             "Max rig buff reached (+15% HP). You can still renew this rig, but further buffs won't apply.";
         }
+        if (label === "Buy contract" && errorMsg.includes("UpdateWindowExceeded")) {
+          errorMsg =
+            "Mining was inactive for too long on testnet. Ask admin to run one 'Update Config' to resync, then retry buy.";
+        }
         setError(errorMsg);
       } finally {
         setBusy(null);

@@ -42,6 +42,9 @@ const loadAdminKeypair = () => {
     }
   }
 
+  if (!secret) {
+    throw new Error("Invalid X1MIND_ADMIN_KEYPAIR; expected JSON array or base58.");
+  }
   return Keypair.fromSecretKey(secret);
 };
 

@@ -54,7 +54,7 @@ import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk 
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
-import { fetchMiningMeltConfig } from "@/lib/melt";
+import { fetchMiningMeltConfig, getMeltProgramId } from "@/lib/melt";
 import { computeEstWeeklyXnt } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
@@ -1810,7 +1810,7 @@ export function PublicDashboard() {
     const positionIndex = new BN(nextIndex.toString());
     await withTx("Buy contract", async () => {
       const miningMelt = await fetchMiningMeltConfig(connection);
-      const meltProgramId = miningMelt?.meltProgramId ?? PublicKey.default;
+      const meltProgramId = miningMelt?.meltProgramId ?? getMeltProgramId();
       const [meltConfigPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("melt_config")],
         meltProgramId
@@ -1819,20 +1819,20 @@ export function PublicDashboard() {
         [Buffer.from("melt_vault")],
         meltProgramId
       );
-      let meltRoundPda = PublicKey.default;
       const meltConfigInfo = await connection.getAccountInfo(meltConfigPda, "confirmed");
-      if (miningMelt?.meltEnabled && !meltConfigInfo) {
-        throw new Error("MELT is enabled but its config is not initialized on this testnet.");
+      if (!meltConfigInfo) {
+        throw new Error("MELT config is not initialized on this testnet.");
       }
-      if (meltConfigInfo && meltConfigInfo.data.length >= 139) {
-        const roundSeq = meltConfigInfo.data.readBigUInt64LE(131);
-        const seqBuf = Buffer.alloc(8);
-        seqBuf.writeBigUInt64LE(roundSeq);
-        [meltRoundPda] = PublicKey.findProgramAddressSync(
-          [Buffer.from("melt_round"), seqBuf],
-          meltProgramId
-        );
+      if (meltConfigInfo.data.length < 139) {
+        throw new Error(`MELT config layout mismatch (${meltConfigInfo.data.length} bytes).`);
       }
+      const roundSeq = meltConfigInfo.data.readBigUInt64LE(131);
+      const seqBuf = Buffer.alloc(8);
+      seqBuf.writeBigUInt64LE(roundSeq);
+      const [meltRoundPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("melt_round"), seqBuf],
+        meltProgramId
+      );
       const baseIx = await program.methods
         .buyContract(contract.key, positionIndex)
         .accounts({

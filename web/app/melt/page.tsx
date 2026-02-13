@@ -394,29 +394,40 @@ export default function MeltPage() {
         : "Round idle";
 
   const initMelt = async () => {
-    if (!anchorWallet || !publicKey) return;
+    if (!anchorWallet || !publicKey) {
+      toast.push({ title: "Connect wallet first", variant: "error" });
+      return;
+    }
     await withBusy(CONFIG_NOT_INITIALIZED, async () => {
-      const program = getMeltProgram(connection, anchorWallet);
-      const sig = await program.methods
-        .initMelt({
-          vaultCapXnt: new BN((150n * 1_000_000_000n).toString()),
-          rolloverBps: 2000,
-          burnMin: new BN((10n * 1_000_000_000n).toString()),
-          roundWindowSec: new BN("86400"),
-          testMode: true,
-        })
-        .accounts({
-          payer: publicKey,
-          admin: publicKey,
-          mindMint,
-          config: deriveMeltConfigPda(),
-          vault: deriveMeltVaultPda(),
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-      toast.push({ title: "Initialized", description: sig, variant: "success" });
-      initToastShownRef.current = false;
-      await refresh();
+      try {
+        const program = getMeltProgram(connection, anchorWallet);
+        const sig = await program.methods
+          .initMelt({
+            vaultCapXnt: new BN((150n * 1_000_000_000n).toString()),
+            rolloverBps: 2000,
+            burnMin: new BN((10n * 1_000_000_000n).toString()),
+            roundWindowSec: new BN("86400"),
+            testMode: true,
+          })
+          .accounts({
+            payer: publicKey,
+            admin: publicKey,
+            mindMint,
+            config: deriveMeltConfigPda(),
+            vault: deriveMeltVaultPda(),
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+        toast.push({ title: "Initialized", description: sig, variant: "success" });
+        initToastShownRef.current = false;
+        await refresh();
+      } catch (e) {
+        toast.push({
+          title: "Init failed",
+          description: e instanceof Error ? e.message : String(e),
+          variant: "error",
+        });
+      }
     });
   };
 

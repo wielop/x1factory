@@ -169,7 +169,7 @@ const MELT_IDL = {
       name: "adminTopupVault",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
-        { name: "config", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
         { name: "vault", isMut: true, isSigner: false },
         { name: "round", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
@@ -180,7 +180,7 @@ const MELT_IDL = {
       name: "adminTopupVial",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
-        { name: "config", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
         { name: "vault", isMut: true, isSigner: false },
         { name: "round", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
@@ -203,7 +203,7 @@ const MELT_IDL = {
       name: "adminWithdrawVault",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
-        { name: "config", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
         { name: "vault", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],
@@ -213,7 +213,7 @@ const MELT_IDL = {
       name: "adminSetSchedule",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
-        { name: "config", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
         { name: "round", isMut: true, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],
@@ -259,7 +259,7 @@ const MELT_IDL = {
       name: "finalizeRound",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
-        { name: "config", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
         { name: "round", isMut: true, isSigner: false },
         { name: "vault", isMut: false, isSigner: false },
       ],

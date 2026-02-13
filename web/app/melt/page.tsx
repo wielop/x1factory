@@ -18,6 +18,7 @@ import {
   deriveMeltRoundPda,
   deriveMeltUserRoundPda,
   fetchMiningMeltConfig,
+  getMiningProgramId,
   getMindMint,
   getMeltProgram,
   getMeltProgramId,
@@ -65,6 +66,7 @@ type MiningMeltConfig = {
 const DECIMALS = 9n;
 const CONFIG_NOT_INITIALIZED = "NOT_INITIALIZED";
 const HISTORY_LIMIT = 5;
+const REFRESH_ERROR_TOAST_COOLDOWN_MS = 20_000;
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -83,6 +85,11 @@ const formatAmount = (value: bigint, decimals = 9n) => {
   const frac = abs % base;
   const fracStr = frac.toString().padStart(Number(decimals), "0").slice(0, 4);
   return `${negative ? "-" : ""}${whole.toString()}.${fracStr}`;
+};
+
+const formatUnixTs = (value: number | null) => {
+  if (!value) return "-";
+  return new Date(value * 1000).toLocaleString();
 };
 
 const formatPct = (num: bigint, den: bigint) => {
@@ -142,6 +149,7 @@ export default function MeltPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [initState, setInitState] = useState<"READY" | "NOT_INITIALIZED">("READY");
   const initToastShownRef = useRef(false);
+  const refreshErrorToastAtRef = useRef(0);
 
   const [burnInput, setBurnInput] = useState("10");
   const [topupInput, setTopupInput] = useState("5");
@@ -163,6 +171,7 @@ export default function MeltPage() {
   }, [round]);
 
   const isFinalized = useMemo(() => statusLabel(round?.status ?? null) === "finalized", [round]);
+  const miningProgramId = useMemo(() => getMiningProgramId(), []);
 
   const refresh = useCallback(async () => {
     try {
@@ -197,13 +206,22 @@ export default function MeltPage() {
 
       let displayRound: MeltRound | null = null;
       let displayPda: PublicKey | null = null;
-      if (nextSeq > 0n) {
-        const currentSeq = nextSeq - 1n;
-        const currentPda = deriveMeltRoundPda(currentSeq);
-        const currentInfo = await connection.getAccountInfo(currentPda, "confirmed");
-        if (currentInfo) {
-          displayRound = (await program.account.meltRound.fetch(currentPda)) as MeltRound;
-          displayPda = currentPda;
+      const activeSeq = BigInt(cfg.activeRoundSeq.toString());
+      if (cfg.activeRoundActive) {
+        const activePda = deriveMeltRoundPda(activeSeq);
+        const activeInfo = await connection.getAccountInfo(activePda, "confirmed");
+        if (activeInfo) {
+          displayRound = (await program.account.meltRound.fetch(activePda)) as MeltRound;
+          displayPda = activePda;
+        }
+      }
+      if (!displayRound && nextSeq > 0n) {
+        const lastSeq = nextSeq - 1n;
+        const lastPda = deriveMeltRoundPda(lastSeq);
+        const lastInfo = await connection.getAccountInfo(lastPda, "confirmed");
+        if (lastInfo) {
+          displayRound = (await program.account.meltRound.fetch(lastPda)) as MeltRound;
+          displayPda = lastPda;
         }
       }
       if (!displayRound) {
@@ -252,11 +270,15 @@ export default function MeltPage() {
         return;
       }
       console.error(e);
-      toast.push({
-        title: "Failed to refresh",
-        description: humanError(message),
-        variant: "error",
-      });
+      const nowMs = Date.now();
+      if (nowMs - refreshErrorToastAtRef.current > REFRESH_ERROR_TOAST_COOLDOWN_MS) {
+        refreshErrorToastAtRef.current = nowMs;
+        toast.push({
+          title: "Failed to refresh",
+          description: humanError(message),
+          variant: "error",
+        });
+      }
     }
   }, [anchorWallet, connection, publicKey, toast]);
 
@@ -460,6 +482,7 @@ export default function MeltPage() {
   const burnAmount = userRound ? BigInt(userRound.burned.toString()) : 0n;
   const totalBurn = round ? BigInt(round.totalBurn.toString()) : 0n;
   const vPay = round ? BigInt(round.vPay.toString()) : 0n;
+  const activePot = round ? BigInt(round.vRound.toString()) : 0n;
   const payoutBase = isFinalized || isActive ? vPay : 0n;
   const payoutEstimate =
     payoutBase > 0n && totalBurn > 0n ? (payoutBase * burnAmount) / totalBurn : 0n;
@@ -467,14 +490,16 @@ export default function MeltPage() {
 
   const startTs = round ? Number(round.startTs.toString()) : null;
   const endTs = round ? Number(round.endTs.toString()) : null;
-  const isPlanned = !!(startTs && nowTs < startTs);
-  const countdown = isPlanned
-    ? `Starts in ${startTs - nowTs}s`
-    : isActive && endTs && nowTs < endTs
-      ? `Ends in ${endTs - nowTs}s`
+  const inActiveWindow =
+    !!isActive && !!startTs && !!endTs && nowTs >= startTs && nowTs <= endTs;
+  const countdown = inActiveWindow && endTs
+    ? `Ends in ${Math.max(0, endTs - nowTs)}s`
+    : isActive && endTs && nowTs > endTs
+      ? "Awaiting finalize"
       : isFinalized
         ? "Claim now"
-        : "Waiting for vial to reach CAP";
+        : "Starts when vial reaches cap";
+  const activeStatusLabel = isFinalized ? "Finalized" : isActive ? "Active" : "Idle";
 
   const initMelt = async () => {
     if (!anchorWallet || !publicKey) {
@@ -541,25 +566,8 @@ export default function MeltPage() {
   const vialLamports = config ? BigInt(config.vialLamports.toString()) : 0n;
   const bonusLamports = config ? BigInt(config.bonusPoolLamports.toString()) : 0n;
   const vialFill = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
-  const estBase =
-    capLamports > 0n
-      ? BigInt(Math.min(Number(vialLamports), Number(capLamports))) + bonusLamports
-      : 0n;
-  const jackpotEstimate =
-    round && (statusLabel(round.status) === "active" || statusLabel(round.status) === "finalized")
-      ? vPay
-      : estBase > 0n
-        ? (estBase * BigInt(10_000 - (config?.rolloverBps ?? 0))) / 10_000n
-        : 0n;
-
-  const ctaLabel =
-    statusLabel(round?.status ?? null) === "finalized"
-      ? "CLAIM XNT"
-      : statusLabel(round?.status ?? null) === "active"
-        ? "BURN MIND"
-        : isAdmin
-          ? "TOPUP VIAL"
-          : "WAIT FOR CAP";
+  const nextVialProgressPct = Math.min(100, Math.max(0, vialFill));
+  const fundingStatus = miningMeltConfig?.meltEnabled ? "ON" : "OFF";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
@@ -571,46 +579,54 @@ export default function MeltPage() {
               <div className="text-xs uppercase tracking-[0.3em] text-cyan-300">Testnet / Experimental</div>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight">MELT EVENT</h1>
               <p className="mt-2 max-w-xl text-sm text-white/70">
-                Pro-rata burn event. Feed the vial, raise the jackpot, and claim XNT.
+                Pro-rata burn event on testnet. Next vial keeps filling even while an active event is running.
               </p>
-          <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-white/60">
-            <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1">
-              Jackpot: {formatAmount(jackpotEstimate)} XNT
-            </div>
-            <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1">
-              {countdown}
-            </div>
-          </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/70">
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1">
+                  {countdown}
+                </div>
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1">
+                  Funding via mining: {fundingStatus}
+                </div>
+              </div>
             </div>
             <div className="flex flex-col items-end gap-3">
               <WalletMultiButton />
               <div className="rounded-full border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-                {ctaLabel}
+                {activeStatusLabel}
               </div>
             </div>
           </div>
-          <div className="mt-6 flex items-center gap-6">
-            <div className="relative h-32 w-10 overflow-hidden rounded-full border border-cyan-400/30 bg-black/60">
-              <div
-                className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-cyan-500 to-cyan-300"
-                style={{ height: `${Math.min(100, Math.max(4, vialFill))}%` }}
-              />
-            </div>
-            <div className="flex-1">
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-cyan-500/20 bg-black/30 p-4">
               <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Next vial</div>
-              <div className="mt-2 text-sm text-white/70">
+              <div className="mt-2 text-xl font-semibold">
                 {formatAmount(vialLamports)} / {formatAmount(capLamports)} XNT
               </div>
               <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full bg-gradient-to-r from-cyan-400 to-cyan-200"
-                  style={{ width: `${Math.min(100, Math.max(4, vialFill))}%` }}
+                  style={{ width: `${Math.max(0, nextVialProgressPct)}%` }}
                 />
               </div>
-              <div className="mt-2 text-xs text-white/50">
-                {isActive ? "New inflows now fill the NEXT vial." : "Auto-start at CAP."}
-              </div>
+              <div className="mt-2 text-xs text-white/60">{nextVialProgressPct.toFixed(0)}% of cap</div>
             </div>
+            <div className="rounded-2xl border border-cyan-500/20 bg-black/30 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Active event</div>
+                <div className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                  {activeStatusLabel}
+                </div>
+              </div>
+              <div className="mt-2 text-xl font-semibold">Payout this event: {formatAmount(vPay)} XNT</div>
+              <div className="mt-1 text-xs text-white/70">
+                Active pot: {formatAmount(activePot)} XNT · Total burn: {formatAmount(totalBurn)} MIND
+              </div>
+              <div className="mt-2 text-xs text-white/60">{countdown}</div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-3 text-xs text-cyan-100">
+            XNT inflows fill NEXT vial even while an event is running. This event&apos;s payout is locked at start.
           </div>
         </div>
 
@@ -639,12 +655,12 @@ export default function MeltPage() {
             <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Next vial</div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Active event details</div>
                   <div className="mt-2 text-2xl font-semibold">
-                    {formatAmount(vialLamports)} XNT
+                    {formatAmount(vPay)} XNT payout
                   </div>
                   <div className="mt-1 text-xs text-white/50">
-                    Auto-start at CAP · new inflows fill the next vial
+                    Payout is locked at event start. Inflows continue into NEXT vial.
                   </div>
                 </div>
                 <div className="rounded-full border border-cyan-400/30 bg-cyan-950/40 px-3 py-1 text-xs text-cyan-100">
@@ -653,9 +669,9 @@ export default function MeltPage() {
               </div>
               <div className="mt-4 grid gap-3 text-sm text-white/70 sm:grid-cols-2">
                 <div>Round seq: {round ? round.seq.toString() : "-"}</div>
-                <div>Status: {formatStatus(statusLabel(round?.status ?? null))}</div>
-                <div>Start: {startTs ?? "-"}</div>
-                <div>End: {endTs ?? "-"}</div>
+                <div>Status: {activeStatusLabel}</div>
+                <div>Start: {formatUnixTs(startTs)}</div>
+                <div>End: {formatUnixTs(endTs)}</div>
                 <div>Active pot: {round ? formatAmount(BigInt(round.vRound.toString())) : "-"}</div>
                 <div>v_pay: {round ? formatAmount(BigInt(round.vPay.toString())) : "-"}</div>
                 <div>total_burn: {round ? formatAmount(BigInt(round.totalBurn.toString())) : "-"}</div>
@@ -709,13 +725,13 @@ export default function MeltPage() {
                 />
                 <button
                   className="rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={!anchorWallet || !isActive || busy !== null}
+                  disabled={!anchorWallet || !inActiveWindow || busy !== null}
                   onClick={burnMind}
                 >
                   {busy === "Burn" ? "Burning..." : "Burn"}
                 </button>
                 <span className="text-xs text-white/50">
-                  {isActive ? "Round active — raise your share" : "Burn disabled (inactive round)"}
+                  {inActiveWindow ? "Round active — raise your share" : "Burn disabled (outside active window)"}
                 </span>
               </div>
               <div className="mt-2 text-xs text-white/50">Min burn: 10 MIND.</div>
@@ -745,8 +761,8 @@ export default function MeltPage() {
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div>Seq: {round ? round.seq.toString() : "-"}</div>
                     <div>Status: {formatStatus(statusLabel(round?.status ?? null))}</div>
-                    <div>Start: {startTs ?? "-"}</div>
-                    <div>End: {endTs ?? "-"}</div>
+                    <div>Start: {formatUnixTs(startTs)}</div>
+                    <div>End: {formatUnixTs(endTs)}</div>
                     <div>Active pot: {round ? formatAmount(BigInt(round.vRound.toString())) : "-"}</div>
                     <div>v_pay: {round ? formatAmount(BigInt(round.vPay.toString())) : "-"}</div>
                     <div>total_burn: {round ? formatAmount(BigInt(round.totalBurn.toString())) : "-"}</div>
@@ -766,10 +782,10 @@ export default function MeltPage() {
                         </div>
                       </div>
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        <div>v_round: {formatAmount(BigInt(r.vRound.toString()))}</div>
                         <div>v_pay: {formatAmount(BigInt(r.vPay.toString()))}</div>
-                        <div>burn: {formatAmount(BigInt(r.totalBurn.toString()))}</div>
-                        <div>start: {Number(r.startTs.toString())}</div>
+                        <div>total_burn: {formatAmount(BigInt(r.totalBurn.toString()))}</div>
+                        <div>start: {formatUnixTs(Number(r.startTs.toString()))}</div>
+                        <div>end: {formatUnixTs(Number(r.endTs.toString()))}</div>
                       </div>
                     </div>
                   ))
@@ -878,10 +894,20 @@ export default function MeltPage() {
                     <div className="mt-2 space-y-2 break-all">
                       {[
                         ["RPC", getMeltRpcUrl()],
-                        ["ProgramId", programId.toBase58()],
+                        ["meltProgramId", programId.toBase58()],
+                        ["miningV2ProgramId", miningProgramId?.toBase58() ?? "-"],
                         ["configPda", deriveMeltConfigPda().toBase58()],
                         ["vaultPda", deriveMeltVaultPda().toBase58()],
-                        ["roundPda", roundPda ? roundPda.toBase58() : "-"],
+                        ["currentRoundPda", roundPda ? roundPda.toBase58() : "-"],
+                        ["nextRoundPda", nextRoundPda ? nextRoundPda.toBase58() : "-"],
+                        [
+                          "fundingViaMining",
+                          `${fundingStatus}${miningMeltConfig ? ` (${miningMeltConfig.meltFundingBps} bps)` : ""}`,
+                        ],
+                        [
+                          "mining.meltProgramId",
+                          miningMeltConfig ? miningMeltConfig.meltProgramId.toBase58() : "-",
+                        ],
                       ].map(([label, value]) => (
                         <div key={label} className="flex items-center gap-2">
                           <div className="min-w-20 text-[10px] uppercase tracking-[0.2em] text-cyan-300">
@@ -904,25 +930,29 @@ export default function MeltPage() {
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
-              <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Config</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Config / Debug</div>
               <div className="mt-3 space-y-1">
-                <div>Program: {programId.toBase58()}</div>
                 <div>RPC: {getMeltRpcUrl()}</div>
+                <div>MELT programId: {programId.toBase58()}</div>
+                <div>mining_v2 programId: {miningProgramId?.toBase58() ?? "-"}</div>
                 <div>MIND mint: {mindMint.toBase58()}</div>
                 <div>Config PDA: {deriveMeltConfigPda().toBase58()}</div>
                 <div>Vault PDA: {deriveMeltVaultPda().toBase58()}</div>
+                <div>Current round PDA: {roundPda ? roundPda.toBase58() : "-"}</div>
+                <div>Next round PDA: {nextRoundPda ? nextRoundPda.toBase58() : "-"}</div>
                 <div>Vial: {formatAmount(vialLamports)} XNT</div>
                 <div>Bonus pool: {formatAmount(bonusLamports)} XNT</div>
                 <div>cap: {formatAmount(capLamports)} XNT</div>
                 <div>window: {config ? config.roundWindowSec.toString() : "-"} sec</div>
                 <div>rollover: {config ? `${config.rolloverBps} bps` : "-"}</div>
                 <div>burn_min: {config ? formatAmount(BigInt(config.burnMin.toString())) : "-"} MIND</div>
+                <div>melt_enabled: {miningMeltConfig ? String(miningMeltConfig.meltEnabled) : "-"}</div>
                 <div>
-                  funding_bps:{" "}
-                  {miningMeltConfig
-                    ? `${miningMeltConfig.meltFundingBps} (${miningMeltConfig.meltEnabled ? "enabled" : "disabled"})`
-                    : "-"}
+                  mining.melt_program_id:{" "}
+                  {miningMeltConfig ? miningMeltConfig.meltProgramId.toBase58() : "-"}
                 </div>
+                <div>melt_funding_bps: {miningMeltConfig ? String(miningMeltConfig.meltFundingBps) : "-"}</div>
+                <div>Funding via mining: {fundingStatus}</div>
               </div>
             </div>
           </div>

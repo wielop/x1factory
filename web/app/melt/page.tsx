@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BN } from "@coral-xyz/anchor";
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Connection, SystemProgram } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddressSync,
@@ -18,12 +18,14 @@ import {
   deriveMeltUserRoundPda,
   getMindMint,
   getMeltProgram,
+  getMeltProgramId,
   getMeltRpcUrl,
 } from "@/lib/melt";
 import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
+const LEADERBOARD_PAGE_SIZE = 40;
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -50,6 +52,13 @@ const percent = (num: bigint, den: bigint) => {
   return val.toFixed(2);
 };
 
+type LeaderboardRow = {
+  wallet: string;
+  burned: bigint;
+};
+
+const shortWallet = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
+
 export default function MeltPlayerPage() {
   const { publicKey } = useWallet();
   const wallet = useAnchorWallet() ?? null;
@@ -58,9 +67,28 @@ export default function MeltPlayerPage() {
   const [busy, setBusy] = useState<"BURN" | "CLAIM" | null>(null);
   const [burnInput, setBurnInput] = useState("10");
   const refreshToastAtRef = useRef(0);
+  const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [leaderboardCursor, setLeaderboardCursor] = useState<string | null>(null);
+  const leaderboardSeenRef = useRef<Set<string>>(new Set());
+  const leaderboardRoundRef = useRef<string>("");
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
+  const meltProgramId = useMemo(() => getMeltProgramId(), []);
+  const readOnlyWallet = useMemo(
+    () => ({
+      publicKey: PublicKey.default,
+      signTransaction: async (tx: unknown) => tx as never,
+      signAllTransactions: async (txs: unknown) => txs as never,
+    }),
+    []
+  );
+  const parserProgram = useMemo(
+    () => getMeltProgram(connection, wallet ?? (readOnlyWallet as any)),
+    [connection, readOnlyWallet, wallet]
+  );
 
   const melt = useMeltState({
     connection,
@@ -210,6 +238,99 @@ export default function MeltPlayerPage() {
 
   const nextProgressPct = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
   const vialVisualPct = isLiveStatus ? 100 : nextProgressPct;
+  const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
+
+  const refreshLeaderboard = async (loadMore = false) => {
+    if (!melt.roundPda || !roundSeq) {
+      setLeaderboardRows([]);
+      setLeaderboardCursor(null);
+      leaderboardSeenRef.current.clear();
+      leaderboardRoundRef.current = "";
+      return;
+    }
+    const currentRoundKey = melt.roundPda.toBase58();
+    if (leaderboardRoundRef.current !== currentRoundKey) {
+      leaderboardSeenRef.current.clear();
+      setLeaderboardRows([]);
+      setLeaderboardCursor(null);
+      leaderboardRoundRef.current = currentRoundKey;
+    }
+    try {
+      setLeaderboardLoading(true);
+      setLeaderboardError(null);
+      const signatures = await connection.getSignaturesForAddress(meltProgramId, {
+        limit: LEADERBOARD_PAGE_SIZE,
+        ...(loadMore && leaderboardCursor ? { before: leaderboardCursor } : {}),
+      });
+      if (signatures.length === 0) {
+        setLeaderboardLoading(false);
+        return;
+      }
+
+      const seen = leaderboardSeenRef.current;
+      const burnedMap = new Map<string, bigint>();
+      for (const row of leaderboardRows) burnedMap.set(row.wallet, row.burned);
+
+      for (const sig of signatures) {
+        if (!loadMore && seen.has(sig.signature)) continue;
+        const tx = await connection.getTransaction(sig.signature, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        seen.add(sig.signature);
+        const logs = tx?.meta?.logMessages ?? [];
+        for (const logLine of logs) {
+          const prefix = "Program data: ";
+          const idx = logLine.indexOf(prefix);
+          if (idx < 0) continue;
+          const payload = logLine.slice(idx + prefix.length).trim();
+          let evt: any = null;
+          try {
+            evt = (parserProgram.coder.events as any).decode(payload);
+          } catch {
+            evt = null;
+          }
+          if (!evt || evt.name !== "Burned") continue;
+          const eventRound = new PublicKey(evt.data.round);
+          if (!eventRound.equals(melt.roundPda)) continue;
+          const user = new PublicKey(evt.data.user).toBase58();
+          const amount = BigInt(evt.data.amount.toString());
+          burnedMap.set(user, (burnedMap.get(user) ?? 0n) + amount);
+        }
+      }
+
+      const nextRows: LeaderboardRow[] = Array.from(burnedMap.entries()).map(([walletAddr, burned]) => ({
+        wallet: walletAddr,
+        burned,
+      }));
+      nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+      setLeaderboardRows(nextRows);
+      setLeaderboardCursor(signatures[signatures.length - 1]?.signature ?? null);
+    } catch {
+      setLeaderboardError("Leaderboard unavailable (RPC limits)");
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showEventSection || !melt.roundPda || !roundSeq) return;
+    void refreshLeaderboard(false);
+  }, [showEventSection, melt.roundPda, roundSeq]);
+
+  useEffect(() => {
+    if (!isLiveStatus || !melt.roundPda || !roundSeq) return;
+    const id = window.setInterval(() => {
+      void refreshLeaderboard(false);
+    }, 12_000);
+    return () => window.clearInterval(id);
+  }, [isLiveStatus, melt.roundPda, roundSeq]);
+
+  const topRows = leaderboardRows.slice(0, 10);
+  const yourRowIndex = publicKey
+    ? leaderboardRows.findIndex((r) => r.wallet === publicKey.toBase58())
+    : -1;
+  const yourOutsideTop = yourRowIndex >= 10 ? leaderboardRows[yourRowIndex] : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
@@ -362,6 +483,83 @@ export default function MeltPlayerPage() {
             </>
           )}
         </section>
+
+        {showEventSection ? (
+          <section className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Leaderboard</div>
+              <div className="flex items-center gap-2">
+                <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                  {isLiveStatus ? "LIVE" : "FINAL"}
+                </div>
+                <button
+                  className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
+                  onClick={() => void refreshLeaderboard(false)}
+                  disabled={leaderboardLoading}
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead className="text-left text-xs uppercase tracking-[0.16em] text-white/60">
+                  <tr>
+                    <th className="pb-2">Rank</th>
+                    <th className="pb-2">Wallet</th>
+                    <th className="pb-2">Burned (MIND)</th>
+                    <th className="pb-2">Est. payout (XNT)</th>
+                  </tr>
+                </thead>
+                <tbody className="text-white/85">
+                  {topRows.map((row, idx) => {
+                    const mine = publicKey?.toBase58() === row.wallet;
+                    const est = totalBurn > 0n ? (vPay * row.burned) / totalBurn : 0n;
+                    return (
+                      <tr key={row.wallet} className={mine ? "bg-cyan-500/10" : ""}>
+                        <td className="py-1.5 pr-3">#{idx + 1}</td>
+                        <td className="py-1.5 pr-3">
+                          <div className="flex items-center gap-2">
+                            <span>{shortWallet(row.wallet)}</span>
+                            <button
+                              type="button"
+                              className="rounded border border-white/20 px-1.5 py-0.5 text-[10px] text-white/70 hover:bg-white/10"
+                              onClick={() => navigator.clipboard.writeText(row.wallet)}
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-1.5 pr-3">{formatAmount(row.burned)}</td>
+                        <td className="py-1.5 pr-3">{formatAmount(est)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {yourOutsideTop ? (
+              <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
+                You: #{yourRowIndex + 1} · {shortWallet(yourOutsideTop.wallet)} · Burned {formatAmount(yourOutsideTop.burned)} MIND
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex items-center justify-between gap-3 text-xs text-white/60">
+              <div>
+                {leaderboardLoading ? "Loading leaderboard..." : leaderboardError ?? `Round #${roundSeq?.toString() ?? "-"}`}
+              </div>
+              <button
+                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
+                onClick={() => void refreshLeaderboard(true)}
+                disabled={leaderboardLoading || !leaderboardCursor}
+              >
+                Load more
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
           <details>

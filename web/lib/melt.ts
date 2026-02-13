@@ -155,6 +155,11 @@ const accountDiscriminator = (name: string) => {
   return sha256(data).slice(0, 8);
 };
 
+const eventDiscriminator = (name: string) => {
+  const data = new TextEncoder().encode(`event:${name}`);
+  return sha256(data).slice(0, 8);
+};
+
 const normalizeDiscriminator = (name: string, discriminator: unknown) => {
   if (discriminator instanceof Uint8Array) return discriminator;
   if (Array.isArray(discriminator)) return Uint8Array.from(discriminator);
@@ -428,6 +433,84 @@ const MELT_IDL = {
         variants: [{ name: "Planned" }, { name: "Active" }, { name: "Finalized" }],
       },
     },
+    {
+      name: "FundingRecorded",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "amount", type: "u64" },
+          { name: "vialLamports", type: "u64" },
+        ],
+      },
+    },
+    {
+      name: "RoundStarted",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "seq", type: "u64" },
+          { name: "startTs", type: "i64" },
+          { name: "endTs", type: "i64" },
+          { name: "pot", type: "u64" },
+          { name: "vPay", type: "u64" },
+        ],
+      },
+    },
+    {
+      name: "Burned",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "user", type: "publicKey" },
+          { name: "round", type: "publicKey" },
+          { name: "amount", type: "u64" },
+          { name: "totalBurn", type: "u64" },
+        ],
+      },
+    },
+    {
+      name: "Finalized",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "seq", type: "u64" },
+          { name: "rollover", type: "u64" },
+        ],
+      },
+    },
+    {
+      name: "Claimed",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "user", type: "publicKey" },
+          { name: "round", type: "publicKey" },
+          { name: "payout", type: "u64" },
+        ],
+      },
+    },
+  ],
+  events: [
+    {
+      name: "FundingRecorded",
+      discriminator: Array.from(eventDiscriminator("FundingRecorded")),
+    },
+    {
+      name: "RoundStarted",
+      discriminator: Array.from(eventDiscriminator("RoundStarted")),
+    },
+    {
+      name: "Burned",
+      discriminator: Array.from(eventDiscriminator("Burned")),
+    },
+    {
+      name: "Finalized",
+      discriminator: Array.from(eventDiscriminator("Finalized")),
+    },
+    {
+      name: "Claimed",
+      discriminator: Array.from(eventDiscriminator("Claimed")),
+    },
   ],
 };
 
@@ -446,7 +529,7 @@ const idlForClient = {
     ...acc,
     discriminator: accountDiscriminator(acc.name),
   })),
-  events: [],
+  events: normalizedIdl.events ?? [],
 };
 
 export function getMeltProgram(connection: Connection, wallet: AnchorWallet) {

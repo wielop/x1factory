@@ -221,6 +221,21 @@
           "isSigner": false
         },
         {
+          "name": "meltConfig",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "meltVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "meltRound",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false

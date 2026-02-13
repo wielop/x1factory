@@ -55,6 +55,7 @@ import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk 
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
+import { fetchMiningMeltConfig } from "@/lib/melt";
 import { computeEstWeeklyXnt, getWeeklyPoolXnt, LEVELS, type Level } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
@@ -1981,6 +1982,30 @@ export function PublicDashboard() {
     const nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);
     const positionIndex = new BN(nextIndex.toString());
     await withTx("Buy contract", async () => {
+      const miningMelt = await fetchMiningMeltConfig(connection);
+      const meltProgramId = miningMelt?.meltProgramId ?? PublicKey.default;
+      const [meltConfigPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("melt_config")],
+        meltProgramId
+      );
+      const [meltVaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("melt_vault")],
+        meltProgramId
+      );
+      let meltRoundPda = PublicKey.default;
+      const meltConfigInfo = await connection.getAccountInfo(meltConfigPda, "confirmed");
+      if (miningMelt?.meltEnabled && !meltConfigInfo) {
+        throw new Error("MELT is enabled but its config is not initialized on this testnet.");
+      }
+      if (meltConfigInfo && meltConfigInfo.data.length >= 139) {
+        const roundSeq = meltConfigInfo.data.readBigUInt64LE(131);
+        const seqBuf = Buffer.alloc(8);
+        seqBuf.writeBigUInt64LE(roundSeq);
+        [meltRoundPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("melt_round"), seqBuf],
+          meltProgramId
+        );
+      }
       const sig = await program.methods
         .buyContract(contract.key, positionIndex)
         .accounts({
@@ -1990,6 +2015,9 @@ export function PublicDashboard() {
           position: derivePositionPda(publicKey, nextIndex),
           stakingRewardVault: config.stakingRewardVault,
           treasuryVault: config.treasuryVault,
+          meltConfig: meltConfigPda,
+          meltVault: meltVaultPda,
+          meltRound: meltRoundPda,
           systemProgram: SystemProgram.programId,
         })
         .rpc();

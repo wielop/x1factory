@@ -44,6 +44,12 @@ export type MeltUserRound = {
   claimed: boolean;
 };
 
+export type MeltClaimContext = {
+  round: MeltRound;
+  roundPda: PublicKey;
+  userRound: MeltUserRound | null;
+};
+
 export type MiningMeltConfig = {
   meltEnabled: boolean;
   meltProgramId: PublicKey;
@@ -81,6 +87,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
   const [roundPda, setRoundPda] = useState<PublicKey | null>(null);
   const [nextRoundPda, setNextRoundPda] = useState<PublicKey | null>(null);
   const [userRound, setUserRound] = useState<MeltUserRound | null>(null);
+  const [claimContext, setClaimContext] = useState<MeltClaimContext | null>(null);
   const [miningMeltConfig, setMiningMeltConfig] = useState<MiningMeltConfig | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +114,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         setRoundPda(null);
         setNextRoundPda(null);
         setUserRound(null);
+        setClaimContext(null);
         setMiningMeltConfig(null);
         setError(null);
         return;
@@ -148,6 +156,37 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         )) as MeltUserRound | null;
       }
 
+      let fetchedClaimContext: MeltClaimContext | null = null;
+      if (displayRound && displayPda && readStatus(displayRound.status) === "finalized") {
+        fetchedClaimContext = {
+          round: displayRound,
+          roundPda: displayPda,
+          userRound: fetchedUserRound,
+        };
+      } else if (publicKey && cfg.activeRoundActive) {
+        const activeSeq = BigInt(cfg.activeRoundSeq.toString());
+        if (activeSeq > 0n) {
+          const prevSeq = activeSeq - 1n;
+          const prevPda = deriveMeltRoundPda(prevSeq);
+          const prevInfo = await connection.getAccountInfo(prevPda, "confirmed");
+          if (prevInfo) {
+            const prevRound = (await program.account.meltRound.fetch(prevPda)) as MeltRound;
+            if (readStatus(prevRound.status) === "finalized") {
+              const claimProgram = getMeltProgram(connection, anchorWallet ?? (readonlyWallet as AnchorWallet));
+              const prevUserRoundPda = deriveMeltUserRoundPda(publicKey, prevPda);
+              const prevUserRound = (await claimProgram.account.meltUserRound.fetchNullable(
+                prevUserRoundPda
+              )) as MeltUserRound | null;
+              fetchedClaimContext = {
+                round: prevRound,
+                roundPda: prevPda,
+                userRound: prevUserRound,
+              };
+            }
+          }
+        }
+      }
+
       if (!mountedRef.current) return;
       setInitState("READY");
       setConfig(cfg);
@@ -155,6 +194,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
       setRoundPda(displayPda);
       setNextRoundPda(nextPda);
       setUserRound(fetchedUserRound);
+      setClaimContext(fetchedClaimContext);
       setMiningMeltConfig(miningCfg);
       setError(null);
     } catch (e) {
@@ -172,6 +212,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         setRoundPda(null);
         setNextRoundPda(null);
         setUserRound(null);
+        setClaimContext(null);
         setMiningMeltConfig(null);
         setError(null);
         return;
@@ -202,6 +243,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
     roundPda,
     nextRoundPda,
     userRound,
+    claimContext,
     miningMeltConfig,
     roundStatus,
     isLive,
@@ -211,4 +253,3 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
     refresh,
   };
 }
-

@@ -150,6 +150,11 @@ export default function MeltPlayerPage() {
 
   const burnMinMind = melt.config ? BigInt(melt.config.burnMin.toString()) : 0n;
   const burnSliderMin = Number((burnMinMind / 10n ** DECIMALS) || 1n);
+  const claimRoundPda = melt.claimContext?.roundPda ?? null;
+  const claimUserRound = melt.claimContext?.userRound ?? null;
+  const claimBurn = claimUserRound ? BigInt(claimUserRound.burned.toString()) : 0n;
+  const canClaimAnyRound =
+    !!claimRoundPda && !!claimUserRound && claimBurn > 0n && !claimUserRound.claimed;
 
   const burnError = (message: string) => {
     if (message.includes("BelowBurnMin")) {
@@ -216,11 +221,11 @@ export default function MeltPlayerPage() {
   };
 
   const claim = async () => {
-    if (!wallet || !publicKey || !melt.roundPda || !melt.config) return;
+    if (!wallet || !publicKey || !claimRoundPda || !melt.config) return;
     setBusy("CLAIM");
     try {
       const program = getMeltProgram(connection, wallet);
-      const userRoundPda = deriveMeltUserRoundPda(publicKey, melt.roundPda);
+      const userRoundPda = deriveMeltUserRoundPda(publicKey, claimRoundPda);
       const nextRoundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(melt.config.roundSeq.toString()));
       const sig = await program.methods
         .claim()
@@ -228,7 +233,7 @@ export default function MeltPlayerPage() {
           user: publicKey,
           config: deriveMeltConfigPda(),
           vault: melt.config.vault,
-          round: melt.roundPda,
+          round: claimRoundPda,
           nextRound: nextRoundPda,
           userRound: userRoundPda,
           systemProgram: SystemProgram.programId,
@@ -471,10 +476,7 @@ export default function MeltPlayerPage() {
                   <button
                     className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
                     disabled={
-                      !isClaimPhase ||
-                      !melt.userRound ||
-                      yourBurn <= 0n ||
-                      !!melt.userRound?.claimed ||
+                      !canClaimAnyRound ||
                       busy !== null
                     }
                     onClick={claim}
@@ -482,11 +484,11 @@ export default function MeltPlayerPage() {
                     {busy === "CLAIM" ? "Claiming..." : "CLAIM"}
                   </button>
                   <div className="text-xs text-white/60">
-                    {isClaimPhase
-                      ? melt.userRound && yourBurn > 0n
-                        ? "Claim available"
-                        : "Nothing to claim for this event"
-                      : "Claim available after event ends"}
+                    {canClaimAnyRound
+                      ? "Claim available"
+                      : isClaimPhase
+                        ? "Nothing to claim for this event"
+                        : "No unclaimed rewards yet"}
                   </div>
                 </div>
               </div>

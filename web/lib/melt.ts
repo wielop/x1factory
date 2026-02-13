@@ -163,6 +163,18 @@ const MELT_IDL = {
       args: [{ name: "lamports", type: "u64" }],
     },
     {
+      name: "initMelt",
+      accounts: [
+        { name: "payer", isMut: true, isSigner: true },
+        { name: "admin", isMut: true, isSigner: true },
+        { name: "mindMint", isMut: false, isSigner: false },
+        { name: "config", isMut: true, isSigner: false },
+        { name: "vault", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [{ name: "params", type: { defined: "InitMeltParams" } }],
+    },
+    {
       name: "adminWithdrawVault",
       accounts: [
         { name: "admin", isMut: true, isSigner: true },
@@ -284,6 +296,19 @@ const MELT_IDL = {
     },
   ],
   types: [
+    {
+      name: "InitMeltParams",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "vaultCapXnt", type: "u64" },
+          { name: "rolloverBps", type: "u16" },
+          { name: "burnMin", type: "u64" },
+          { name: "roundWindowSec", type: "u64" },
+          { name: "testMode", type: "bool" },
+        ],
+      },
+    },
     {
       name: "RoundStatus",
       type: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BN } from "@coral-xyz/anchor";
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -51,6 +51,7 @@ type MeltUserRound = {
 };
 
 const DECIMALS = 9n;
+const CONFIG_NOT_INITIALIZED = "NOT_INITIALIZED";
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -100,6 +101,8 @@ export default function MeltPage() {
   const [userRound, setUserRound] = useState<MeltUserRound | null>(null);
   const [nowTs, setNowTs] = useState<number>(() => Math.floor(Date.now() / 1000));
   const [busy, setBusy] = useState<string | null>(null);
+  const [initState, setInitState] = useState<"READY" | "NOT_INITIALIZED">("READY");
+  const initToastShownRef = useRef(false);
 
   const [burnInput, setBurnInput] = useState("10");
   const [topupInput, setTopupInput] = useState("5");
@@ -126,6 +129,7 @@ export default function MeltPage() {
     try {
       const program = getMeltProgram(connection, anchorWallet ?? (readonlyWallet as any));
       const cfg = (await program.account.meltConfig.fetch(deriveMeltConfigPda())) as MeltConfig;
+      setInitState("READY");
       setConfig(cfg);
       const currentSeq = BigInt(cfg.roundSeq.toString());
       const rpda = deriveMeltRoundPda(currentSeq);
@@ -151,10 +155,34 @@ export default function MeltPage() {
         setUserRound(null);
       }
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const isMissingConfig =
+        message.includes("Account not found: meltConfig") ||
+        message.includes("Account does not exist") ||
+        message.includes("failed to get info about account") ||
+        message.includes("Account not found") ||
+        message.includes("Account data too small");
+      if (isMissingConfig) {
+        setInitState("NOT_INITIALIZED");
+        setConfig(null);
+        setRound(null);
+        setRoundPda(null);
+        setUserRound(null);
+        setVaultBalance(0n);
+        if (!initToastShownRef.current) {
+          initToastShownRef.current = true;
+          toast.push({
+            title: "MELT config not initialized",
+            description: "Connect admin wallet and initialize.",
+            variant: "info",
+          });
+        }
+        return;
+      }
       console.error(e);
       toast.push({
         title: "Failed to refresh",
-        description: e instanceof Error ? e.message : String(e),
+        description: message,
         variant: "error",
       });
     }
@@ -365,6 +393,33 @@ export default function MeltPage() {
         ? `Ends in ${endTs - nowTs}s`
         : "Round idle";
 
+  const initMelt = async () => {
+    if (!anchorWallet || !publicKey) return;
+    await withBusy(CONFIG_NOT_INITIALIZED, async () => {
+      const program = getMeltProgram(connection, anchorWallet);
+      const sig = await program.methods
+        .initMelt({
+          vaultCapXnt: new BN((150n * 1_000_000_000n).toString()),
+          rolloverBps: 2000,
+          burnMin: new BN((10n * 1_000_000_000n).toString()),
+          roundWindowSec: new BN("86400"),
+          testMode: true,
+        })
+        .accounts({
+          payer: publicKey,
+          admin: publicKey,
+          mindMint,
+          config: deriveMeltConfigPda(),
+          vault: deriveMeltVaultPda(),
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      toast.push({ title: "Initialized", description: sig, variant: "success" });
+      initToastShownRef.current = false;
+      await refresh();
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
       <TopBar />
@@ -384,12 +439,32 @@ export default function MeltPage() {
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Vault</div>
-                  <div className="mt-2 text-2xl font-semibold">
-                    {formatAmount(vaultBalance)} XNT
+            {initState === "NOT_INITIALIZED" ? (
+              <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-5">
+                <div className="text-xs uppercase tracking-[0.2em] text-amber-300">Not initialized</div>
+                <div className="mt-2 text-lg font-semibold">
+                  MELT config is not initialized on this network.
+                </div>
+                <div className="mt-2 text-sm text-white/70">
+                  Connect admin wallet and initialize.
+                </div>
+                <div className="mt-4">
+                  <button
+                    className="rounded-xl border border-amber-300/40 bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/30 disabled:opacity-40"
+                    disabled={!anchorWallet || busy !== null}
+                    onClick={initMelt}
+                  >
+                    {busy === CONFIG_NOT_INITIALIZED ? "Initializing..." : "Initialize MELT (admin)"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Vault</div>
+                    <div className="mt-2 text-2xl font-semibold">
+                      {formatAmount(vaultBalance)} XNT
                   </div>
                 </div>
                 <div className="rounded-full border border-cyan-400/30 bg-cyan-950/40 px-3 py-1 text-xs text-cyan-100">
@@ -406,7 +481,7 @@ export default function MeltPage() {
                 <div>total_burn: {round ? formatAmount(BigInt(round.totalBurn.toString())) : "-"}</div>
                 <div>rollover: {config ? `${config.rolloverBps} bps` : "-"}</div>
               </div>
-            </div>
+            )}
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
               <div className="flex items-center justify-between">
@@ -580,6 +655,8 @@ export default function MeltPage() {
                 <div>Program: {programId.toBase58()}</div>
                 <div>RPC: {getMeltRpcUrl()}</div>
                 <div>MIND mint: {mindMint.toBase58()}</div>
+                <div>Config PDA: {deriveMeltConfigPda().toBase58()}</div>
+                <div>Vault PDA: {deriveMeltVaultPda().toBase58()}</div>
               </div>
             </div>
           </div>

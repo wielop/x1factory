@@ -62,9 +62,6 @@ type ActionState = {
   primaryLabel: string;
   primaryDisabled: boolean;
   primaryHandler: (() => void) | null;
-  secondaryLabel: string;
-  secondaryDisabled: boolean;
-  secondaryHandler: (() => void) | null;
   hint: string;
 };
 
@@ -76,7 +73,7 @@ export default function MeltPlayerPage() {
   const toast = useToast();
 
   const [nowTs, setNowTs] = useState<number>(() => Math.floor(Date.now() / 1000));
-  const [busy, setBusy] = useState<"BURN" | "FINALIZE" | "CLAIM" | null>(null);
+  const [busy, setBusy] = useState<"BURN" | "CLAIM" | null>(null);
   const [burnInput, setBurnInput] = useState("10");
   const refreshToastAtRef = useRef(0);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
@@ -144,8 +141,6 @@ export default function MeltPlayerPage() {
 
   const burnMinMind = melt.config ? BigInt(melt.config.burnMin.toString()) : 0n;
   const burnSliderMin = Number((burnMinMind / 10n ** DECIMALS) || 1n);
-  const canClaim = phase === "FINALIZED" && !userClaimed;
-
   const countdown = useMemo(() => {
     if (!melt.round) return "";
     const end = Number(melt.round.endTs.toString());
@@ -229,37 +224,6 @@ export default function MeltPlayerPage() {
     }
   };
 
-  const finalizeRound = async () => {
-    if (!wallet || !publicKey || !melt.roundPda || !melt.config) return;
-
-    setBusy("FINALIZE");
-    try {
-      const program = getMeltProgram(connection, wallet);
-      const configPda = deriveMeltConfigPda();
-      const cfgNow = await (program.account as any).meltConfig.fetch(configPda);
-      const nextRoundPda = deriveMeltRoundPda(BigInt(cfgNow.roundSeq.toString()));
-      const sig = await program.methods
-        .finalizeRound()
-        .accounts({
-          admin: publicKey,
-          config: configPda,
-          round: melt.roundPda,
-          vault: cfgNow.vault,
-          nextRound: nextRoundPda,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-
-      toast.push({ title: "Event finalized", description: sig, variant: "success" });
-      await melt.refresh();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.push({ title: finalizeError(msg), variant: "error" });
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const claim = async () => {
     if (!wallet || !publicKey || !melt.config || !melt.roundPda) return;
 
@@ -294,28 +258,80 @@ export default function MeltPlayerPage() {
     }
   };
 
+  const finalizeAndClaim = async () => {
+    if (!wallet || !publicKey || !melt.config || !melt.roundPda) return;
+
+    setBusy("CLAIM");
+    try {
+      const program = getMeltProgram(connection, wallet);
+      const configPda = deriveMeltConfigPda();
+      const cfgNow = await (program.account as any).meltConfig.fetch(configPda);
+      const nextRoundPda = deriveMeltRoundPda(BigInt(cfgNow.roundSeq.toString()));
+      const userRoundPda = deriveMeltUserRoundPda(publicKey, melt.roundPda);
+
+      if (phase === "ENDED") {
+        try {
+          await program.methods
+            .finalizeRound()
+            .accounts({
+              admin: publicKey,
+              config: configPda,
+              round: melt.roundPda,
+              vault: cfgNow.vault,
+              nextRound: nextRoundPda,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const alreadyFinalized =
+            msg.includes("BadRoundStatus") ||
+            msg.includes("AlreadyFinalized") ||
+            msg.includes("RoundFinalized");
+          if (!alreadyFinalized) {
+            throw new Error(finalizeError(msg));
+          }
+        }
+      }
+
+      const sig = await program.methods
+        .claim()
+        .accounts({
+          user: publicKey,
+          config: configPda,
+          vault: cfgNow.vault,
+          round: melt.roundPda,
+          nextRound: nextRoundPda,
+          userRound: userRoundPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      toast.push({ title: "Claim submitted", description: sig, variant: "success" });
+      await melt.refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.push({ title: msg.startsWith("Finalize failed:") ? msg : claimError(msg), variant: "error" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const actionState: ActionState = useMemo(() => {
     if (phase === "LIVE") {
       return {
-        primaryLabel: busy === "BURN" ? "Burning..." : "BURN MIND",
-        primaryDisabled: !hasWallet || busy !== null,
-        primaryHandler: () => void burnMind(),
-        secondaryLabel: "Claim after event ends",
-        secondaryDisabled: true,
-        secondaryHandler: null,
+        primaryLabel: "Claim after event ends",
+        primaryDisabled: true,
+        primaryHandler: null,
         hint: "Event is live. Burn to increase your share.",
       };
     }
 
     if (phase === "ENDED") {
       return {
-        primaryLabel: busy === "FINALIZE" ? "Finalizing..." : "FINALIZE EVENT",
-        primaryDisabled: !hasWallet || busy !== null,
-        primaryHandler: () => void finalizeRound(),
-        secondaryLabel: "Finalize first",
-        secondaryDisabled: true,
-        secondaryHandler: null,
-        hint: "Event has ended. Any wallet can finalize.",
+        primaryLabel: busy === "CLAIM" ? "Processing..." : "FINALIZE + CLAIM XNT",
+        primaryDisabled: !hasWallet || busy !== null || userClaimed,
+        primaryHandler: () => void finalizeAndClaim(),
+        hint: "Pierwszy klik finalizuje event, potem claim.",
       };
     }
 
@@ -325,20 +341,14 @@ export default function MeltPlayerPage() {
           primaryLabel: "Already claimed",
           primaryDisabled: true,
           primaryHandler: null,
-          secondaryLabel: "Event finalized",
-          secondaryDisabled: true,
-          secondaryHandler: null,
           hint: "Your rewards are already claimed.",
         };
       }
 
       return {
         primaryLabel: busy === "CLAIM" ? "Claiming..." : "CLAIM XNT",
-        primaryDisabled: !hasWallet || busy !== null || !canClaim,
-        primaryHandler: () => void claim(),
-        secondaryLabel: "Ready to claim",
-        secondaryDisabled: true,
-        secondaryHandler: null,
+        primaryDisabled: !hasWallet || busy !== null,
+        primaryHandler: () => void finalizeAndClaim(),
         hint: "Event finalized. Claim is now available.",
       };
     }
@@ -347,12 +357,9 @@ export default function MeltPlayerPage() {
       primaryLabel: "Charging...",
       primaryDisabled: true,
       primaryHandler: null,
-      secondaryLabel: "Claim unavailable",
-      secondaryDisabled: true,
-      secondaryHandler: null,
       hint: "Waiting for next event.",
     };
-  }, [busy, canClaim, hasWallet, phase, userClaimed]);
+  }, [busy, hasWallet, phase, userClaimed]);
 
   const renderActionButtons = () => (
     <div className="grid gap-2">
@@ -362,13 +369,6 @@ export default function MeltPlayerPage() {
         onClick={actionState.primaryHandler ?? undefined}
       >
         {actionState.primaryLabel}
-      </button>
-      <button
-        className="rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={actionState.secondaryDisabled}
-        onClick={actionState.secondaryHandler ?? undefined}
-      >
-        {actionState.secondaryLabel}
       </button>
     </div>
   );

@@ -28,6 +28,12 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function deriveMeltRoundPda(seq: bigint, programId: PublicKey): PublicKey {
+  const seqBuf = Buffer.alloc(8);
+  seqBuf.writeBigUInt64LE(seq);
+  return PublicKey.findProgramAddressSync([Buffer.from('melt_round'), seqBuf], programId)[0];
+}
+
 function mustEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env ${name}`);
@@ -134,6 +140,47 @@ async function getClaimPayout(connection: anchor.web3.Connection, sig: string, u
     fee: tx.meta.fee,
     delta: post - pre,
   };
+}
+
+function roundStatusKey(round: any): string {
+  if (!round?.status || typeof round.status !== 'object') return '';
+  const key = Object.keys(round.status)[0];
+  return key ? key.toLowerCase() : '';
+}
+
+async function getActiveOrLatestRound(program: any, config: any, meltProgramId: PublicKey) {
+  const connection = program.provider.connection as anchor.web3.Connection;
+  const candidateSeqs: bigint[] = [];
+  const roundSeq = BigInt(config.roundSeq.toString());
+  const activeRoundSeq = BigInt((config.activeRoundSeq ?? 0).toString());
+  const activeRoundActive = !!config.activeRoundActive;
+
+  if (activeRoundActive) {
+    candidateSeqs.push(activeRoundSeq);
+  }
+  candidateSeqs.push(roundSeq);
+
+  const maxBacktrack = 64n;
+  let i = 1n;
+  while (i <= maxBacktrack) {
+    if (roundSeq >= i) candidateSeqs.push(roundSeq - i);
+    i += 1n;
+  }
+
+  const seen = new Set<string>();
+  for (const seq of candidateSeqs) {
+    const key = seq.toString();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const roundPda = deriveMeltRoundPda(seq, meltProgramId);
+    const info = await connection.getAccountInfo(roundPda, 'confirmed');
+    if (!info) continue;
+    const round = await program.account.meltRound.fetch(roundPda);
+    const status = roundStatusKey(round);
+    return { seq, roundPda, round, status };
+  }
+
+  return null;
 }
 
 async function main() {
@@ -348,6 +395,72 @@ async function main() {
     return userAta;
   };
 
+  const waitForFreshActiveRound = async (retries = 10, minSlackSec = 60) => {
+    for (let i = 0; i < retries; i += 1) {
+      const cfgNow = await meltProgram.account.meltConfig.fetch(meltConfigPda);
+      const picked = await getActiveOrLatestRound(meltProgram, cfgNow, meltProgramId);
+      const now = Math.floor(Date.now() / 1000);
+      if (picked && picked.status === 'active') {
+        const endTs = Number(picked.round.endTs.toString());
+        if (endTs > now + minSlackSec) {
+          return { cfgNow, ...picked, endTs };
+        }
+      }
+      await sleep(1000);
+    }
+    return null;
+  };
+
+  const finalizeEndedActiveRound = async (cfgNow: any, roundPda: PublicKey) => {
+    const nextRoundPda = deriveMeltRoundPda(BigInt(cfgNow.roundSeq.toString()), meltProgramId);
+    const sig = await meltProgram.methods
+      .finalizeRound()
+      .accounts({
+        admin: adminPk,
+        config: meltConfigPda,
+        round: roundPda,
+        vault: meltVault,
+        nextRound: nextRoundPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    return sig;
+  };
+
+  const ensureFreshActiveRoundForBurn = async () => {
+    for (let i = 0; i < 24; i += 1) {
+      const cfgNow = await meltProgram.account.meltConfig.fetch(meltConfigPda);
+      const picked = await getActiveOrLatestRound(meltProgram, cfgNow, meltProgramId);
+      const now = Math.floor(Date.now() / 1000);
+
+      if (picked && picked.status === 'active') {
+        const endTs = Number(picked.round.endTs.toString());
+        if (endTs > now + 60) {
+          return { cfgNow, ...picked, endTs };
+        }
+        if (now >= endTs) {
+          const finalizeSig = await finalizeEndedActiveRound(cfgNow, picked.roundPda);
+          console.log('2_INFO', {
+            action: 'finalized_ended_active_round',
+            seq: picked.round.seq.toString(),
+            sig: finalizeSig,
+          });
+          await sleep(1000);
+          continue;
+        }
+      }
+
+      const cap = BigInt(cfgNow.vaultCapLamports.toString());
+      const vial = BigInt(cfgNow.vialLamports.toString());
+      const chunk = vial >= cap ? 1n : cap - vial > 2n * 1_000_000_000n ? 2n * 1_000_000_000n : cap - vial;
+      await fundViaTopup(chunk);
+
+      const fresh = await waitForFreshActiveRound(10, 60);
+      if (fresh) return fresh;
+    }
+    throw new Error('Scenario 2 failed: could not get fresh active round for burn');
+  };
+
   const before1 = await meltProgram.account.meltConfig.fetch(meltConfigPda);
   const vialBefore1 = BigInt(before1.vialLamports.toString());
   const roundSeqBefore1 = BigInt(before1.roundSeq.toString());
@@ -359,7 +472,11 @@ async function main() {
   const vialAfterTopup1 = BigInt(afterTopup1.vialLamports.toString());
   const roundSeqAfterTopup1 = BigInt(afterTopup1.roundSeq.toString());
   const topupIncreasedVial = vialAfterTopup1 > vialBefore1;
-  const topupTriggeredRound = roundSeqAfterTopup1 > roundSeqBefore1 || !!afterTopup1.activeRoundActive;
+  let topupTriggeredRound = roundSeqAfterTopup1 > roundSeqBefore1 || !!afterTopup1.activeRoundActive;
+  if (topupTriggeredRound) {
+    const freshAfterTopup = await waitForFreshActiveRound(10, 60);
+    topupTriggeredRound = !!freshAfterTopup;
+  }
   console.log('scenario1_state', {
     topupSig: topup1.sig,
     vialBefore1: vialBefore1.toString(),
@@ -385,32 +502,11 @@ async function main() {
     vialDeltaBuyContract: buyResult.delta.toString(),
   });
 
-  // 2) dobijamy cap=10 XNT i oczekujemy auto-start + RoundStarted event
-  let activeRoundPda: PublicKey | null = null;
-  let endTs = 0;
-  for (let i = 0; i < 16; i += 1) {
-    const cfg = await meltProgram.account.meltConfig.fetch(meltConfigPda);
-    const cap = BigInt(cfg.vaultCapLamports.toString());
-    const vial = BigInt(cfg.vialLamports.toString());
-    if (cfg.activeRoundActive) {
-      const activeSeq = BigInt(cfg.activeRoundSeq.toString());
-      const seqBuf = Buffer.alloc(8);
-      seqBuf.writeBigUInt64LE(activeSeq);
-      activeRoundPda = PublicKey.findProgramAddressSync([Buffer.from('melt_round'), seqBuf], meltProgramId)[0];
-      break;
-    }
-    if (vial >= cap) {
-      await fundViaTopup(1n);
-    } else {
-      const chunk = cap - vial > 2n * 1_000_000_000n ? 2n * 1_000_000_000n : cap - vial;
-      await fundViaTopup(chunk);
-    }
-    await sleep(800);
-  }
-  if (!activeRoundPda) throw new Error('Scenario 2 failed: round not auto-started at cap');
-
-  const activeRound = await meltProgram.account.meltRound.fetch(activeRoundPda);
-  endTs = Number(activeRound.endTs.toString());
+  // 2) dobijamy cap=10 XNT i oczekujemy świeżej ACTIVE rundy do burn
+  const freshRound = await ensureFreshActiveRoundForBurn();
+  const activeRoundPda = freshRound.roundPda;
+  const activeRound = freshRound.round;
+  const endTs = freshRound.endTs;
 
   if (roundStartedEvents.length === 0 && !hadActiveRoundAtStart) {
     console.log('2_WARN', 'RoundStarted event not observed via tx-log decode, but active round state is valid');
@@ -422,11 +518,6 @@ async function main() {
     roundStartedEvents: roundStartedEvents.length,
     hadActiveRoundAtStart,
   });
-
-  const now = Math.floor(Date.now() / 1000);
-  if (now >= endTs) {
-    throw new Error(`Round window too short to test burn: now=${now}, endTs=${endTs}`);
-  }
 
   // 3) burn w oknie (2 users)
   const userA = Keypair.generate();
@@ -502,75 +593,67 @@ async function main() {
     potAfter: potAfterMidFunding.toString(),
   });
 
-  // 4) finalize po end_ts
+  // 4) end_and_claim po end_ts (first caller finalizes + claims)
   while (Math.floor(Date.now() / 1000) <= endTs) {
     await sleep(1500);
   }
 
-  const cfgBeforeFinalize = await meltProgram.account.meltConfig.fetch(meltConfigPda);
-  const vialBeforeFinalize = BigInt(cfgBeforeFinalize.vialLamports.toString());
-  const bonusBeforeFinalize = BigInt(cfgBeforeFinalize.bonusPoolLamports.toString());
-  const roundBeforeFinalize = await meltProgram.account.meltRound.fetch(activeRoundPda);
+  const cfgBeforeEndClaimA = await meltProgram.account.meltConfig.fetch(meltConfigPda);
+  const vialBeforeEndClaimA = BigInt(cfgBeforeEndClaimA.vialLamports.toString());
+  const bonusBeforeEndClaimA = BigInt(cfgBeforeEndClaimA.bonusPoolLamports.toString());
+  const roundBeforeEndClaimA = await meltProgram.account.meltRound.fetch(activeRoundPda);
+  const nextRoundForA = deriveMeltRoundPda(BigInt(cfgBeforeEndClaimA.roundSeq.toString()), meltProgramId);
 
-  const finalizeSig = await meltProgram.methods
-    .finalizeRound()
+  const vaultBeforeClaimA = await connection.getBalance(meltVault, 'confirmed');
+  const endAndClaimASig = await meltProgram.methods
+    .endAndClaim()
     .accounts({
-      admin: adminPk,
+      user: userA.publicKey,
       config: meltConfigPda,
-      round: activeRoundPda,
       vault: meltVault,
+      round: activeRoundPda,
+      nextRound: nextRoundForA,
+      userRound: userARound,
+      systemProgram: SystemProgram.programId,
     })
+    .signers([userA])
     .rpc();
+  const payoutA = await getClaimPayout(connection, endAndClaimASig, userA.publicKey);
+  const vaultAfterClaimA = await connection.getBalance(meltVault, 'confirmed');
 
   const roundFinal = await meltProgram.account.meltRound.fetch(activeRoundPda);
   if (!('finalized' in roundFinal.status)) {
-    throw new Error('Scenario 4 failed: round status is not finalized');
+    throw new Error('Scenario 4 failed: round status is not finalized after end_and_claim');
   }
 
-  console.log('4_PASS', { finalizeSig });
+  console.log('4_PASS', { endAndClaimASig });
 
   // 7) rollover nie wlicza się do fiolki
-  const cfgAfterFinalize = await meltProgram.account.meltConfig.fetch(meltConfigPda);
-  const vialAfterFinalize = BigInt(cfgAfterFinalize.vialLamports.toString());
-  const bonusAfterFinalize = BigInt(cfgAfterFinalize.bonusPoolLamports.toString());
-  const vRound = BigInt(roundBeforeFinalize.vRound.toString());
-  const vPay = BigInt(roundBeforeFinalize.vPay.toString());
+  const cfgAfterEndClaimA = await meltProgram.account.meltConfig.fetch(meltConfigPda);
+  const vialAfterEndClaimA = BigInt(cfgAfterEndClaimA.vialLamports.toString());
+  const bonusAfterEndClaimA = BigInt(cfgAfterEndClaimA.bonusPoolLamports.toString());
+  const vRound = BigInt(roundBeforeEndClaimA.vRound.toString());
+  const vPay = BigInt(roundBeforeEndClaimA.vPay.toString());
   const rollover = vRound - vPay;
 
-  if (vialAfterFinalize !== vialBeforeFinalize) {
+  if (vialAfterEndClaimA !== vialBeforeEndClaimA) {
     throw new Error('Scenario 7 failed: vial changed on finalize (rollover leaked into vial)');
   }
-  if (bonusAfterFinalize !== bonusBeforeFinalize + rollover) {
+  if (bonusAfterEndClaimA !== bonusBeforeEndClaimA + rollover) {
     throw new Error('Scenario 7 failed: rollover not moved to bonus pool correctly');
   }
 
   console.log('7_PASS', {
     rollover: rollover.toString(),
-    bonusBefore: bonusBeforeFinalize.toString(),
-    bonusAfter: bonusAfterFinalize.toString(),
-    vialStable: vialAfterFinalize.toString(),
+    bonusBefore: bonusBeforeEndClaimA.toString(),
+    bonusAfter: bonusAfterEndClaimA.toString(),
+    vialStable: vialAfterEndClaimA.toString(),
   });
 
   // 5) claim pro-rata + payout verification (delta+fee and vault delta)
   const totalBurn = BigInt(roundFinal.totalBurn.toString());
   const expectedA = (BigInt(roundFinal.vPay.toString()) * 20n * 1_000_000_000n) / totalBurn;
   const expectedB = (BigInt(roundFinal.vPay.toString()) * 10n * 1_000_000_000n) / totalBurn;
-
-  const vaultBeforeClaimA = await connection.getBalance(meltVault, 'confirmed');
-  const claimASig = await meltProgram.methods
-    .claim()
-    .accounts({
-      user: userA.publicKey,
-      config: meltConfigPda,
-      vault: meltVault,
-      round: activeRoundPda,
-      userRound: userARound,
-      systemProgram: SystemProgram.programId,
-    })
-    .signers([userA])
-    .rpc();
-  const payoutA = await getClaimPayout(connection, claimASig, userA.publicKey);
-  const vaultAfterClaimA = await connection.getBalance(meltVault, 'confirmed');
 
   const payoutAByDeltaFee = BigInt(payoutA.delta + payoutA.fee);
   const payoutAByDeltaOnly = BigInt(payoutA.delta);
@@ -582,20 +665,23 @@ async function main() {
     );
   }
 
+  const cfgBeforeEndClaimB = await meltProgram.account.meltConfig.fetch(meltConfigPda);
+  const nextRoundForB = deriveMeltRoundPda(BigInt(cfgBeforeEndClaimB.roundSeq.toString()), meltProgramId);
   const vaultBeforeClaimB = await connection.getBalance(meltVault, 'confirmed');
-  const claimBSig = await meltProgram.methods
-    .claim()
+  const endAndClaimBSig = await meltProgram.methods
+    .endAndClaim()
     .accounts({
       user: userB.publicKey,
       config: meltConfigPda,
       vault: meltVault,
       round: activeRoundPda,
+      nextRound: nextRoundForB,
       userRound: userBRound,
       systemProgram: SystemProgram.programId,
     })
     .signers([userB])
     .rpc();
-  const payoutB = await getClaimPayout(connection, claimBSig, userB.publicKey);
+  const payoutB = await getClaimPayout(connection, endAndClaimBSig, userB.publicKey);
   const vaultAfterClaimB = await connection.getBalance(meltVault, 'confirmed');
 
   const payoutBByDeltaFee = BigInt(payoutB.delta + payoutB.fee);
@@ -609,8 +695,8 @@ async function main() {
   }
 
   console.log('5_PASS', {
-    claimASig,
-    claimBSig,
+    endAndClaimASig,
+    endAndClaimBSig,
     expectedA: expectedA.toString(),
     expectedB: expectedB.toString(),
     payoutAByDelta: payoutAByDeltaOnly.toString(),

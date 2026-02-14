@@ -294,6 +294,19 @@ const MELT_IDL = {
       ],
       args: [],
     },
+    {
+      name: "endAndClaim",
+      accounts: [
+        { name: "user", isMut: true, isSigner: true },
+        { name: "config", isMut: true, isSigner: false },
+        { name: "vault", isMut: true, isSigner: false },
+        { name: "round", isMut: true, isSigner: false },
+        { name: "nextRound", isMut: true, isSigner: false },
+        { name: "userRound", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [],
+    },
   ],
   accounts: [
     {

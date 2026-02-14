@@ -258,28 +258,6 @@ export default function MeltAdminPage() {
     });
   };
 
-  const finalizeRound = async () => {
-    if (!wallet || !melt.config || !melt.roundPda) return;
-    const cfg = melt.config;
-    await withBusy("FINALIZE", async () => {
-      const program = getMeltProgram(connection, wallet);
-      const nextRoundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(cfg.roundSeq.toString()));
-      const sig = await program.methods
-        .finalizeRound()
-        .accounts({
-          admin: wallet.publicKey,
-          config: deriveMeltConfigPda(),
-          round: melt.roundPda,
-          vault: cfg.vault,
-          nextRound: nextRoundPda,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-      toast.push({ title: "Finalize sent", description: sig, variant: "success" });
-      await melt.refresh();
-    });
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
       <TopBar />
@@ -376,13 +354,6 @@ export default function MeltAdminPage() {
                       onClick={topupVial}
                     >
                       {busy === "TOPUP" ? "Topup..." : "Topup vial"}
-                    </button>
-                    <button
-                      className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20 disabled:opacity-40"
-                      disabled={!isAdmin || !melt.roundPda || busy !== null}
-                      onClick={finalizeRound}
-                    >
-                      {busy === "FINALIZE" ? "Finalizing..." : "Finalize"}
                     </button>
                   </div>
                 </section>

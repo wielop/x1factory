@@ -309,70 +309,32 @@ pub mod melt_v1 {
     /// Claim pro-rata XNT for a finalized round.
     /// If the active round already ended, this call auto-finalizes it first.
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
-        let now = Clock::get()?.unix_timestamp;
-        let cfg = &mut ctx.accounts.config;
-        let round = &mut ctx.accounts.round;
+        claim_from_accounts(
+            &ctx.accounts.user.to_account_info(),
+            &mut ctx.accounts.config,
+            &ctx.accounts.vault.to_account_info(),
+            &mut ctx.accounts.round,
+            &mut ctx.accounts.next_round,
+            &mut ctx.accounts.user_round,
+            &ctx.bumps,
+            false,
+        )
+    }
 
-        if round.status == RoundStatus::Active {
-            let rollover = finalize_active_round_if_ended(cfg, round, now)?;
-            emit!(Finalized { seq: round.seq, rollover });
-        }
-        if let Some(info) = try_start_round(cfg, &mut ctx.accounts.next_round, &ctx.bumps, false)? {
-            emit!(RoundStarted {
-                seq: info.seq,
-                start_ts: info.start_ts,
-                end_ts: info.end_ts,
-                pot: info.pot,
-                v_pay: info.v_pay,
-            });
-        }
-        require!(round.status == RoundStatus::Finalized, MeltError::BadRoundStatus);
-
-        let ur = &mut ctx.accounts.user_round;
-        require!(!ur.claimed, MeltError::AlreadyClaimed);
-        require!(ur.burned > 0, MeltError::NothingToClaim);
-
-        // If nobody burned, payout is zero.
-        if round.total_burn == 0 || round.v_pay == 0 {
-            ur.claimed = true;
-            return Ok(());
-        }
-
-        // payout = v_pay * burned / total_burn
-        let num = (round.v_pay as u128)
-            .checked_mul(ur.burned as u128)
-            .ok_or(MeltError::MathOverflow)?;
-        let payout = num
-            .checked_div(round.total_burn as u128)
-            .ok_or(MeltError::MathOverflow)?;
-        let payout_u64 = u64::try_from(payout).map_err(|_| MeltError::MathOverflow)?;
-
-        let vault_balance = ctx.accounts.vault.to_account_info().lamports();
-        require!(vault_balance >= payout_u64, MeltError::InsufficientVaultBalance);
-
-        // NOTE: vault is program-owned, so we move lamports directly.
-        {
-            let vault_ai = ctx.accounts.vault.to_account_info();
-            let user_ai = ctx.accounts.user.to_account_info();
-            let mut vault_lamports = vault_ai.try_borrow_mut_lamports()?;
-            let mut user_lamports = user_ai.try_borrow_mut_lamports()?;
-            let new_vault = (*vault_lamports)
-                .checked_sub(payout_u64)
-                .ok_or(MeltError::MathOverflow)?;
-            let new_user = (*user_lamports)
-                .checked_add(payout_u64)
-                .ok_or(MeltError::MathOverflow)?;
-            **vault_lamports = new_vault;
-            **user_lamports = new_user;
-        }
-
-        ur.claimed = true;
-        emit!(Claimed {
-            user: ctx.accounts.user.key(),
-            round: round.key(),
-            payout: payout_u64,
-        });
-        Ok(())
+    /// Permissionless end+claim path for users.
+    /// If round is ACTIVE and already ended, it finalizes and then claims.
+    /// If round is already FINALIZED, it claims directly.
+    pub fn end_and_claim(ctx: Context<EndAndClaim>) -> Result<()> {
+        claim_from_accounts(
+            &ctx.accounts.user.to_account_info(),
+            &mut ctx.accounts.config,
+            &ctx.accounts.vault.to_account_info(),
+            &mut ctx.accounts.round,
+            &mut ctx.accounts.next_round,
+            &mut ctx.accounts.user_round,
+            &ctx.bumps,
+            true,
+        )
     }
 }
 
@@ -475,7 +437,7 @@ fn finalize_active_round_if_ended(
     require!(round.status == RoundStatus::Active, MeltError::BadRoundStatus);
     require!(cfg.active_round_active, MeltError::BadRoundStatus);
     require!(round.seq == cfg.active_round_seq, MeltError::InvalidParams);
-    require!(now > round.end_ts, MeltError::RoundNotEnded);
+    require!(now >= round.end_ts, MeltError::RoundNotEnded);
 
     let rollover = round
         .v_round
@@ -488,6 +450,75 @@ fn finalize_active_round_if_ended(
     round.status = RoundStatus::Finalized;
     cfg.active_round_active = false;
     Ok(rollover)
+}
+
+fn claim_from_accounts(
+    user_ai: &AccountInfo,
+    cfg: &mut Account<MeltConfig>,
+    vault_ai: &AccountInfo,
+    round: &mut Account<MeltRound>,
+    next_round: &mut Account<MeltRound>,
+    ur: &mut Account<MeltUserRound>,
+    bumps: &BTreeMap<String, u8>,
+    allow_finalize_active: bool,
+) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+
+    if allow_finalize_active && round.status == RoundStatus::Active {
+        let rollover = finalize_active_round_if_ended(cfg, round, now)?;
+        emit!(Finalized { seq: round.seq, rollover });
+    }
+
+    if let Some(info) = try_start_round(cfg, next_round, bumps, false)? {
+        emit!(RoundStarted {
+            seq: info.seq,
+            start_ts: info.start_ts,
+            end_ts: info.end_ts,
+            pot: info.pot,
+            v_pay: info.v_pay,
+        });
+    }
+
+    require!(round.status == RoundStatus::Finalized, MeltError::BadRoundStatus);
+    require!(!ur.claimed, MeltError::AlreadyClaimed);
+    require!(ur.burned > 0, MeltError::NothingToClaim);
+
+    if round.total_burn == 0 || round.v_pay == 0 {
+        ur.claimed = true;
+        return Ok(());
+    }
+
+    let num = (round.v_pay as u128)
+        .checked_mul(ur.burned as u128)
+        .ok_or(MeltError::MathOverflow)?;
+    let payout = num
+        .checked_div(round.total_burn as u128)
+        .ok_or(MeltError::MathOverflow)?;
+    let payout_u64 = u64::try_from(payout).map_err(|_| MeltError::MathOverflow)?;
+
+    let vault_balance = vault_ai.lamports();
+    require!(vault_balance >= payout_u64, MeltError::InsufficientVaultBalance);
+
+    {
+        let mut vault_lamports = vault_ai.try_borrow_mut_lamports()?;
+        let mut user_lamports = user_ai.try_borrow_mut_lamports()?;
+        let new_vault = (*vault_lamports)
+            .checked_sub(payout_u64)
+            .ok_or(MeltError::MathOverflow)?;
+        let new_user = (*user_lamports)
+            .checked_add(payout_u64)
+            .ok_or(MeltError::MathOverflow)?;
+        **vault_lamports = new_vault;
+        **user_lamports = new_user;
+    }
+
+    ur.claimed = true;
+    emit!(Claimed {
+        user: *user_ai.key,
+        round: round.key(),
+        payout: payout_u64,
+    });
+    Ok(())
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -801,6 +832,34 @@ pub struct FinalizeRound<'info> {
 
 #[derive(Accounts)]
 pub struct Claim<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump_config)]
+    pub config: Account<'info, MeltConfig>,
+
+    #[account(mut, seeds = [VAULT_SEED], bump = config.bump_vault)]
+    pub vault: Account<'info, MeltVault>,
+
+    #[account(mut, seeds = [ROUND_SEED, &round.seq.to_le_bytes()], bump = round.bump)]
+    pub round: Account<'info, MeltRound>,
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = 8 + MeltRound::INIT_SPACE,
+        seeds = [ROUND_SEED, &config.round_seq.to_le_bytes()],
+        bump
+    )]
+    pub next_round: Account<'info, MeltRound>,
+
+    #[account(mut, seeds = [USER_ROUND_SEED, user.key().as_ref(), round.key().as_ref()], bump = user_round.bump)]
+    pub user_round: Account<'info, MeltUserRound>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct EndAndClaim<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 

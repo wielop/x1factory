@@ -364,18 +364,18 @@ export default function MeltPlayerPage() {
         ? "FINALIZED"
         : "IDLE";
   const eventTitle = phase === "FINALIZED"
-    ? "EVENT ENDED"
+    ? "MELT ENDED"
     : phase === "ENDED"
-      ? "EVENT ENDED - NEEDS FINALIZATION"
+      ? "MELT ENDED - NEEDS FINALIZATION"
       : phase === "LIVE"
-        ? "EVENT LIVE"
-        : "EVENT";
+        ? "MELT LIVE"
+        : "MELT";
   const eventSubtitle = phase === "FINALIZED"
     ? "Round finished. Rewards are ready to claim."
     : phase === "ENDED"
       ? "Waiting for finalization. First signer closes the round."
       : phase === "LIVE"
-        ? `EVENT LIVE - ${countdown}`
+        ? `MELT LIVE - ${countdown}`
         : "Charging...";
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
@@ -552,7 +552,7 @@ export default function MeltPlayerPage() {
         </div>
 
         <section className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-5">
-          <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">Event Vial</div>
+          <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">MELT Vial</div>
           <div className="mt-4 flex flex-col items-center gap-4">
             <div
               className={`relative h-36 w-14 overflow-hidden rounded-full border bg-black/40 ${
@@ -573,16 +573,16 @@ export default function MeltPlayerPage() {
 
             <div className="text-center">
               <div className="text-2xl font-semibold">
-                {showingNextCycle ? "Next Event" : "Event Vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports)} / {formatAmount(capLamports)} XNT
+                {showingNextCycle ? "Next MELT Cycle" : "MELT Vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports, 9n, 2)} / {formatAmount(capLamports, 9n, 2)} XNT
               </div>
               <div className="mt-1 text-sm text-white/70">
                 {phase === "LIVE"
                   ? countdown
                   : phase === "ENDED"
-                    ? "Event ended. Finalize event to unlock claim."
+                    ? "MELT ended. Finalize MELT to unlock claim."
                     : phase === "FINALIZED"
-                      ? `Previous event finalized. Claims open. Next cycle charging (${formatAmount(missingToStart)} XNT to start).`
-                      : `Charging... Missing ${formatAmount(missingToStart)} XNT to start.`}
+                      ? `Previous MELT finalized. Claims open. Next cycle charging (${formatAmount(missingToStart, 9n, 2)} XNT to start).`
+                      : `Charging... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
               </div>
             </div>
           </div>
@@ -635,7 +635,7 @@ export default function MeltPlayerPage() {
           ) : (
             <>
               <div className="mt-3 grid gap-2 text-sm text-white/80 sm:grid-cols-2">
-                <div>Burned: {formatAmount(yourBurn)} MIND</div>
+                <div>Burned: {formatAmount(yourBurn, 9n, 1)} MIND</div>
                 <div>Claimed: {userClaimed ? "Yes" : "No"}</div>
                 <div>Your share: {yourShare}%</div>
                 <div>Estimate: {formatAmount(estimatedPayout)} XNT</div>
@@ -778,7 +778,7 @@ export default function MeltPlayerPage() {
       {phase === "ENDED" ? (
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/85 backdrop-blur">
           <div className="mx-auto max-w-4xl px-4 py-3 sm:px-6">
-            <div className="mb-2 text-xs text-white/70">The event ended. First signer finalizes it.</div>
+            <div className="mb-2 text-xs text-white/70">The MELT round ended. First signer finalizes it.</div>
             <button
               className="w-full rounded-lg border border-emerald-300/60 bg-emerald-500/30 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={actionState.primaryDisabled}

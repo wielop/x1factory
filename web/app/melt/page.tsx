@@ -616,8 +616,8 @@ export default function MeltPlayerPage() {
                       <div key={row.wallet} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${tone}`}>
                         <div className="text-sm font-semibold">{label} · {shortWallet(row.wallet)}</div>
                         <div className="text-right text-sm">
-                          <div>{formatAmount(row.payout)} XNT</div>
-                          <div className="text-xs opacity-80">Burned: {formatAmount(row.burned)} MIND</div>
+                          <div>Reward: {formatAmount(row.payout, 9n, 2)} XNT</div>
+                          <div className="text-xs opacity-80">Burned: {formatAmount(row.burned, 9n, 1)} MIND</div>
                         </div>
                       </div>
                     );

@@ -51,24 +51,13 @@ const percent = (num: bigint, den: bigint) => {
   return val.toFixed(2);
 };
 
-const formatLocalDateTime = (tsSec: number) =>
-  new Date(tsSec * 1000).toLocaleString(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-const formatEndedRelative = (nowSec: number, endTsSec: number) => {
-  const delta = nowSec - endTsSec;
-  if (delta < 60) return `Ended ${delta}s ago`;
-  if (delta < 3600) return `Ended ${Math.floor(delta / 60)}m ago`;
-  if (delta < 86_400) return `Ended ${Math.floor(delta / 3600)}h ago`;
-  return `Ended ${Math.floor(delta / 86_400)}d ago`;
-};
-
 type MeltPhase = "IDLE" | "LIVE" | "ENDED" | "FINALIZED";
 type LeaderboardRow = {
+  wallet: string;
+  burned: bigint;
+  payout: bigint;
+};
+type WinnerRow = {
   wallet: string;
   burned: bigint;
   payout: bigint;
@@ -96,6 +85,7 @@ export default function MeltPlayerPage() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const leaderboardRoundRef = useRef<string>("");
+  const [lastWinners, setLastWinners] = useState<WinnerRow[]>([]);
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
@@ -132,7 +122,6 @@ export default function MeltPlayerPage() {
   const hasRound = !!melt.round;
   const roundEndTs = melt.round ? Number(melt.round.endTs.toString()) : 0;
   const ended = hasRound && nowSec >= roundEndTs;
-  const roundStartTs = melt.round ? Number(melt.round.startTs.toString()) : 0;
   const isActive = hasRound && normalizedStatus === "ACTIVE";
   const isFinalized = hasRound && normalizedStatus === "FINALIZED";
   const userClaimed = !!melt.userRound?.claimed;
@@ -382,15 +371,15 @@ export default function MeltPlayerPage() {
         ? "EVENT LIVE"
         : "EVENT";
   const eventSubtitle = phase === "FINALIZED"
-    ? "This round has ended. You can claim your rewards now."
+    ? "Round finished. Rewards are ready to claim."
     : phase === "ENDED"
       ? "Waiting for finalization. First signer closes the round."
       : phase === "LIVE"
         ? `EVENT LIVE - ${countdown}`
         : "Charging...";
-  const endedRelative = hasRound && ended ? formatEndedRelative(nowSec, roundEndTs) : "";
-  const endedAt = hasRound && ended ? formatLocalDateTime(roundEndTs) : "";
-  const startAt = hasRound ? formatLocalDateTime(roundStartTs) : "";
+  const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
+    ? "In the last round we distributed"
+    : "Round payout";
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || !roundSeq) {
       setLeaderboardRows([]);
@@ -496,6 +485,47 @@ export default function MeltPlayerPage() {
     return () => window.clearInterval(id);
   }, [phase, melt.roundPda, roundSeq]);
 
+  useEffect(() => {
+    const refreshLastWinners = async () => {
+      if (!melt.roundPda) {
+        setLastWinners([]);
+        return;
+      }
+      try {
+        const roundFilterOffset = 8 + 32;
+        const userRounds = await connection.getProgramAccounts(meltProgramId, {
+          commitment: "confirmed",
+          filters: [
+            { dataSize: 82 },
+            { memcmp: { offset: roundFilterOffset, bytes: melt.roundPda.toBase58() } },
+          ],
+        });
+
+        const totals = new Map<string, bigint>();
+        for (const entry of userRounds) {
+          const data = entry.account.data;
+          if (data.length < 82) continue;
+          const user = new PublicKey(data.subarray(8, 40)).toBase58();
+          const burned = data.readBigUInt64LE(72);
+          if (burned <= 0n) continue;
+          totals.set(user, (totals.get(user) ?? 0n) + burned);
+        }
+
+        const rows: WinnerRow[] = Array.from(totals.entries()).map(([walletAddr, burned]) => ({
+          wallet: walletAddr,
+          burned,
+          payout: totalBurn > 0n ? (vPay * burned) / totalBurn : 0n,
+        }));
+        rows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLastWinners(rows.slice(0, 3));
+      } catch {
+        setLastWinners([]);
+      }
+    };
+
+    void refreshLastWinners();
+  }, [connection, melt.roundPda, meltProgramId, totalBurn, vPay]);
+
   const topRows = leaderboardRows.slice(0, 10);
   const yourRowIndex = publicKey
     ? leaderboardRows.findIndex((r) => r.wallet === publicKey.toBase58())
@@ -565,15 +595,32 @@ export default function MeltPlayerPage() {
               {statusBadge}
             </div>
           </div>
-          <div className="mt-3 text-3xl font-semibold">Payout locked: {formatAmount(vPay)} XNT</div>
+          <div className="mt-3 text-3xl font-semibold">{payoutTitle}: {formatAmount(vPay)} XNT</div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
           <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn)} MIND</div>
-          <div className="mt-2 text-sm text-white/65">
-            {phase === "LIVE" ? countdown : phase === "ENDED" ? "Waiting for finalize" : phase === "FINALIZED" ? "Ready to claim" : "Charging"}
-          </div>
-          {hasRound && ended ? (
-            <div className="mt-2 text-xs text-white/60">
-              {endedRelative} · Start: {startAt} · End: {endedAt}
+          {(phase === "FINALIZED" || phase === "ENDED") ? (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
+              <div className="text-xs uppercase tracking-[0.18em] text-cyan-300">Last winners</div>
+              <div className="mt-2 grid gap-2">
+                {lastWinners.length === 0 ? (
+                  <div className="text-sm text-white/60">No winners data yet.</div>
+                ) : (
+                  lastWinners.map((row, idx) => {
+                    const tone = idx === 0
+                      ? "border-yellow-300/40 bg-yellow-500/10 text-yellow-200"
+                      : idx === 1
+                        ? "border-slate-300/40 bg-slate-300/10 text-slate-100"
+                        : "border-amber-700/50 bg-amber-700/10 text-amber-200";
+                    const label = idx === 0 ? "TOP 1" : idx === 1 ? "TOP 2" : "TOP 3";
+                    return (
+                      <div key={row.wallet} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${tone}`}>
+                        <div className="text-sm font-semibold">{label} · {shortWallet(row.wallet)}</div>
+                        <div className="text-sm">{formatAmount(row.payout)} XNT</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           ) : null}
         </section>

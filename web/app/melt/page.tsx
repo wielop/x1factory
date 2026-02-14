@@ -375,6 +375,7 @@ export default function MeltPlayerPage() {
 
   const missingToStart = capLamports > vialLamports ? capLamports - vialLamports : 0n;
   const nextProgressPct = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
+  const showingNextCycle = phase === "IDLE" || phase === "FINALIZED";
   const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
 
   const statusBadge = phase === "LIVE"
@@ -530,13 +531,13 @@ export default function MeltPlayerPage() {
                     ? "bg-gradient-to-t from-cyan-300 via-cyan-200 to-white"
                     : "bg-gradient-to-t from-cyan-500 to-cyan-200"
                 }`}
-                style={{ height: `${Math.max(4, Math.min(100, phase === "IDLE" ? nextProgressPct : 100))}%` }}
+                style={{ height: `${Math.max(4, Math.min(100, showingNextCycle ? nextProgressPct : 100))}%` }}
               />
             </div>
 
             <div className="text-center">
               <div className="text-2xl font-semibold">
-                {phase === "IDLE" ? "Next Event" : "Event Vial"}: {formatAmount(phase === "IDLE" ? vialLamports : capLamports)} / {formatAmount(capLamports)} XNT
+                {showingNextCycle ? "Next Event" : "Event Vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports)} / {formatAmount(capLamports)} XNT
               </div>
               <div className="mt-1 text-sm text-white/70">
                 {phase === "LIVE"
@@ -544,7 +545,7 @@ export default function MeltPlayerPage() {
                   : phase === "ENDED"
                     ? "Event ended. Finalize event to unlock claim."
                     : phase === "FINALIZED"
-                      ? "Event finalized. Claim is open."
+                      ? `Previous event finalized. Claims open. Next cycle charging (${formatAmount(missingToStart)} XNT to start).`
                       : `Charging... Missing ${formatAmount(missingToStart)} XNT to start.`}
               </div>
             </div>

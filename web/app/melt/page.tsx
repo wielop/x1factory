@@ -108,11 +108,16 @@ export default function MeltPlayerPage() {
 
   const nowSec = nowTs;
   const normalizedStatus = roundStatus.toUpperCase();
-  const ended = !!(melt.round && nowSec >= Number(melt.round.endTs.toString()));
-  const live = !!(melt.round && normalizedStatus === "ACTIVE" && !ended);
-  const needsEndAndClaim = !!(melt.round && normalizedStatus === "ACTIVE" && ended);
-  const claimPhase = !!(melt.round && normalizedStatus === "FINALIZED");
-  const chargingPhase = !melt.round || (!live && !needsEndAndClaim && !claimPhase);
+  const hasRound = !!melt.round;
+  const roundEndTs = melt.round ? Number(melt.round.endTs.toString()) : 0;
+  const ended = hasRound && nowSec >= roundEndTs;
+  const isActive = hasRound && normalizedStatus === "ACTIVE";
+  const isFinalized = hasRound && normalizedStatus === "FINALIZED";
+  const userClaimed = !!melt.userRound?.claimed;
+  const live = isActive && !ended;
+  const needsEndAndClaim = isActive && ended;
+  const claimPhase = isFinalized;
+  const chargingPhase = !hasRound || (!live && !needsEndAndClaim && !claimPhase);
   const showEventSection = !chargingPhase;
 
   const isLiveWindow = useMemo(() => {
@@ -144,6 +149,9 @@ export default function MeltPlayerPage() {
   const claimTargets = melt.claimContexts ?? [];
   const claimableCount = claimTargets.length;
   const canClaimAnyRound = claimableCount > 0;
+  const hasWallet = !!(wallet && publicKey);
+  const canEndAndClaim = isActive && ended && !userClaimed;
+  const canClaim = isFinalized && !userClaimed;
   const canEndAndClaimCurrentRound = !!(
     publicKey &&
     melt.roundPda &&
@@ -151,6 +159,8 @@ export default function MeltPlayerPage() {
     !melt.userRound.claimed &&
     BigInt(melt.userRound.burned.toString()) > 0n
   );
+  const canRunEndAndClaim = canEndAndClaim && hasWallet && canEndAndClaimCurrentRound;
+  const canRunClaim = canClaim && hasWallet && canClaimAnyRound;
 
   const burnError = (message: string) => {
     if (message.includes("BelowBurnMin")) {
@@ -432,8 +442,41 @@ export default function MeltPlayerPage() {
     yourRowIndex > 0 && rowAbove
       ? rowAbove.burned > yourBurn
         ? rowAbove.burned - yourBurn + 1n
-        : 1n
+      : 1n
       : 0n;
+
+  let actionLabel = "No event yet";
+  let actionDisabled = true;
+  let actionBusy: "CLAIM" | "END_CLAIM" | null = null;
+  let actionHandler: (() => void) | null = null;
+  if (canEndAndClaim) {
+    actionLabel = "End event & claim rewards";
+    actionDisabled = !canRunEndAndClaim || busy !== null;
+    actionBusy = "END_CLAIM";
+    actionHandler = () => void endAndClaimCurrentRound();
+  } else if (canClaim) {
+    actionLabel = "Claim rewards";
+    actionDisabled = !canRunClaim || busy !== null;
+    actionBusy = "CLAIM";
+    actionHandler = () => void claim();
+  } else if (userClaimed) {
+    actionLabel = "Already claimed";
+    actionDisabled = true;
+  } else if (isActive && !ended) {
+    actionLabel = "Claim available after event ends";
+    actionDisabled = true;
+  } else if (!hasRound) {
+    actionLabel = "No event yet";
+    actionDisabled = true;
+  }
+
+  const actionHint = isActive && ended
+    ? "First signer closes the event."
+    : isFinalized
+      ? "Event closed - claim now."
+      : isActive && !ended
+        ? "Rewards unlock at the end."
+        : "Waiting for next event.";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
@@ -579,66 +622,31 @@ export default function MeltPlayerPage() {
                   <div className="mt-2 text-xs text-white/60">Claim available after event ends.</div>
                 </div>
               ) : null}
-
-              {needsEndAndClaim ? (
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-                  <div className="text-xs uppercase tracking-[0.2em] text-white/60">Burn</div>
-                  <div className="mt-2 flex items-center gap-3">
-                    <button
-                      className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white/70 disabled:opacity-60"
-                      disabled
-                    >
-                      BURN NOW
-                    </button>
-                    <div className="text-xs text-white/60">Event ended</div>
-                  </div>
-                </div>
-              ) : null}
-
-              {(claimPhase || needsEndAndClaim) ? (
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-                  <div className="text-xs uppercase tracking-[0.2em] text-white/60">Claim</div>
-                  <div className="mt-2 text-2xl font-semibold text-emerald-100">
-                    Your final payout: {formatAmount(estimatedPayout)} XNT
-                  </div>
-                  <div className="mt-2 flex items-center gap-3">
-                    {needsEndAndClaim ? (
-                      <button
-                        className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
-                        disabled={!canEndAndClaimCurrentRound || busy !== null}
-                        onClick={endAndClaimCurrentRound}
-                      >
-                        {busy === "END_CLAIM" ? "Processing..." : "End event & claim rewards"}
-                      </button>
-                    ) : (
-                      <button
-                        className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
-                        disabled={!canClaimAnyRound || busy !== null}
-                        onClick={claim}
-                      >
-                        {busy === "CLAIM" ? "Claiming..." : `Claim rewards${claimableCount > 1 ? ` (${claimableCount})` : ""}`}
-                      </button>
-                    )}
-                    <div className="text-xs text-white/60">
-                      {needsEndAndClaim
-                        ? canEndAndClaimCurrentRound
-                          ? "Finalization and claim in one transaction."
-                          : "No claimable burn for this wallet in current event."
-                        : canClaimAnyRound
-                          ? `Claim available${claimableCount > 1 ? ` (${claimableCount} rounds)` : ""}`
-                          : "No unclaimed rewards yet"}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {chargingPhase ? (
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white/70">
-                  Get ready. Event starts instantly once the vial is full.
-                </div>
-              ) : null}
             </>
           )}
+
+          <div className="mt-4 rounded-xl border border-emerald-400/30 bg-black/30 p-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-emerald-200">ACTIONS</div>
+            <div className="mt-3">
+              <button
+                className="w-full rounded-lg border border-emerald-400/50 bg-emerald-500/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/35 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={actionDisabled}
+                onClick={actionHandler ?? undefined}
+              >
+                {actionBusy && busy === actionBusy ? "Processing..." : actionLabel}
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-white/70">{actionHint}</div>
+            {!hasWallet ? (
+              <div className="mt-2 text-xs text-white/50">Connect wallet to execute actions.</div>
+            ) : null}
+          </div>
+
+          {chargingPhase ? (
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white/70">
+              Get ready. Event starts instantly once the vial is full.
+            </div>
+          ) : null}
         </section>
 
         {showEventSection ? (

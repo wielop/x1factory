@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BN } from "@coral-xyz/anchor";
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Connection, SystemProgram } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddressSync,
@@ -18,6 +18,7 @@ import {
   deriveMeltUserRoundPda,
   getMindMint,
   getMeltProgram,
+  getMeltProgramId,
   getMeltRpcUrl,
 } from "@/lib/melt";
 import { useMeltState } from "@/lib/useMeltState";
@@ -51,6 +52,11 @@ const percent = (num: bigint, den: bigint) => {
 };
 
 type MeltPhase = "IDLE" | "LIVE" | "ENDED" | "FINALIZED";
+type LeaderboardRow = {
+  wallet: string;
+  burned: bigint;
+  payout: bigint;
+};
 
 type ActionState = {
   primaryLabel: string;
@@ -62,6 +68,8 @@ type ActionState = {
   hint: string;
 };
 
+const shortWallet = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
+
 export default function MeltPlayerPage() {
   const { publicKey } = useWallet();
   const wallet = useAnchorWallet() ?? null;
@@ -71,9 +79,14 @@ export default function MeltPlayerPage() {
   const [busy, setBusy] = useState<"BURN" | "FINALIZE" | "CLAIM" | null>(null);
   const [burnInput, setBurnInput] = useState("10");
   const refreshToastAtRef = useRef(0);
+  const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const leaderboardRoundRef = useRef<string>("");
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
+  const meltProgramId = useMemo(() => getMeltProgramId(), []);
 
   const melt = useMeltState({
     connection,
@@ -341,8 +354,8 @@ export default function MeltPlayerPage() {
     };
   }, [busy, canClaim, hasWallet, phase, userClaimed]);
 
-  const renderActionButtons = (sticky = false) => (
-    <div className={sticky ? "grid gap-2 sm:grid-cols-2" : "grid gap-2"}>
+  const renderActionButtons = () => (
+    <div className="grid gap-2">
       <button
         className="rounded-lg border border-emerald-300/60 bg-emerald-500/30 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={actionState.primaryDisabled}
@@ -362,6 +375,7 @@ export default function MeltPlayerPage() {
 
   const missingToStart = capLamports > vialLamports ? capLamports - vialLamports : 0n;
   const nextProgressPct = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
+  const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
 
   const statusBadge = phase === "LIVE"
     ? "LIVE"
@@ -370,9 +384,126 @@ export default function MeltPlayerPage() {
       : phase === "FINALIZED"
         ? "FINALIZED"
         : "IDLE";
+  const refreshLeaderboard = async () => {
+    if (!melt.roundPda || !roundSeq) {
+      setLeaderboardRows([]);
+      leaderboardRoundRef.current = "";
+      return;
+    }
+
+    const currentRoundKey = phase === "LIVE" ? melt.roundPda.toBase58() : "all-time";
+    if (leaderboardRoundRef.current !== currentRoundKey) {
+      setLeaderboardRows([]);
+      leaderboardRoundRef.current = currentRoundKey;
+    }
+
+    try {
+      setLeaderboardLoading(true);
+      setLeaderboardError(null);
+      const roundFilterOffset = 8 + 32;
+      const filters = phase === "LIVE"
+        ? [
+            { dataSize: 82 },
+            { memcmp: { offset: roundFilterOffset, bytes: melt.roundPda.toBase58() } },
+          ]
+        : [{ dataSize: 82 }];
+      const userRounds = await connection.getProgramAccounts(meltProgramId, {
+        commitment: "confirmed",
+        filters,
+      });
+
+      const roundBurns = new Map<string, Map<string, bigint>>();
+      for (const entry of userRounds) {
+        const data = entry.account.data;
+        if (data.length < 82) continue;
+        const user = new PublicKey(data.subarray(8, 40)).toBase58();
+        const round = new PublicKey(data.subarray(40, 72)).toBase58();
+        const burned = data.readBigUInt64LE(72);
+        if (burned <= 0n) continue;
+        if (!roundBurns.has(round)) roundBurns.set(round, new Map<string, bigint>());
+        const byUser = roundBurns.get(round)!;
+        byUser.set(user, (byUser.get(user) ?? 0n) + burned);
+      }
+
+      const totals = new Map<string, { burned: bigint; payout: bigint }>();
+      if (phase === "LIVE") {
+        const byUser = roundBurns.get(melt.roundPda.toBase58()) ?? new Map<string, bigint>();
+        for (const [walletAddr, burned] of byUser.entries()) {
+          const payout = totalBurn > 0n ? (vPay * burned) / totalBurn : 0n;
+          totals.set(walletAddr, { burned, payout });
+        }
+      } else {
+        const roundKeys = Array.from(roundBurns.keys()).map((k) => new PublicKey(k));
+        for (let i = 0; i < roundKeys.length; i += 100) {
+          const chunk = roundKeys.slice(i, i + 100);
+          const infos = await connection.getMultipleAccountsInfo(chunk, "confirmed");
+          infos.forEach((info, idx) => {
+            if (!info || info.data.length < 58) return;
+            const status = info.data.readUInt8(56);
+            if (status !== 2) return;
+            const roundKey = chunk[idx].toBase58();
+            const vPayRound = info.data.readBigUInt64LE(40);
+            const totalBurnRound = info.data.readBigUInt64LE(48);
+            const byUser = roundBurns.get(roundKey);
+            if (!byUser) return;
+            for (const [walletAddr, burned] of byUser.entries()) {
+              const payout = totalBurnRound > 0n ? (vPayRound * burned) / totalBurnRound : 0n;
+              const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n };
+              totals.set(walletAddr, {
+                burned: prev.burned + burned,
+                payout: prev.payout + payout,
+              });
+            }
+          });
+        }
+      }
+
+      const nextRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
+        wallet: walletAddr,
+        burned: v.burned,
+        payout: v.payout,
+      }));
+      nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+      setLeaderboardRows(nextRows);
+      if (nextRows.length === 0) {
+        setLeaderboardError(phase === "LIVE" ? "No burns recorded for this round yet." : "No finalized rounds data yet.");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setLeaderboardError(`Leaderboard unavailable: ${msg}`);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!melt.roundPda || !roundSeq) return;
+    void refreshLeaderboard();
+  }, [melt.roundPda, roundSeq, phase]);
+
+  useEffect(() => {
+    if (phase !== "LIVE" || !melt.roundPda || !roundSeq) return;
+    const id = window.setInterval(() => {
+      void refreshLeaderboard();
+    }, 12_000);
+    return () => window.clearInterval(id);
+  }, [phase, melt.roundPda, roundSeq]);
+
+  const topRows = leaderboardRows.slice(0, 10);
+  const yourRowIndex = publicKey
+    ? leaderboardRows.findIndex((r) => r.wallet === publicKey.toBase58())
+    : -1;
+  const yourOutsideTop = yourRowIndex >= 10 ? leaderboardRows[yourRowIndex] : null;
+  const rowAbove = yourRowIndex > 0 ? leaderboardRows[yourRowIndex - 1] : null;
+  const climbDelta =
+    yourRowIndex > 0 && rowAbove
+      ? rowAbove.burned > yourBurn
+        ? rowAbove.burned - yourBurn + 1n
+        : 1n
+      : 0n;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black pb-32 text-white">
+    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
       <TopBar />
       <div className="mx-auto max-w-4xl px-6 pt-10">
         <div className="mb-5 flex items-center justify-between gap-4">
@@ -474,6 +605,13 @@ export default function MeltPlayerPage() {
                       {busy === "BURN" ? "Burning..." : "BURN NOW"}
                     </button>
                   </div>
+                  {yourRowIndex > 0 && climbDelta > 0n ? (
+                    <div className="mt-2 text-xs text-cyan-200">
+                      To reach #{yourRowIndex}, you need +{formatAmount(climbDelta)} MIND.
+                    </div>
+                  ) : yourRowIndex === 0 ? (
+                    <div className="mt-2 text-xs text-cyan-200">You are on top of the leaderboard.</div>
+                  ) : null}
                 </div>
               ) : null}
             </>
@@ -486,6 +624,73 @@ export default function MeltPlayerPage() {
             {!hasWallet ? (
               <div className="mt-2 text-xs text-white/50">Connect wallet to execute actions.</div>
             ) : null}
+          </div>
+        </section>
+
+        <section className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Leaderboard</div>
+            <div className="flex items-center gap-2">
+              <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                {phase === "LIVE" ? "LIVE" : "FINAL RESULTS"}
+              </div>
+              <button
+                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
+                onClick={() => void refreshLeaderboard()}
+                disabled={leaderboardLoading}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead className="text-left text-xs uppercase tracking-[0.16em] text-white/60">
+                <tr>
+                  <th className="pb-2">Rank</th>
+                  <th className="pb-2">Wallet</th>
+                  <th className="pb-2">Burned (MIND)</th>
+                  <th className="pb-2">Payout (XNT)</th>
+                </tr>
+              </thead>
+              <tbody className="text-white/85">
+                {topRows.map((row, idx) => {
+                  const mine = publicKey?.toBase58() === row.wallet;
+                  return (
+                    <tr key={row.wallet} className={mine ? "bg-cyan-500/10" : ""}>
+                      <td className="py-1.5 pr-3">#{idx + 1}</td>
+                      <td className="py-1.5 pr-3">
+                        <div className="flex items-center gap-2">
+                          <span>{shortWallet(row.wallet)}</span>
+                          <button
+                            type="button"
+                            className="rounded border border-white/20 px-1.5 py-0.5 text-[10px] text-white/70 hover:bg-white/10"
+                            onClick={() => navigator.clipboard.writeText(row.wallet)}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-3">{formatAmount(row.burned)}</td>
+                      <td className="py-1.5 pr-3">{formatAmount(row.payout)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {yourOutsideTop ? (
+            <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
+              You: #{yourRowIndex + 1} · {shortWallet(yourOutsideTop.wallet)} · Burned {formatAmount(yourOutsideTop.burned)} MIND
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-white/60">
+            <div>
+              {leaderboardLoading ? "Loading leaderboard..." : leaderboardError ?? (phase === "LIVE" ? "Live event ranking" : "All finalized rounds")}
+            </div>
           </div>
         </section>
 
@@ -506,21 +711,6 @@ export default function MeltPlayerPage() {
             MELT is not initialized on this testnet. Admin can initialize it on /melt/admin.
           </div>
         ) : null}
-      </div>
-
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/85 backdrop-blur">
-        <div className="mx-auto max-w-4xl px-4 py-3 sm:px-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">Action Bar</div>
-              <div className="text-sm text-white/75">{actionState.hint}</div>
-            </div>
-            <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
-              {statusBadge}
-            </div>
-          </div>
-          <div className="mt-3">{renderActionButtons(true)}</div>
-        </div>
       </div>
     </div>
   );

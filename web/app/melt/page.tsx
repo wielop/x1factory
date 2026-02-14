@@ -595,9 +595,9 @@ export default function MeltPlayerPage() {
               {statusBadge}
             </div>
           </div>
-          <div className="mt-3 text-3xl font-semibold">{payoutTitle}: {formatAmount(vPay)} XNT</div>
+          <div className="mt-3 text-3xl font-semibold">{payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT</div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
-          <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn)} MIND</div>
+          <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn, 9n, 1)} MIND</div>
           {(phase === "FINALIZED" || phase === "ENDED") ? (
             <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
               <div className="text-xs uppercase tracking-[0.18em] text-cyan-300">Last winners</div>

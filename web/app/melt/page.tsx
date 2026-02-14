@@ -51,6 +51,22 @@ const percent = (num: bigint, den: bigint) => {
   return val.toFixed(2);
 };
 
+const formatLocalDateTime = (tsSec: number) =>
+  new Date(tsSec * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const formatEndedRelative = (nowSec: number, endTsSec: number) => {
+  const delta = nowSec - endTsSec;
+  if (delta < 60) return `Ended ${delta}s ago`;
+  if (delta < 3600) return `Ended ${Math.floor(delta / 60)}m ago`;
+  if (delta < 86_400) return `Ended ${Math.floor(delta / 3600)}h ago`;
+  return `Ended ${Math.floor(delta / 86_400)}d ago`;
+};
+
 type MeltPhase = "IDLE" | "LIVE" | "ENDED" | "FINALIZED";
 type LeaderboardRow = {
   wallet: string;
@@ -73,7 +89,7 @@ export default function MeltPlayerPage() {
   const toast = useToast();
 
   const [nowTs, setNowTs] = useState<number>(() => Math.floor(Date.now() / 1000));
-  const [busy, setBusy] = useState<"BURN" | "CLAIM" | null>(null);
+  const [busy, setBusy] = useState<"BURN" | "FINALIZE" | "CLAIM" | null>(null);
   const [burnInput, setBurnInput] = useState("10");
   const refreshToastAtRef = useRef(0);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
@@ -116,6 +132,7 @@ export default function MeltPlayerPage() {
   const hasRound = !!melt.round;
   const roundEndTs = melt.round ? Number(melt.round.endTs.toString()) : 0;
   const ended = hasRound && nowSec >= roundEndTs;
+  const roundStartTs = melt.round ? Number(melt.round.startTs.toString()) : 0;
   const isActive = hasRound && normalizedStatus === "ACTIVE";
   const isFinalized = hasRound && normalizedStatus === "FINALIZED";
   const userClaimed = !!melt.userRound?.claimed;
@@ -258,59 +275,31 @@ export default function MeltPlayerPage() {
     }
   };
 
-  const finalizeAndClaim = async () => {
+  const finalizeRound = async () => {
     if (!wallet || !publicKey || !melt.config || !melt.roundPda) return;
 
-    setBusy("CLAIM");
+    setBusy("FINALIZE");
     try {
       const program = getMeltProgram(connection, wallet);
       const configPda = deriveMeltConfigPda();
       const cfgNow = await (program.account as any).meltConfig.fetch(configPda);
       const nextRoundPda = deriveMeltRoundPda(BigInt(cfgNow.roundSeq.toString()));
-      const userRoundPda = deriveMeltUserRoundPda(publicKey, melt.roundPda);
-
-      if (phase === "ENDED") {
-        try {
-          await program.methods
-            .finalizeRound()
-            .accounts({
-              admin: publicKey,
-              config: configPda,
-              round: melt.roundPda,
-              vault: cfgNow.vault,
-              nextRound: nextRoundPda,
-              systemProgram: SystemProgram.programId,
-            })
-            .rpc();
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          const alreadyFinalized =
-            msg.includes("BadRoundStatus") ||
-            msg.includes("AlreadyFinalized") ||
-            msg.includes("RoundFinalized");
-          if (!alreadyFinalized) {
-            throw new Error(finalizeError(msg));
-          }
-        }
-      }
-
       const sig = await program.methods
-        .claim()
+        .finalizeRound()
         .accounts({
-          user: publicKey,
+          admin: publicKey,
           config: configPda,
-          vault: cfgNow.vault,
           round: melt.roundPda,
+          vault: cfgNow.vault,
           nextRound: nextRoundPda,
-          userRound: userRoundPda,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
-      toast.push({ title: "Claim submitted", description: sig, variant: "success" });
+      toast.push({ title: "Event finalized", description: sig, variant: "success" });
       await melt.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.push({ title: msg.startsWith("Finalize failed:") ? msg : claimError(msg), variant: "error" });
+      toast.push({ title: finalizeError(msg), variant: "error" });
     } finally {
       setBusy(null);
     }
@@ -328,10 +317,10 @@ export default function MeltPlayerPage() {
 
     if (phase === "ENDED") {
       return {
-        primaryLabel: busy === "CLAIM" ? "Processing..." : "FINALIZE + CLAIM XNT",
+        primaryLabel: busy === "FINALIZE" ? "Finalizing..." : "FINALIZE EVENT",
         primaryDisabled: !hasWallet || busy !== null || userClaimed,
-        primaryHandler: () => void finalizeAndClaim(),
-        hint: "Pierwszy klik finalizuje event, potem claim.",
+        primaryHandler: () => void finalizeRound(),
+        hint: "The event ended. First signer finalizes it.",
       };
     }
 
@@ -348,8 +337,8 @@ export default function MeltPlayerPage() {
       return {
         primaryLabel: busy === "CLAIM" ? "Claiming..." : "CLAIM XNT",
         primaryDisabled: !hasWallet || busy !== null,
-        primaryHandler: () => void finalizeAndClaim(),
-        hint: "Event finalized. Claim is now available.",
+        primaryHandler: () => void claim(),
+        hint: "Round finished. Rewards are ready to claim.",
       };
     }
 
@@ -385,6 +374,23 @@ export default function MeltPlayerPage() {
       : phase === "FINALIZED"
         ? "FINALIZED"
         : "IDLE";
+  const eventTitle = phase === "FINALIZED"
+    ? "EVENT ENDED"
+    : phase === "ENDED"
+      ? "EVENT ENDED - NEEDS FINALIZATION"
+      : phase === "LIVE"
+        ? "EVENT LIVE"
+        : "EVENT";
+  const eventSubtitle = phase === "FINALIZED"
+    ? "This round has ended. You can claim your rewards now."
+    : phase === "ENDED"
+      ? "Waiting for finalization. First signer closes the round."
+      : phase === "LIVE"
+        ? `EVENT LIVE - ${countdown}`
+        : "Charging...";
+  const endedRelative = hasRound && ended ? formatEndedRelative(nowSec, roundEndTs) : "";
+  const endedAt = hasRound && ended ? formatLocalDateTime(roundEndTs) : "";
+  const startAt = hasRound ? formatLocalDateTime(roundStartTs) : "";
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || !roundSeq) {
       setLeaderboardRows([]);
@@ -504,7 +510,7 @@ export default function MeltPlayerPage() {
       : 0n;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
+    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black pb-28 text-white">
       <TopBar />
       <div className="mx-auto max-w-4xl px-6 pt-10">
         <div className="mb-5 flex items-center justify-between gap-4">
@@ -554,16 +560,22 @@ export default function MeltPlayerPage() {
 
         <section className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Event</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">{eventTitle}</div>
             <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
               {statusBadge}
             </div>
           </div>
           <div className="mt-3 text-3xl font-semibold">Payout locked: {formatAmount(vPay)} XNT</div>
+          <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
           <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn)} MIND</div>
           <div className="mt-2 text-sm text-white/65">
             {phase === "LIVE" ? countdown : phase === "ENDED" ? "Waiting for finalize" : phase === "FINALIZED" ? "Ready to claim" : "Charging"}
           </div>
+          {hasRound && ended ? (
+            <div className="mt-2 text-xs text-white/60">
+              {endedRelative} · Start: {startAt} · End: {endedAt}
+            </div>
+          ) : null}
         </section>
 
         <section className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -713,6 +725,20 @@ export default function MeltPlayerPage() {
           </div>
         ) : null}
       </div>
+      {phase === "ENDED" ? (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/85 backdrop-blur">
+          <div className="mx-auto max-w-4xl px-4 py-3 sm:px-6">
+            <div className="mb-2 text-xs text-white/70">The event ended. First signer finalizes it.</div>
+            <button
+              className="w-full rounded-lg border border-emerald-300/60 bg-emerald-500/30 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={actionState.primaryDisabled}
+              onClick={actionState.primaryHandler ?? undefined}
+            >
+              {actionState.primaryLabel}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

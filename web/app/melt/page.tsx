@@ -22,7 +22,7 @@ import {
   getMeltProgramId,
   getMeltRpcUrl,
 } from "@/lib/melt";
-import { deriveUserProfilePda } from "@/lib/solana";
+import { deriveUserProfilePda, getRpcUrl } from "@/lib/solana";
 import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
@@ -91,11 +91,13 @@ export default function MeltPlayerPage() {
   const [userLevel, setUserLevel] = useState(1);
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
+  const miningConnection = useMemo(() => new Connection(getRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
   const meltProgramId = useMemo(() => getMeltProgramId(), []);
 
   const melt = useMeltState({
     connection,
+    miningConnection,
     anchorWallet: wallet,
     publicKey,
     pollMs: 4000,

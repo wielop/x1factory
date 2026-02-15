@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as anchor from "@coral-xyz/anchor";
 import { BN } from "@coral-xyz/anchor";
 import { sha256 } from "@noble/hashes/sha256";
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
@@ -18,12 +19,14 @@ import {
   deriveMeltConfigPda,
   deriveMeltRoundPda,
   deriveMeltVaultPda,
+  fetchMiningMeltConfig,
   getMeltProgram,
   getMeltProgramId,
   getMeltRpcUrl,
   getMiningProgramId,
   getMindMint,
 } from "@/lib/melt";
+import { getRpcUrl } from "@/lib/solana";
 import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
@@ -59,6 +62,7 @@ export default function MeltAdminPage() {
   const refreshToastAtRef = useRef(0);
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
+  const miningConnection = useMemo(() => new Connection(getRpcUrl(), "confirmed"), []);
   const meltProgramId = useMemo(() => getMeltProgramId(), []);
   const miningProgramId = useMemo(() => getMiningProgramId(), []);
   const mindMint = useMemo(() => getMindMint(), []);
@@ -184,8 +188,12 @@ export default function MeltAdminPage() {
       toast.push({ title: "rollover_bps must be 0..10000", variant: "error" });
       return;
     }
-    if (!Number.isFinite(fundingBps) || fundingBps < 0 || fundingBps > 10000) {
+    if (!Number.isInteger(fundingBps) || fundingBps < 0 || fundingBps > 10000) {
       toast.push({ title: "funding_bps must be 0..10000", variant: "error" });
+      return;
+    }
+    if (!miningProgramId) {
+      toast.push({ title: "Missing mining program id", description: "Set NEXT_PUBLIC_PROGRAM_ID", variant: "error" });
       return;
     }
 
@@ -204,28 +212,44 @@ export default function MeltAdminPage() {
         })
         .rpc();
 
-      let sig2 = "-";
-      if (miningProgramId && melt.miningMeltConfig) {
-        const [miningConfigPda] = PublicKey.findProgramAddressSync(
-          [Buffer.from("config")],
-          miningProgramId
+      const [miningConfigPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("config")],
+        miningProgramId
+      );
+      const data = Buffer.concat([
+        ixDisc("admin_set_melt_config"),
+        Buffer.from([fundingEnabled ? 1 : 0]),
+        meltProgramId.toBuffer(),
+        Buffer.from([fundingBps & 0xff, (fundingBps >> 8) & 0xff]),
+      ]);
+      const ix = new TransactionInstruction({
+        programId: miningProgramId,
+        keys: [
+          { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+          { pubkey: miningConfigPda, isSigner: false, isWritable: true },
+        ],
+        data,
+      });
+      const tx = new Transaction().add(ix);
+      const miningProvider = new anchor.AnchorProvider(miningConnection, wallet, {
+        commitment: "confirmed",
+      });
+      const sig2 = await miningProvider.sendAndConfirm(tx, []);
+
+      const freshMiningCfg = await fetchMiningMeltConfig(miningConnection);
+      if (!freshMiningCfg) {
+        throw new Error("Saved, but could not re-read mining melt config.");
+      }
+      if (
+        freshMiningCfg.meltEnabled !== fundingEnabled ||
+        freshMiningCfg.meltFundingBps !== fundingBps ||
+        !freshMiningCfg.meltProgramId.equals(meltProgramId)
+      ) {
+        throw new Error(
+          `Saved tx=${sig2}, but on-chain value differs (enabled=${String(
+            freshMiningCfg.meltEnabled
+          )}, bps=${freshMiningCfg.meltFundingBps}).`
         );
-        const data = Buffer.concat([
-          ixDisc("admin_set_melt_config"),
-          Buffer.from([fundingEnabled ? 1 : 0]),
-          meltProgramId.toBuffer(),
-          Buffer.from([fundingBps & 0xff, (fundingBps >> 8) & 0xff]),
-        ]);
-        const ix = new TransactionInstruction({
-          programId: miningProgramId,
-          keys: [
-            { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
-            { pubkey: miningConfigPda, isSigner: false, isWritable: true },
-          ],
-          data,
-        });
-        const tx = new Transaction().add(ix);
-        sig2 = await (meltProgram.provider as any).sendAndConfirm(tx, []);
       }
 
       toast.push({ title: "Params saved", description: `melt=${sig1} mining=${sig2}`, variant: "success" });

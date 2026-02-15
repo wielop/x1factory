@@ -401,12 +401,12 @@ export default function MeltPlayerPage() {
         ? "MELT LIVE"
         : "MELT";
   const eventSubtitle = phase === "FINALIZED"
-    ? "Round finished. Rewards are ready to claim."
+    ? "Claims open. Round finished and rewards are ready."
     : phase === "ENDED"
       ? "Waiting for finalization. First signer closes the round."
       : phase === "LIVE"
-        ? `MELT LIVE - ${countdown}`
-        : "Charging...";
+        ? `MELT LIVE - burn window open - ${countdown}`
+        : "Charging (vial filling)...";
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
     : "Round payout";
@@ -612,7 +612,7 @@ export default function MeltPlayerPage() {
                     ? "MELT ended. Finalize MELT to unlock claim."
                     : phase === "FINALIZED"
                       ? `Previous MELT finalized. Claims open. Next cycle charging (${formatAmount(missingToStart, 9n, 2)} XNT to start).`
-                      : `Charging... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
+                      : `Charging (vial filling)... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
               </div>
             </div>
           </div>
@@ -791,11 +791,15 @@ export default function MeltPlayerPage() {
           <details>
             <summary className="cursor-pointer text-sm font-semibold text-white">How it works</summary>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-white/75">
-              <li>XNT fills the vial from miner purchases.</li>
-              <li>When the vial is full, an event starts automatically.</li>
-              <li>Burn MIND while LIVE to earn a share of payout.</li>
-              <li>After end time: finalize event, then claim XNT.</li>
+              <li>Funding → Vial: XNT is added to the MELT vault and counted as vial for the next round (often funded via CPI from other flows).</li>
+              <li>Auto-start: When the vial reaches the cap, a new round starts automatically and snapshots the payout pool (pot = cap + rollover bonus).</li>
+              <li>Burn during Active: While the round is LIVE, burn MIND to record your contribution (minimum burn may apply).</li>
+              <li>Finalize → Claim: After the timer ends, the round is finalized and payout becomes claimable. Your XNT reward is pro-rata: v_pay * (your_burn / total_burn).</li>
+              <li>Rollover bonus: The non-paid part of the pot rolls over into the next round as a bonus pool.</li>
             </ol>
+            <div className="mt-3 text-xs text-white/55">
+              Burning MIND is irreversible. Rewards depend on total burned in the round.
+            </div>
           </details>
         </section>
 

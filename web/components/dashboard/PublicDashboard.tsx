@@ -1,6 +1,7 @@
 "use client";
 
 import "@/lib/polyfillBufferClient";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
@@ -56,7 +57,7 @@ import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
 import { fetchMiningMeltConfig, getMeltProgramId, getMeltRpcUrl } from "@/lib/melt";
-import { useMeltState } from "@/lib/useMeltState";
+import { useMeltSummary } from "@/lib/useMeltSummary";
 import { computeEstWeeklyXnt, getWeeklyPoolXnt, LEVELS, type Level } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
@@ -510,12 +511,10 @@ export function PublicDashboard() {
   const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
   const { push: pushToast } = useToast();
-  const meltConnection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
-  const melt = useMeltState({
-    connection: meltConnection,
-    anchorWallet: anchorWallet ?? null,
+  const meltSummary = useMeltSummary({
     publicKey,
-    pollMs: 4000,
+    anchorWallet: anchorWallet ?? null,
+    pollMs: 6000,
   });
 
   const [config, setConfig] = useState<DecodedConfig | null>(null);
@@ -2460,25 +2459,13 @@ export function PublicDashboard() {
       : "Claim rewards and optionally auto-stake to rXNT.";
 
   const progressionLabel = levelingEnabled ? `LVL ${userLevel}` : "Levels paused";
-  const meltRound = melt.round;
-  const meltRoundEndTs = meltRound ? Number(meltRound.endTs.toString()) : 0;
+  const meltPhase = meltSummary.phase;
   const meltNowSec = nowTs ?? Math.floor(Date.now() / 1000);
-  const meltEndedByTime = !!meltRound && meltNowSec >= meltRoundEndTs;
-  const meltStatus = melt.roundStatus.toUpperCase();
-  const meltPhase = !meltRound
-    ? "IDLE"
-    : meltStatus === "FINALIZED"
-      ? "FINALIZED"
-      : meltStatus === "ACTIVE" && !meltEndedByTime
-        ? "LIVE"
-        : meltStatus === "ACTIVE" && meltEndedByTime
-          ? "ENDED"
-          : "IDLE";
-  const meltCapLamports = melt.config ? BigInt(melt.config.vaultCapLamports.toString()) : 0n;
-  const meltVialLamports = melt.config ? BigInt(melt.config.vialLamports.toString()) : 0n;
+  const meltCapLamports = meltSummary.capLamports ?? 0n;
+  const meltVialLamports = meltSummary.vialLamports ?? 0n;
   const meltFillPct = meltCapLamports > 0n ? Number((meltVialLamports * 100n) / meltCapLamports) : 0;
   const meltShowingNextCycle = meltPhase === "IDLE" || meltPhase === "FINALIZED";
-  const meltMissingToStart = meltCapLamports > meltVialLamports ? meltCapLamports - meltVialLamports : 0n;
+  const meltMissingToStart = meltSummary.missingLamports ?? 0n;
   const liveHue = ((meltNowSec * 53) % 360 + 360) % 360;
   const meltVialStyle =
     meltPhase === "LIVE"
@@ -2503,12 +2490,21 @@ export function PublicDashboard() {
           : "MELT EVENT CHARGING";
   const meltSubtitle =
     meltPhase === "LIVE"
-      ? `Ends in ${Math.max(0, meltRoundEndTs - meltNowSec)}s`
+      ? `Ends in ${Math.max(0, (meltSummary.roundEndTs ?? meltNowSec) - meltNowSec)}s`
       : meltPhase === "ENDED"
         ? "Round ended. Waiting for first finalizer."
         : meltPhase === "FINALIZED"
           ? "Claims open. Next cycle is charging."
           : "Vial is filling from rig purchases.";
+  const meltValueOrDash = (value: bigint | null, label: "XNT" | "MIND", digits = 2) =>
+    !meltSummary.envReady || value == null ? "—" : `${formatTokenAmount(value, XNT_DECIMALS, digits)} ${label}`;
+  const meltCtaLabel = meltPhase === "FINALIZED" ? "Claim rewards →" : "Open MELT →";
+  const showChargingStats = (meltPhase === "IDLE" || meltPhase === "FINALIZED") && meltSummary.envReady;
+  const showFinalizedStats = meltPhase === "FINALIZED" && meltSummary.envReady;
+  const showUserStats =
+    !!publicKey &&
+    meltSummary.envReady &&
+    (meltSummary.userBurnedLamports != null && meltSummary.userBurnedLamports > 0n);
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -2531,7 +2527,7 @@ export function PublicDashboard() {
             }`}
           >
             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">MELT EVENT</div>
-            <div className="mt-3 flex items-center gap-5">
+            <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
               <div
                 className={`relative h-28 w-12 overflow-hidden rounded-full border bg-black/50 ${
                   meltPhase === "LIVE" ? "animate-pulse" : "border-cyan-400/40"
@@ -2550,23 +2546,72 @@ export function PublicDashboard() {
                   }}
                 />
               </div>
-              <div>
+              <div className="min-w-[220px]">
                 <div className="text-xl font-semibold">{meltTitle}</div>
                 <div className="mt-1 text-sm text-white/75">{meltSubtitle}</div>
                 <div className="mt-2 text-sm text-cyan-100">
-                  {meltShowingNextCycle ? "Next cycle" : "Current vial"}:{" "}
-                  {formatTokenAmount(
+                  {meltShowingNextCycle ? "Next cycle" : "Current vial"}: {meltValueOrDash(
                     meltShowingNextCycle ? meltVialLamports : meltCapLamports,
-                    XNT_DECIMALS,
+                    "XNT",
                     2
                   )}{" "}
-                  / {formatTokenAmount(meltCapLamports, XNT_DECIMALS, 2)} XNT
+                  / {meltValueOrDash(meltCapLamports, "XNT", 2)}
                 </div>
-                {meltPhase !== "LIVE" ? (
+                {showChargingStats ? (
                   <div className="mt-1 text-xs text-white/55">
-                    Missing to start: {formatTokenAmount(meltMissingToStart, XNT_DECIMALS, 2)} XNT
+                    Missing to start: {meltValueOrDash(meltMissingToStart, "XNT", 2)}
                   </div>
                 ) : null}
+              </div>
+              <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-black/35 p-2">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Next cycle</div>
+                    <div className="mt-1 text-sm text-cyan-100">
+                      {meltSummary.envReady
+                        ? `${formatTokenAmount(meltVialLamports, XNT_DECIMALS, 2)} / ${formatTokenAmount(meltCapLamports, XNT_DECIMALS, 2)} XNT`
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-black/35 p-2">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Missing to start</div>
+                    <div className="mt-1 text-sm text-cyan-100">
+                      {showChargingStats ? meltValueOrDash(meltMissingToStart, "XNT", 2) : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-black/35 p-2">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                      Last round distributed
+                    </div>
+                    <div className="mt-1 text-sm text-cyan-100">
+                      {showFinalizedStats ? meltValueOrDash(meltSummary.vPayLamports, "XNT", 2) : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-black/35 p-2">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Total burned</div>
+                    <div className="mt-1 text-sm text-cyan-100">
+                      {showFinalizedStats ? meltValueOrDash(meltSummary.totalBurnLamports, "MIND", 1) : "—"}
+                    </div>
+                  </div>
+                </div>
+                {showUserStats ? (
+                  <div className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-500/10 p-2 text-xs text-cyan-100">
+                    <div>Your burned: {meltValueOrDash(meltSummary.userBurnedLamports, "MIND", 1)}</div>
+                    <div className="mt-1">
+                      {meltSummary.userClaimed
+                        ? "Claimed: Yes"
+                        : `Your est. payout: ${meltValueOrDash(meltSummary.userEstimatedPayoutLamports, "XNT", 2)}`}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <Link
+                    href="/melt"
+                    className="inline-flex items-center rounded-lg border border-cyan-300/60 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/35"
+                  >
+                    {meltCtaLabel}
+                  </Link>
+                </div>
               </div>
             </div>
           </Card>

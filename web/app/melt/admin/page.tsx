@@ -84,6 +84,7 @@ export default function MeltAdminPage() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [topupInput, setTopupInput] = useState("1");
+  const [recordInput, setRecordInput] = useState("1");
   const [capInput, setCapInput] = useState("10");
   const [windowInput, setWindowInput] = useState("600");
   const [rolloverInput, setRolloverInput] = useState("2000");
@@ -258,6 +259,32 @@ export default function MeltAdminPage() {
     });
   };
 
+  const recordFunding = async () => {
+    if (!wallet || !melt.config) return;
+    const cfg = melt.config;
+    const amount = parseAmount(recordInput);
+    if (amount <= 0n) {
+      toast.push({ title: "Invalid record amount", variant: "error" });
+      return;
+    }
+    await withBusy("RECORD", async () => {
+      const program = getMeltProgram(connection, wallet);
+      const roundPda = melt.nextRoundPda ?? deriveMeltRoundPda(BigInt(cfg.roundSeq.toString()));
+      const sig = await program.methods
+        .recordFunding(new BN(amount.toString()))
+        .accounts({
+          payer: wallet.publicKey,
+          config: deriveMeltConfigPda(),
+          vault: cfg.vault,
+          round: roundPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      toast.push({ title: "Funding recorded", description: sig, variant: "success" });
+      await melt.refresh();
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black text-white">
       <TopBar />
@@ -345,16 +372,42 @@ export default function MeltAdminPage() {
                 </section>
 
                 <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Testnet tools</div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <input className="w-28 rounded-lg border border-white/10 bg-black/40 px-3 py-2" value={topupInput} onChange={(e) => setTopupInput(e.target.value)} />
-                    <button
-                      className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
-                      disabled={!isAdmin || busy !== null}
-                      onClick={topupVial}
-                    >
-                      {busy === "TOPUP" ? "Topup..." : "Topup vial"}
-                    </button>
+                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Funding tools</div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/60">Topup + record</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <input
+                          className="w-28 rounded-lg border border-white/10 bg-black/40 px-3 py-2"
+                          value={topupInput}
+                          onChange={(e) => setTopupInput(e.target.value)}
+                        />
+                        <button
+                          className="rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
+                          disabled={!isAdmin || busy !== null}
+                          onClick={topupVial}
+                        >
+                          {busy === "TOPUP" ? "Topup..." : "Topup vial"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/60">Record only (no transfer)</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <input
+                          className="w-28 rounded-lg border border-white/10 bg-black/40 px-3 py-2"
+                          value={recordInput}
+                          onChange={(e) => setRecordInput(e.target.value)}
+                        />
+                        <button
+                          className="rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
+                          disabled={!isAdmin || busy !== null}
+                          onClick={recordFunding}
+                        >
+                          {busy === "RECORD" ? "Recording..." : "Record funding"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </section>
 

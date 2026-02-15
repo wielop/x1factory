@@ -55,6 +55,7 @@ import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
 import { fetchMiningMeltConfig, getMeltProgramId, getMeltRpcUrl } from "@/lib/melt";
+import { useMeltState } from "@/lib/useMeltState";
 import { computeEstWeeklyXnt } from "@/lib/yieldMath";
 import { useYieldSummary } from "@/lib/useYieldSummary";
 import {
@@ -507,6 +508,13 @@ export function PublicDashboard() {
   const publicKey = walletPublicKey;
   const canTransact = Boolean(anchorWallet && walletPublicKey);
   const { push: pushToast } = useToast();
+  const meltConnection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
+  const melt = useMeltState({
+    connection: meltConnection,
+    anchorWallet: anchorWallet ?? null,
+    publicKey,
+    pollMs: 4000,
+  });
 
   const [config, setConfig] = useState<DecodedConfig | null>(null);
   const [nowTs, setNowTs] = useState<number | null>(null);
@@ -2368,6 +2376,55 @@ export function PublicDashboard() {
       : "Claim rewards and optionally auto-stake to rXNT.";
 
   const progressionLabel = LEVELING_ENABLED ? `LVL ${userLevel}` : "Levels paused";
+  const meltRound = melt.round;
+  const meltRoundEndTs = meltRound ? Number(meltRound.endTs.toString()) : 0;
+  const meltNowSec = nowTs ?? Math.floor(Date.now() / 1000);
+  const meltEndedByTime = !!meltRound && meltNowSec >= meltRoundEndTs;
+  const meltStatus = melt.roundStatus.toUpperCase();
+  const meltPhase = !meltRound
+    ? "IDLE"
+    : meltStatus === "FINALIZED"
+      ? "FINALIZED"
+      : meltStatus === "ACTIVE" && !meltEndedByTime
+        ? "LIVE"
+        : meltStatus === "ACTIVE" && meltEndedByTime
+          ? "ENDED"
+          : "IDLE";
+  const meltCapLamports = melt.config ? BigInt(melt.config.vaultCapLamports.toString()) : 0n;
+  const meltVialLamports = melt.config ? BigInt(melt.config.vialLamports.toString()) : 0n;
+  const meltFillPct = meltCapLamports > 0n ? Number((meltVialLamports * 100n) / meltCapLamports) : 0;
+  const meltShowingNextCycle = meltPhase === "IDLE" || meltPhase === "FINALIZED";
+  const meltMissingToStart = meltCapLamports > meltVialLamports ? meltCapLamports - meltVialLamports : 0n;
+  const liveHue = ((meltNowSec * 53) % 360 + 360) % 360;
+  const meltVialStyle =
+    meltPhase === "LIVE"
+      ? {
+          boxShadow: `0 0 22px hsla(${liveHue},100%,60%,0.92), 0 0 56px hsla(${(liveHue + 120) % 360},100%,55%,0.7)`,
+          borderColor: `hsla(${(liveHue + 30) % 360},100%,70%,0.95)`,
+        }
+      : undefined;
+  const meltFlowStyle =
+    meltPhase === "LIVE"
+      ? {
+          background: `linear-gradient(to top, hsla(${liveHue},100%,56%,0.95), hsla(${(liveHue + 65) % 360},100%,67%,0.9), hsla(${(liveHue + 140) % 360},100%,82%,0.85))`,
+        }
+      : undefined;
+  const meltTitle =
+    meltPhase === "LIVE"
+      ? "MELT EVENT LIVE"
+      : meltPhase === "ENDED"
+        ? "MELT EVENT ENDED"
+        : meltPhase === "FINALIZED"
+          ? "MELT EVENT FINALIZED"
+          : "MELT EVENT CHARGING";
+  const meltSubtitle =
+    meltPhase === "LIVE"
+      ? `Ends in ${Math.max(0, meltRoundEndTs - meltNowSec)}s`
+      : meltPhase === "ENDED"
+        ? "Round ended. Waiting for first finalizer."
+        : meltPhase === "FINALIZED"
+          ? "Claims open. Next cycle is charging."
+          : "Vial is filling from rig purchases.";
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -2380,6 +2437,54 @@ export function PublicDashboard() {
               What is happening right now?
             </div>
             <div className={`mt-2 text-sm font-semibold ${statusAccentClass}`}>{miningStatusText}</div>
+          </Card>
+
+          <Card
+            className={`rounded-2xl border p-4 ${
+              meltPhase === "LIVE"
+                ? "melt-live-rainbow border-cyan-200/70 bg-cyan-400/10"
+                : "border-cyan-500/30 bg-cyan-950/20"
+            }`}
+          >
+            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">MELT EVENT</div>
+            <div className="mt-3 flex items-center gap-5">
+              <div
+                className={`relative h-28 w-12 overflow-hidden rounded-full border bg-black/50 ${
+                  meltPhase === "LIVE" ? "animate-pulse" : "border-cyan-400/40"
+                }`}
+                style={meltVialStyle}
+              >
+                <div
+                  className={`absolute bottom-0 left-0 right-0 ${
+                    meltPhase === "LIVE"
+                      ? "animate-[pulse_900ms_ease-in-out_infinite]"
+                      : "bg-gradient-to-t from-cyan-500 to-cyan-200"
+                  }`}
+                  style={{
+                    height: `${Math.max(4, Math.min(100, meltShowingNextCycle ? meltFillPct : 100))}%`,
+                    ...(meltFlowStyle ?? {}),
+                  }}
+                />
+              </div>
+              <div>
+                <div className="text-xl font-semibold">{meltTitle}</div>
+                <div className="mt-1 text-sm text-white/75">{meltSubtitle}</div>
+                <div className="mt-2 text-sm text-cyan-100">
+                  {meltShowingNextCycle ? "Next cycle" : "Current vial"}:{" "}
+                  {formatTokenAmount(
+                    meltShowingNextCycle ? meltVialLamports : meltCapLamports,
+                    XNT_DECIMALS,
+                    2
+                  )}{" "}
+                  / {formatTokenAmount(meltCapLamports, XNT_DECIMALS, 2)} XNT
+                </div>
+                {meltPhase !== "LIVE" ? (
+                  <div className="mt-1 text-xs text-white/55">
+                    Missing to start: {formatTokenAmount(meltMissingToStart, XNT_DECIMALS, 2)} XNT
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </Card>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

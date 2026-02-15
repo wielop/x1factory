@@ -12,6 +12,7 @@ import {
 } from "@solana/spl-token";
 import { TopBar } from "@/components/shared/TopBar";
 import { useToast } from "@/components/shared/ToastProvider";
+import { decodeUserMiningProfileAccount } from "@/lib/decoders";
 import {
   deriveMeltConfigPda,
   deriveMeltRoundPda,
@@ -21,6 +22,7 @@ import {
   getMeltProgramId,
   getMeltRpcUrl,
 } from "@/lib/melt";
+import { deriveUserProfilePda } from "@/lib/solana";
 import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
@@ -86,6 +88,7 @@ export default function MeltPlayerPage() {
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const leaderboardRoundRef = useRef<string>("");
   const [lastWinners, setLastWinners] = useState<WinnerRow[]>([]);
+  const [userLevel, setUserLevel] = useState(1);
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const mindMint = useMemo(() => getMindMint(), []);
@@ -116,6 +119,33 @@ export default function MeltPlayerPage() {
       variant: "error",
     });
   }, [melt.error, toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLevel = async () => {
+      if (!publicKey) {
+        if (!cancelled) setUserLevel(1);
+        return;
+      }
+      try {
+        const profilePda = deriveUserProfilePda(publicKey);
+        const profileInfo = await connection.getAccountInfo(profilePda, "confirmed");
+        if (!profileInfo) {
+          if (!cancelled) setUserLevel(1);
+          return;
+        }
+        const decoded = decodeUserMiningProfileAccount(profileInfo.data);
+        const lvl = Math.max(decoded.level ?? 1, 1);
+        if (!cancelled) setUserLevel(lvl);
+      } catch {
+        if (!cancelled) setUserLevel(1);
+      }
+    };
+    void loadLevel();
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, publicKey]);
 
   const nowSec = nowTs;
   const normalizedStatus = melt.roundStatus.toUpperCase();
@@ -541,7 +571,7 @@ export default function MeltPlayerPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-black pb-28 text-white">
-      <TopBar />
+      <TopBar progressionLabel={`LVL ${userLevel}`} />
       <div className="mx-auto max-w-4xl px-6 pt-10">
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>

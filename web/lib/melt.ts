@@ -573,35 +573,15 @@ export async function fetchMiningMeltConfig(connection: Connection) {
 
   const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], miningProgramId);
   const info = await connection.getAccountInfo(configPda, "confirmed");
-  if (!info || info.data.length < 321) return null;
+  if (!info || info.data.length < 37) return null;
   const data = info.data;
-  let offset = 8;
-
-  offset += 32; // admin
-  offset += 8; // emission_per_sec
-  offset += 16; // acc_mind_per_hp
-  offset += 8; // last_update_ts
-  offset += 8; // network_hp_active
-  offset += 32; // mind_mint
-  offset += 32; // xnt_mint
-  offset += 32; // staking_reward_vault
-  offset += 32; // treasury_vault
-  offset += 32; // staking_mind_vault
-  offset += 8; // max_effective_hp
-  offset += 8; // seconds_per_day
-  offset += 16; // staking_acc_xnt_per_mind
-  offset += 8; // staking_last_update_ts
-  offset += 8; // staking_reward_rate_xnt_per_sec
-  offset += 8; // staking_epoch_end_ts
-  offset += 8; // staking_total_staked_mind
-  offset += 8; // staking_undistributed_xnt
-  offset += 8; // staking_accounted_balance
-  if (offset + 1 > data.length) return null;
-  const meltEnabled = data.readUInt8(offset) === 1;
-  offset += 1;
-  if (offset + 32 + 2 > data.length) return null;
-  const meltProgramId = new PublicKey(data.subarray(offset, offset + 32));
-  offset += 32;
-  const meltFundingBps = data.readUInt16LE(offset);
+  // Parse from the tail to avoid hard-coding the full Config layout.
+  // Tail layout is stable: [melt_enabled: u8][melt_program_id: Pubkey][melt_funding_bps: u16][bumps: 2*u8]
+  const meltEnabledOffset = data.length - 37;
+  const meltProgramOffset = data.length - 36;
+  const meltFundingOffset = data.length - 4;
+  const meltEnabled = data.readUInt8(meltEnabledOffset) === 1;
+  const meltProgramId = new PublicKey(data.subarray(meltProgramOffset, meltProgramOffset + 32));
+  const meltFundingBps = data.readUInt16LE(meltFundingOffset);
   return { meltEnabled, meltProgramId, meltFundingBps };
 }

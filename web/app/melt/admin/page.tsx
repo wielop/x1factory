@@ -69,6 +69,7 @@ export default function MeltAdminPage() {
 
   const melt = useMeltState({
     connection,
+    miningConnection,
     anchorWallet: wallet,
     publicKey,
     pollMs: 4000,

@@ -1979,9 +1979,19 @@ export function PublicDashboard() {
   const onBuy = async () => {
     if (!anchorWallet || !publicKey || !config) return;
     const program = getProgram(connection, anchorWallet);
-    const nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);
-    const positionIndex = new BN(nextIndex.toString());
     await withTx("Buy contract", async () => {
+      const profilePda = deriveUserProfilePda(publicKey);
+      let nextIndex = userProfile?.nextPositionIndex ?? BigInt(positions.length);
+      try {
+        const liveProfile = await (program.account as any).userProfile.fetchNullable(profilePda);
+        const liveNext = liveProfile?.nextPositionIndex;
+        if (liveNext != null) {
+          nextIndex = BigInt(liveNext.toString());
+        }
+      } catch {
+        // fallback to UI snapshot when profile fetch is temporarily unavailable
+      }
+      const positionIndex = new BN(nextIndex.toString());
       const miningMelt = await fetchMiningMeltConfig(connection);
       const meltProgramId = miningMelt?.meltProgramId ?? PublicKey.default;
       const [meltConfigPda] = PublicKey.findProgramAddressSync(
@@ -2011,7 +2021,7 @@ export function PublicDashboard() {
         .accounts({
           owner: publicKey,
           config: deriveConfigPda(),
-          userProfile: deriveUserProfilePda(publicKey),
+          userProfile: profilePda,
           position: derivePositionPda(publicKey, nextIndex),
           stakingRewardVault: config.stakingRewardVault,
           treasuryVault: config.treasuryVault,

@@ -9,6 +9,7 @@ mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 
 [programs.mainnet]
 mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
+melt_v1 = "HAWdiMtvTfiFhENgxPdWEgBQmoa3A5oN1KV9N3LSmxXz"
 
 [programs.testnet]
 mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"

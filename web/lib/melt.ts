@@ -193,6 +193,17 @@ const MELT_IDL = {
       args: [{ name: "lamports", type: "u64" }],
     },
     {
+      name: "recordFunding",
+      accounts: [
+        { name: "payer", isMut: true, isSigner: true },
+        { name: "config", isMut: true, isSigner: false },
+        { name: "vault", isMut: true, isSigner: false },
+        { name: "round", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [{ name: "lamports", type: "u64" }],
+    },
+    {
       name: "initMelt",
       accounts: [
         { name: "payer", isMut: true, isSigner: true },

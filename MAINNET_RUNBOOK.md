@@ -44,6 +44,41 @@
 - `NEXT_PUBLIC_RPC_URL=https://rpc.mainnet.x1.xyz`
 - `NEXT_PUBLIC_PROGRAM_ID=<program_id_z_keypair>`
 - (opcjonalnie) `NEXT_PUBLIC_RPC_PROXY=/api/rpc`
+- `NEXT_PUBLIC_MELT_RPC_URL=https://rpc.mainnet.x1.xyz`
+- `NEXT_PUBLIC_MELT_PROGRAM_ID=<melt_v1_program_id>`
+- `NEXT_PUBLIC_MIND_MINT=<mainnet_mind_mint>`
+
+## MELT cutover (mainnet)
+### 1) Deploy MELT program
+- `anchor build --program-name melt_v1`
+- `anchor deploy --program-name melt_v1 --provider.cluster https://rpc.mainnet.x1.xyz`
+
+### 2) Set MELT config first (before enabling in mining_v2)
+Set env:
+- `export ANCHOR_PROVIDER_URL=https://rpc.mainnet.x1.xyz`
+- `export MELT_V1_PROGRAM_ID=<melt_v1_program_id>`
+- `export MELT_CAP_XNT=10`
+- `export MELT_WINDOW_SEC=600`
+- `export MELT_ROLLOVER_BPS=2000`
+- `export MELT_BURN_MIN_MIND=10`
+
+Run:
+- `yarn melt:mainnet:migrate --dry-run --cap-xnt 10 --window-sec 600 --rollover-bps 2000 --burn-min-mind 10`
+- `yarn melt:mainnet:migrate --cap-xnt 10 --window-sec 600 --rollover-bps 2000 --burn-min-mind 10`
+
+### 3) Wire mining_v2 -> MELT (still dry-run first)
+Set env:
+- `export MINING_V2_PROGRAM_ID=<mining_v2_program_id>`
+
+Run:
+- `yarn mining:mainnet:melt-migrate --dry-run --melt-program-id <melt_v1_program_id> --funding-bps 9500 --enabled true`
+- `yarn mining:mainnet:melt-migrate --melt-program-id <melt_v1_program_id> --funding-bps 9500 --enabled true`
+
+### 4) Go-live checks
+- Verify one `buy_contract` increases MELT vial.
+- Verify round lifecycle: `LIVE -> ENDED -> FINALIZED -> CLAIM`.
+- Keep `melt_enabled=false` rollback command ready:
+  - `yarn mining:mainnet:melt-migrate --melt-program-id <melt_v1_program_id> --funding-bps 9500 --enabled false`
 
 ## Post-deploy check
 - `V2_SMOKE_BUY=1 V2_SMOKE_CLAIM=1 V2_SMOKE_STAKE=1 yarn mainnet:smoke`

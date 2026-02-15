@@ -571,7 +571,6 @@ export default function MeltPlayerPage() {
       <div className="mx-auto max-w-4xl px-6 pt-10">
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
-            <div className="text-xs uppercase tracking-[0.28em] text-cyan-300">Testnet Event</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">MELT</h1>
           </div>
           <WalletMultiButton />
@@ -787,15 +786,23 @@ export default function MeltPlayerPage() {
           <details>
             <summary className="cursor-pointer text-sm font-semibold text-white">How it works</summary>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-white/75">
-              <li>Funding → Vial: XNT is added to the MELT vault and counted as vial for the next round (often funded via CPI from other flows).</li>
-              <li>Auto-start: When the vial reaches the cap, a new round starts automatically and snapshots the payout pool (pot = cap + rollover bonus).</li>
-              <li>Burn during Active: While the round is LIVE, burn MIND to record your contribution (minimum burn may apply).</li>
-              <li>Finalize → Claim: After the timer ends, the round is finalized and payout becomes claimable. Your XNT reward is pro-rata: v_pay * (your_burn / total_burn).</li>
-              <li>Rollover bonus: The non-paid part of the pot rolls over into the next round as a bonus pool.</li>
+              <li>
+                The vial fills up (XNT inflow)
+                <div>A portion of XNT from rig purchases goes into the MELT vial. When the vial reaches 100%, a new round starts automatically.</div>
+              </li>
+              <li>
+                Round goes LIVE (12 hours)
+                <div>The MELT round stays LIVE for 12h. During this time you can join by burning MIND.</div>
+              </li>
+              <li>
+                Burn MIND to earn a share
+                <div>The amount of MIND you burn determines your % share of the XNT pool for that round. More burned MIND = bigger share.</div>
+              </li>
+              <li>
+                Round ends → claim XNT
+                <div>When the timer ends, rewards are calculated and you can Claim XNT to your wallet.</div>
+              </li>
             </ol>
-            <div className="mt-3 text-xs text-white/55">
-              Burning MIND is irreversible. Rewards depend on total burned in the round.
-            </div>
           </details>
         </section>
 

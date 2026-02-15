@@ -2381,7 +2381,6 @@ export function PublicDashboard() {
   const meltVialLamports = meltSummary.vialLamports ?? 0n;
   const meltFillPct = meltCapLamports > 0n ? Number((meltVialLamports * 100n) / meltCapLamports) : 0;
   const meltShowingNextCycle = meltPhase === "IDLE" || meltPhase === "FINALIZED";
-  const meltMissingToStart = meltSummary.missingLamports ?? 0n;
   const liveHue = ((meltNowSec * 53) % 360 + 360) % 360;
   const meltVialStyle =
     meltPhase === "LIVE"
@@ -2415,7 +2414,6 @@ export function PublicDashboard() {
   const meltValueOrDash = (value: bigint | null, label: "XNT" | "MIND", digits = 2) =>
     !meltSummary.envReady || value == null ? "—" : `${formatTokenAmount(value, XNT_DECIMALS, digits)} ${label}`;
   const meltCtaLabel = meltPhase === "FINALIZED" ? "Claim rewards →" : "Open MELT →";
-  const showChargingStats = (meltPhase === "IDLE" || meltPhase === "FINALIZED") && meltSummary.envReady;
   const showFinalizedStats = meltPhase === "FINALIZED" && meltSummary.envReady;
   const showUserStats =
     !!publicKey &&
@@ -2473,11 +2471,6 @@ export function PublicDashboard() {
                   )}{" "}
                   / {meltValueOrDash(meltCapLamports, "XNT", 2)}
                 </div>
-                {showChargingStats ? (
-                  <div className="mt-1 text-xs text-white/55">
-                    Missing to start: {meltValueOrDash(meltMissingToStart, "XNT", 2)}
-                  </div>
-                ) : null}
               </div>
               <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -2487,20 +2480,6 @@ export function PublicDashboard() {
                       {meltSummary.envReady
                         ? `${formatTokenAmount(meltVialLamports, XNT_DECIMALS, 2)} / ${formatTokenAmount(meltCapLamports, XNT_DECIMALS, 2)} XNT`
                         : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-black/35 p-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Missing to start</div>
-                    <div className="mt-1 text-sm text-cyan-100">
-                      {showChargingStats ? meltValueOrDash(meltMissingToStart, "XNT", 2) : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-black/35 p-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                      Last round distributed
-                    </div>
-                    <div className="mt-1 text-sm text-cyan-100">
-                      {showFinalizedStats ? meltValueOrDash(meltSummary.vPayLamports, "XNT", 2) : "—"}
                     </div>
                   </div>
                   <div className="rounded-lg border border-white/10 bg-black/35 p-2">

@@ -125,7 +125,12 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
 
       const program = getMeltProgram(connection, anchorWallet ?? (readonlyWallet as AnchorWallet));
       const cfg = (await program.account.meltConfig.fetch(configPda)) as MeltConfig;
-      const miningCfg = (await fetchMiningMeltConfig(connection)) as MiningMeltConfig | null;
+      let miningCfg: MiningMeltConfig | null = null;
+      try {
+        miningCfg = (await fetchMiningMeltConfig(connection)) as MiningMeltConfig | null;
+      } catch {
+        miningCfg = null;
+      }
       const nextSeq = BigInt(cfg.roundSeq.toString());
       const nextPda = deriveMeltRoundPda(nextSeq);
 
@@ -136,8 +141,12 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         const activePda = deriveMeltRoundPda(activeSeq);
         const activeInfo = await connection.getAccountInfo(activePda, "confirmed");
         if (activeInfo) {
-          displayRound = (await program.account.meltRound.fetch(activePda)) as MeltRound;
-          displayPda = activePda;
+          try {
+            displayRound = (await program.account.meltRound.fetch(activePda)) as MeltRound;
+            displayPda = activePda;
+          } catch {
+            // keep searching fallback rounds
+          }
         }
       }
       if (!displayRound && nextSeq > 0n) {
@@ -145,8 +154,12 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         const lastPda = deriveMeltRoundPda(lastSeq);
         const lastInfo = await connection.getAccountInfo(lastPda, "confirmed");
         if (lastInfo) {
-          displayRound = (await program.account.meltRound.fetch(lastPda)) as MeltRound;
-          displayPda = lastPda;
+          try {
+            displayRound = (await program.account.meltRound.fetch(lastPda)) as MeltRound;
+            displayPda = lastPda;
+          } catch {
+            // no readable round available
+          }
         }
       }
 
@@ -184,21 +197,25 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         });
 
         for (const acc of userRoundAccounts) {
-          const data = acc.account.data;
-          if (data.length < 81) continue;
-          const roundPk = new PublicKey(data.subarray(40, 72));
-          const burned = data.readBigUInt64LE(72);
-          const claimed = data.readUInt8(80) === 1;
-          if (burned === 0n || claimed) continue;
-          const roundInfo = await connection.getAccountInfo(roundPk, "confirmed");
-          if (!roundInfo) continue;
-          const rr = (await program.account.meltRound.fetch(roundPk)) as MeltRound;
-          if (readStatus(rr.status) !== "finalized") continue;
-          const ur: MeltUserRound = {
-            burned: new BN(burned.toString()),
-            claimed: false,
-          };
-          fetchedClaimContexts.push({ round: rr, roundPda: roundPk, userRound: ur });
+          try {
+            const data = acc.account.data;
+            if (data.length < 81) continue;
+            const roundPk = new PublicKey(data.subarray(40, 72));
+            const burned = data.readBigUInt64LE(72);
+            const claimed = data.readUInt8(80) === 1;
+            if (burned === 0n || claimed) continue;
+            const roundInfo = await connection.getAccountInfo(roundPk, "confirmed");
+            if (!roundInfo || !roundInfo.owner.equals(meltProgramId)) continue;
+            const rr = (await program.account.meltRound.fetch(roundPk)) as MeltRound;
+            if (readStatus(rr.status) !== "finalized") continue;
+            const ur: MeltUserRound = {
+              burned: new BN(burned.toString()),
+              claimed: false,
+            };
+            fetchedClaimContexts.push({ round: rr, roundPda: roundPk, userRound: ur });
+          } catch {
+            // skip malformed or incompatible legacy rows
+          }
         }
         fetchedClaimContexts.sort((a, b) => {
           const aa = BigInt(a.round.seq.toString());

@@ -61,6 +61,7 @@ export type MeltInitState = "READY" | "NOT_INITIALIZED";
 
 type UseMeltStateArgs = {
   connection: Connection;
+  miningConnection?: Connection;
   anchorWallet: AnchorWallet | null;
   publicKey: PublicKey | null;
   pollMs?: number;
@@ -72,7 +73,13 @@ const readStatus = (status: Record<string, unknown> | null): string => {
   return key ? key.toLowerCase() : "";
 };
 
-export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 4000 }: UseMeltStateArgs) {
+export function useMeltState({
+  connection,
+  miningConnection,
+  anchorWallet,
+  publicKey,
+  pollMs = 4000,
+}: UseMeltStateArgs) {
   const readonlyWallet = useMemo(
     () => ({
       publicKey: PublicKey.default,
@@ -125,7 +132,9 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
 
       const program = getMeltProgram(connection, anchorWallet ?? (readonlyWallet as AnchorWallet));
       const cfg = (await program.account.meltConfig.fetch(configPda)) as MeltConfig;
-      const miningCfg = (await fetchMiningMeltConfig(connection)) as MiningMeltConfig | null;
+      const miningCfg = (await fetchMiningMeltConfig(
+        miningConnection ?? connection
+      )) as MiningMeltConfig | null;
       const nextSeq = BigInt(cfg.roundSeq.toString());
       const nextPda = deriveMeltRoundPda(nextSeq);
 
@@ -250,7 +259,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         setIsRefreshing(false);
       }
     }
-  }, [anchorWallet, connection, publicKey, readonlyWallet]);
+  }, [anchorWallet, connection, miningConnection, publicKey, readonlyWallet]);
 
   useEffect(() => {
     refresh();

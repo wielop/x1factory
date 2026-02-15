@@ -174,7 +174,6 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
         const userRoundAccounts = await connection.getProgramAccounts(meltProgramId, {
           commitment: "confirmed",
           filters: [
-            { dataSize: 82 },
             {
               memcmp: {
                 offset: 8,
@@ -186,7 +185,7 @@ export function useMeltState({ connection, anchorWallet, publicKey, pollMs = 400
 
         for (const acc of userRoundAccounts) {
           const data = acc.account.data;
-          if (data.length < 82) continue;
+          if (data.length < 81) continue;
           const roundPk = new PublicKey(data.subarray(40, 72));
           const burned = data.readBigUInt64LE(72);
           const claimed = data.readUInt8(80) === 1;

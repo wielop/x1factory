@@ -398,20 +398,17 @@ export default function MeltPlayerPage() {
       setLeaderboardError(null);
       const roundFilterOffset = 8 + 32;
       const filters = phase === "LIVE"
-        ? [
-            { dataSize: 82 },
-            { memcmp: { offset: roundFilterOffset, bytes: melt.roundPda.toBase58() } },
-          ]
-        : [{ dataSize: 82 }];
+        ? [{ memcmp: { offset: roundFilterOffset, bytes: melt.roundPda.toBase58() } }]
+        : undefined;
       const userRounds = await connection.getProgramAccounts(meltProgramId, {
         commitment: "confirmed",
-        filters,
+        ...(filters ? { filters } : {}),
       });
 
       const roundBurns = new Map<string, Map<string, bigint>>();
       for (const entry of userRounds) {
         const data = entry.account.data;
-        if (data.length < 82) continue;
+        if (data.length < 81) continue;
         const user = new PublicKey(data.subarray(8, 40)).toBase58();
         const round = new PublicKey(data.subarray(40, 72)).toBase58();
         const burned = data.readBigUInt64LE(72);
@@ -496,7 +493,6 @@ export default function MeltPlayerPage() {
         const userRounds = await connection.getProgramAccounts(meltProgramId, {
           commitment: "confirmed",
           filters: [
-            { dataSize: 82 },
             { memcmp: { offset: roundFilterOffset, bytes: melt.roundPda.toBase58() } },
           ],
         });
@@ -504,7 +500,7 @@ export default function MeltPlayerPage() {
         const totals = new Map<string, bigint>();
         for (const entry of userRounds) {
           const data = entry.account.data;
-          if (data.length < 82) continue;
+          if (data.length < 81) continue;
           const user = new PublicKey(data.subarray(8, 40)).toBase58();
           const burned = data.readBigUInt64LE(72);
           if (burned <= 0n) continue;

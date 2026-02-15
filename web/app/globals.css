@@ -94,3 +94,25 @@ a {
   background: rgba(3, 6, 10, 0.8) !important;
   backdrop-filter: blur(16px) !important;
 }
+
+@keyframes meltRainbowBorder {
+  0% {
+    box-shadow: 0 0 18px rgba(255, 38, 0, 0.55), 0 0 34px rgba(255, 170, 0, 0.45);
+  }
+  25% {
+    box-shadow: 0 0 20px rgba(255, 245, 0, 0.65), 0 0 40px rgba(61, 255, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(0, 255, 224, 0.65), 0 0 42px rgba(0, 136, 255, 0.55);
+  }
+  75% {
+    box-shadow: 0 0 22px rgba(180, 0, 255, 0.7), 0 0 44px rgba(255, 0, 132, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 18px rgba(255, 38, 0, 0.55), 0 0 34px rgba(255, 170, 0, 0.45);
+  }
+}
+
+.melt-live-rainbow {
+  animation: meltRainbowBorder 2.6s linear infinite;
+}

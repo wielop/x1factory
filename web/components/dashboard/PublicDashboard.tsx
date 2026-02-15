@@ -2018,6 +2018,7 @@ export function PublicDashboard() {
           meltConfig: meltConfigPda,
           meltVault: meltVaultPda,
           meltRound: meltRoundPda,
+          meltProgram: meltProgramId,
           systemProgram: SystemProgram.programId,
         })
         .rpc();

@@ -21,3 +21,11 @@
 ## Web (Vercel)
 - `NEXT_PUBLIC_RPC_URL=https://rpc.mainnet.x1.xyz`
 - `NEXT_PUBLIC_PROGRAM_ID=uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw`
+- `NEXT_PUBLIC_MELT_RPC_URL=https://rpc.mainnet.x1.xyz`
+- `NEXT_PUBLIC_MELT_PROGRAM_ID=HAWdiMtvTfiFhENgxPdWEgBQmoa3A5oN1KV9N3LSmxXz` (or deployed mainnet MELT ID)
+- `NEXT_PUBLIC_MIND_MINT=DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT`
+
+## MELT
+- Program ID (v1): `HAWdiMtvTfiFhENgxPdWEgBQmoa3A5oN1KV9N3LSmxXz`
+- Config PDA: `AP1hGsQQSJWAueMUuCRRuo4odCtL8TrbafMb4cB7SyZu` (seed: `melt_config`)
+- Vault PDA: derived from seed `melt_vault`

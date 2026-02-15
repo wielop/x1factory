@@ -381,7 +381,7 @@ export default function MeltPlayerPage() {
     ? "In the last round we distributed"
     : "Round payout";
   const refreshLeaderboard = async () => {
-    if (!melt.roundPda || !roundSeq) {
+    if (!melt.roundPda || roundSeq === null) {
       setLeaderboardRows([]);
       leaderboardRoundRef.current = "";
       return;
@@ -473,12 +473,12 @@ export default function MeltPlayerPage() {
   };
 
   useEffect(() => {
-    if (!melt.roundPda || !roundSeq) return;
+    if (!melt.roundPda || roundSeq === null) return;
     void refreshLeaderboard();
   }, [melt.roundPda, roundSeq, phase]);
 
   useEffect(() => {
-    if (phase !== "LIVE" || !melt.roundPda || !roundSeq) return;
+    if (phase !== "LIVE" || !melt.roundPda || roundSeq === null) return;
     const id = window.setInterval(() => {
       void refreshLeaderboard();
     }, 12_000);

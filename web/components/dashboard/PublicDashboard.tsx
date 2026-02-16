@@ -52,7 +52,13 @@ import {
   USER_STAKE_LEN,
   tryDecodeUserStakeAccount,
 } from "@/lib/decoders";
-import { formatDurationSeconds, formatTokenAmount, parseUiAmountToBase, shortPk } from "@/lib/format";
+import {
+  formatCountdownHms,
+  formatDurationSeconds,
+  formatTokenAmount,
+  parseUiAmountToBase,
+  shortPk,
+} from "@/lib/format";
 import { formatError } from "@/lib/formatError";
 import { sendTelemetry } from "@/lib/telemetryClient";
 import { LEVELING_ENABLED, LEVELING_DISABLED_MESSAGE } from "@/lib/leveling";
@@ -2489,7 +2495,11 @@ export function PublicDashboard() {
           : "MELT EVENT CHARGING";
   const meltSubtitle =
     meltPhase === "LIVE"
-      ? `Ends in ${Math.max(0, (meltSummary.roundEndTs ?? meltNowSec) - meltNowSec)}s`
+      ? (() => {
+          const left = Math.max(0, (meltSummary.roundEndTs ?? meltNowSec) - meltNowSec);
+          const formatted = formatCountdownHms(left, "Ended");
+          return formatted === "Ended" ? "Ended" : `Ends in ${formatted}`;
+        })()
       : meltPhase === "ENDED"
         ? "Round ended. Waiting for first finalizer."
         : meltPhase === "FINALIZED"
@@ -2498,11 +2508,18 @@ export function PublicDashboard() {
   const meltValueOrDash = (value: bigint | null, label: "XNT" | "MIND", digits = 2) =>
     !meltSummary.envReady || value == null ? "—" : `${formatTokenAmount(value, XNT_DECIMALS, digits)} ${label}`;
   const meltCtaLabel = meltPhase === "FINALIZED" ? "Claim rewards →" : "Open MELT →";
-  const showFinalizedStats = meltPhase === "FINALIZED" && meltSummary.envReady;
   const showUserStats =
     !!publicKey &&
     meltSummary.envReady &&
     (meltSummary.userBurnedLamports != null && meltSummary.userBurnedLamports > 0n);
+  const meltTotalBurnLamports = meltSummary.totalBurnLamports ?? 0n;
+  const meltUserBurnedLamports = meltSummary.userBurnedLamports ?? 0n;
+  const meltVPayLamports = meltSummary.vPayLamports ?? 0n;
+  const meltUserShareBps =
+    meltTotalBurnLamports > 0n ? (meltUserBurnedLamports * 10_000n) / meltTotalBurnLamports : 0n;
+  const meltUserSharePct = (Number(meltUserShareBps) / 100).toFixed(2);
+  const meltUserEstimatedPayoutLamports =
+    meltTotalBurnLamports > 0n ? (meltVPayLamports * meltUserBurnedLamports) / meltTotalBurnLamports : 0n;
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -2559,17 +2576,24 @@ export function PublicDashboard() {
               <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="rounded-lg border border-white/10 bg-black/35 p-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Next cycle</div>
-                    <div className="mt-1 text-sm text-cyan-100">
-                      {meltSummary.envReady
-                        ? `${formatTokenAmount(meltVialLamports, XNT_DECIMALS, 2)} / ${formatTokenAmount(meltCapLamports, XNT_DECIMALS, 2)} XNT`
-                        : "—"}
-                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Your share</div>
+                    {!publicKey ? (
+                      <div className="mt-1 text-xs text-cyan-100">Connect wallet to see your share.</div>
+                    ) : meltUserBurnedLamports <= 0n ? (
+                      <div className="mt-1 text-xs text-cyan-100">Burn MIND to earn a share.</div>
+                    ) : (
+                      <div className="mt-1 text-xs text-cyan-100">
+                        <div>Your share: {meltUserSharePct}%</div>
+                        <div className="mt-1">
+                          Est. payout: {formatTokenAmount(meltUserEstimatedPayoutLamports, XNT_DECIMALS, 4)} XNT
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-lg border border-white/10 bg-black/35 p-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Total burned</div>
                     <div className="mt-1 text-sm text-cyan-100">
-                      {showFinalizedStats ? meltValueOrDash(meltSummary.totalBurnLamports, "MIND", 1) : "—"}
+                      {meltValueOrDash(meltSummary.totalBurnLamports, "MIND", 1)}
                     </div>
                   </div>
                 </div>

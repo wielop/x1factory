@@ -17,6 +17,16 @@ export function formatDurationSeconds(totalSeconds: number) {
   return parts.join(" ");
 }
 
+export function formatCountdownHms(totalSeconds: number | null | undefined, endedLabel = "Ended") {
+  if (totalSeconds == null || !Number.isFinite(totalSeconds)) return endedLabel;
+  const s = Math.floor(totalSeconds);
+  if (s <= 0) return endedLabel;
+  const hours = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  return `${hours}h ${mins.toString().padStart(2, "0")}m ${secs.toString().padStart(2, "0")}s`;
+}
+
 export function formatUnixTs(ts: number | null | undefined) {
   if (!ts && ts !== 0) return "-";
   try {
@@ -47,4 +57,3 @@ export function explorerTxUrl(sig: string) {
   const url = rpcUrl();
   return `https://explorer.solana.com/tx/${sig}?cluster=custom&customUrl=${encodeURIComponent(url)}`;
 }
-

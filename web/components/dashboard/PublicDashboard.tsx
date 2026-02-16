@@ -2428,14 +2428,6 @@ export function PublicDashboard() {
     !!publicKey &&
     meltSummary.envReady &&
     (meltSummary.userBurnedLamports != null && meltSummary.userBurnedLamports > 0n);
-  const meltTotalBurnLamports = meltSummary.totalBurnLamports ?? 0n;
-  const meltUserBurnedLamports = meltSummary.userBurnedLamports ?? 0n;
-  const meltVPayLamports = meltSummary.vPayLamports ?? 0n;
-  const meltUserShareBps =
-    meltTotalBurnLamports > 0n ? (meltUserBurnedLamports * 10_000n) / meltTotalBurnLamports : 0n;
-  const meltUserSharePct = (Number(meltUserShareBps) / 100).toFixed(2);
-  const meltUserEstimatedPayoutLamports =
-    meltTotalBurnLamports > 0n ? (meltVPayLamports * meltUserBurnedLamports) / meltTotalBurnLamports : 0n;
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -2492,16 +2484,18 @@ export function PublicDashboard() {
               <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="rounded-lg border border-white/10 bg-black/35 p-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Your share</div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Your burned</div>
                     {!publicKey ? (
-                      <div className="mt-1 text-xs text-cyan-100">Connect wallet to see your share.</div>
-                    ) : meltUserBurnedLamports <= 0n ? (
-                      <div className="mt-1 text-xs text-cyan-100">Burn MIND to earn a share.</div>
+                      <div className="mt-1 text-xs text-cyan-100">Connect wallet to see your stats.</div>
+                    ) : !showUserStats ? (
+                      <div className="mt-1 text-xs text-cyan-100">Burn MIND to join this round.</div>
                     ) : (
                       <div className="mt-1 text-xs text-cyan-100">
-                        <div>Your share: {meltUserSharePct}%</div>
+                        <div>Your burned: {meltValueOrDash(meltSummary.userBurnedLamports, "MIND", 1)}</div>
                         <div className="mt-1">
-                          Est. payout: {formatTokenAmount(meltUserEstimatedPayoutLamports, XNT_DECIMALS, 4)} XNT
+                          {meltSummary.userClaimed
+                            ? "Claimed: Yes"
+                            : `Your est. payout: ${meltValueOrDash(meltSummary.userEstimatedPayoutLamports, "XNT", 2)}`}
                         </div>
                       </div>
                     )}
@@ -2513,16 +2507,6 @@ export function PublicDashboard() {
                     </div>
                   </div>
                 </div>
-                {showUserStats ? (
-                  <div className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-500/10 p-2 text-xs text-cyan-100">
-                    <div>Your burned: {meltValueOrDash(meltSummary.userBurnedLamports, "MIND", 1)}</div>
-                    <div className="mt-1">
-                      {meltSummary.userClaimed
-                        ? "Claimed: Yes"
-                        : `Your est. payout: ${meltValueOrDash(meltSummary.userEstimatedPayoutLamports, "XNT", 2)}`}
-                    </div>
-                  </div>
-                ) : null}
                 <div className="mt-3 flex justify-end">
                   <Link
                     href="/melt"

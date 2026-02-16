@@ -13,6 +13,7 @@ import {
 import { TopBar } from "@/components/shared/TopBar";
 import { useToast } from "@/components/shared/ToastProvider";
 import { decodeUserMiningProfileAccount } from "@/lib/decoders";
+import { formatCountdownHms } from "@/lib/format";
 import {
   deriveMeltConfigPda,
   deriveMeltRoundPda,
@@ -183,8 +184,8 @@ export default function MeltPlayerPage() {
     if (!melt.round) return "";
     const end = Number(melt.round.endTs.toString());
     const left = end - nowSec;
-    if (left <= 0) return "Ended";
-    return `Ends in ${left}s`;
+    const formatted = formatCountdownHms(left, "Ended");
+    return formatted === "Ended" ? "Ended" : `Ends in ${formatted}`;
   }, [melt.round, nowSec]);
 
   const burnError = (message: string) => {

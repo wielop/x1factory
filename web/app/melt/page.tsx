@@ -28,7 +28,7 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
-const PODIUM_RANK_BONUS_XNT = 60;
+const RANK_BONUS_TOTAL_XNT = 60;
 const HIDE_BONUS_WALLETS = new Set([
   "3365iM53o3btUUpZFh96Bgrehm8SE9smUfmZvgVb7RmY",
   "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
@@ -460,11 +460,10 @@ export default function MeltPlayerPage() {
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
     : "Round payout";
-  const payoutHeadlineSuffix = phase === "FINALIZED" || phase === "ENDED"
-    ? ` + ${PODIUM_RANK_BONUS_XNT} XNT in ranking rewards`
-    : phase === "LIVE"
-      ? ` + ${PODIUM_RANK_BONUS_XNT} XNT RANK BONUS 💎`
-      : "";
+  const rankBonusTotalLamports = BigInt(RANK_BONUS_TOTAL_XNT) * 10n ** DECIMALS;
+  const payoutHeadlineValue = phase === "FINALIZED" || phase === "ENDED"
+    ? `${((vPay + rankBonusTotalLamports) / 10n ** DECIMALS).toString()} XNT`
+    : `${formatAmount(vPay, 9n, 2)} XNT${phase === "LIVE" ? ` + ${RANK_BONUS_TOTAL_XNT} XNT RANK BONUS 💎` : ""}`;
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || roundSeq === null) {
       setLeaderboardRows([]);
@@ -710,7 +709,7 @@ export default function MeltPlayerPage() {
             </div>
           </div>
           <div className="mt-3 text-3xl font-semibold">
-            {payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT{payoutHeadlineSuffix}
+            {payoutTitle}: {payoutHeadlineValue}
           </div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
           <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn, 9n, 1)} MIND</div>

@@ -29,6 +29,10 @@ import { useMeltState } from "@/lib/useMeltState";
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
 const PODIUM_RANK_BONUS_XNT = 60;
+const HIDE_BONUS_WALLETS = new Set([
+  "3365iM53o3btUUpZFh96Bgrehm8SE9smUfmZvgVb7RmY",
+  "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
+]);
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -865,7 +869,7 @@ export default function MeltPlayerPage() {
                       <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.burned)}</td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">
                         <span>{formatAmount(row.payout)}</span>
-                        {phase !== "LIVE" && row.rankBonusXnt > 0 ? (
+                        {phase !== "LIVE" && row.rankBonusXnt > 0 && !HIDE_BONUS_WALLETS.has(row.wallet) ? (
                           <span className="ml-1 text-xs text-white/60">(+{row.rankBonusXnt} XNT 💎)</span>
                         ) : null}
                       </td>

@@ -460,6 +460,11 @@ export default function MeltPlayerPage() {
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
     : "Round payout";
+  const payoutHeadlineSuffix = phase === "FINALIZED" || phase === "ENDED"
+    ? ` + ${PODIUM_RANK_BONUS_XNT} XNT in ranking rewards`
+    : phase === "LIVE"
+      ? ` + ${PODIUM_RANK_BONUS_XNT} XNT RANK BONUS 💎`
+      : "";
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || roundSeq === null) {
       setLeaderboardRows([]);
@@ -704,7 +709,7 @@ export default function MeltPlayerPage() {
             </div>
           </div>
           <div className="mt-3 text-3xl font-semibold">
-            {payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT{phase === "LIVE" ? ` + ${PODIUM_RANK_BONUS_XNT} XNT RANK BONUS 💎` : ""}
+            {payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT{payoutHeadlineSuffix}
           </div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
           <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn, 9n, 1)} MIND</div>

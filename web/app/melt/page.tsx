@@ -60,6 +60,7 @@ type LeaderboardRow = {
   wallet: string;
   burned: bigint;
   payout: bigint;
+  rankBonusXnt: number;
 };
 type WinnerRow = {
   wallet: string;
@@ -487,12 +488,12 @@ export default function MeltPlayerPage() {
         byUser.set(user, (byUser.get(user) ?? 0n) + burned);
       }
 
-      const totals = new Map<string, { burned: bigint; payout: bigint }>();
+      const totals = new Map<string, { burned: bigint; payout: bigint; rankBonusXnt: number }>();
       if (phase === "LIVE") {
         const byUser = roundBurns.get(melt.roundPda.toBase58()) ?? new Map<string, bigint>();
         for (const [walletAddr, burned] of byUser.entries()) {
           const payout = totalBurn > 0n ? (vPay * burned) / totalBurn : 0n;
-          totals.set(walletAddr, { burned, payout });
+          totals.set(walletAddr, { burned, payout, rankBonusXnt: 0 });
         }
       } else {
         const roundKeys = Array.from(roundBurns.keys()).map((k) => new PublicKey(k));
@@ -508,12 +509,20 @@ export default function MeltPlayerPage() {
             const totalBurnRound = info.data.readBigUInt64LE(48);
             const byUser = roundBurns.get(roundKey);
             if (!byUser) return;
+            const roundRanking = Array.from(byUser.entries()).sort((a, b) =>
+              a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1
+            );
+            const roundBonusByUser = new Map<string, number>();
+            roundRanking.slice(0, 3).forEach(([walletAddr], idx) => {
+              roundBonusByUser.set(walletAddr, idx === 0 ? 30 : idx === 1 ? 20 : 10);
+            });
             for (const [walletAddr, burned] of byUser.entries()) {
               const payout = totalBurnRound > 0n ? (vPayRound * burned) / totalBurnRound : 0n;
-              const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n };
+              const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n, rankBonusXnt: 0 };
               totals.set(walletAddr, {
                 burned: prev.burned + burned,
                 payout: prev.payout + payout,
+                rankBonusXnt: prev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
               });
             }
           });
@@ -524,6 +533,7 @@ export default function MeltPlayerPage() {
         wallet: walletAddr,
         burned: v.burned,
         payout: v.payout,
+        rankBonusXnt: v.rankBonusXnt,
       }));
       nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
       setLeaderboardRows(nextRows);
@@ -823,7 +833,12 @@ export default function MeltPlayerPage() {
                         </div>
                       </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.burned)}</td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.payout)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        <span>{formatAmount(row.payout)}</span>
+                        {phase !== "LIVE" && row.rankBonusXnt > 0 ? (
+                          <span className="ml-1 text-xs text-white/60">(+{row.rankBonusXnt} XNT 💎)</span>
+                        ) : null}
+                      </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT 💎` : ""}</td>
                     </tr>
                   );

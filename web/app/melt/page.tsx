@@ -103,6 +103,12 @@ const getRowClass = (index: number) => {
   if (index === 2) return "bg-amber-700/10 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.28)]";
   return "";
 };
+const getRankBonus = (index: number): number | null => {
+  if (index === 0) return 30;
+  if (index === 1) return 20;
+  if (index === 2) return 10;
+  return null;
+};
 
 export default function MeltPlayerPage() {
   const { publicKey } = useWallet();
@@ -771,13 +777,14 @@ export default function MeltPlayerPage() {
           </div>
 
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-xs uppercase tracking-[0.16em] text-white/60">
                 <tr>
-                  <th className="pb-2">Rank</th>
-                  <th className="pb-2">Wallet</th>
-                  <th className="pb-2">Burned (MIND)</th>
-                  <th className="pb-2">Payout (XNT)</th>
+                  <th className="pb-2 whitespace-nowrap">Rank</th>
+                  <th className="pb-2 whitespace-nowrap">Wallet</th>
+                  <th className="pb-2 whitespace-nowrap">Burned (MIND)</th>
+                  <th className="pb-2 whitespace-nowrap">Payout (XNT)</th>
+                  <th className="pb-2 whitespace-nowrap">RANK BONUS</th>
                 </tr>
               </thead>
               <tbody className="text-white/85">
@@ -785,18 +792,22 @@ export default function MeltPlayerPage() {
                   const mine = publicKey?.toBase58() === row.wallet;
                   const rowClass = getRowClass(idx);
                   const label = placeLabel(idx);
+                  const bonus = getRankBonus(idx);
                   return (
                     <tr key={row.wallet} className={`${rowClass} ${mine ? "shadow-[inset_0_0_0_1px_rgba(34,211,238,0.5)]" : ""}`}>
-                      <td className="py-1.5 pr-3">
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
                         {label ? (
-                          <span className="inline-flex items-center gap-1 text-sm font-bold text-white" aria-label={`${label} place`}>
+                          <span
+                            className="inline-flex items-center gap-1 text-sm font-bold text-white"
+                            aria-label={`${label} place bonus ${bonus ?? 0} XNT`}
+                          >
                             {getRankBadge(idx)}
                           </span>
                         ) : (
                           getRankBadge(idx)
                         )}
                       </td>
-                      <td className="py-1.5 pr-3">
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span>{shortWallet(row.wallet)}</span>
                           <button
@@ -808,8 +819,9 @@ export default function MeltPlayerPage() {
                           </button>
                         </div>
                       </td>
-                      <td className="py-1.5 pr-3">{formatAmount(row.burned)}</td>
-                      <td className="py-1.5 pr-3">{formatAmount(row.payout)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.burned)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.payout)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT ♦️` : "—"}</td>
                     </tr>
                   );
                 })}

@@ -127,6 +127,7 @@ export default function MeltPlayerPage() {
   const leaderboardRoundRef = useRef<string>("");
   const [lastWinners, setLastWinners] = useState<WinnerRow[]>([]);
   const [userLevel, setUserLevel] = useState(1);
+  const [vialView, setVialView] = useState<"current" | "next">("current");
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const miningConnection = useMemo(() => new Connection(getRpcUrl(), "confirmed"), []);
@@ -423,8 +424,13 @@ export default function MeltPlayerPage() {
 
   const missingToStart = capLamports > vialLamports ? capLamports - vialLamports : 0n;
   const nextProgressPct = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
-  const showingNextCycle = phase === "IDLE" || phase === "FINALIZED";
+  const defaultNextView = phase === "IDLE" || phase === "FINALIZED";
+  const showingNextCycle = vialView === "next";
   const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
+
+  useEffect(() => {
+    setVialView(defaultNextView ? "next" : "current");
+  }, [defaultNextView]);
 
   const statusBadge = phase === "LIVE"
     ? "LIVE"
@@ -623,8 +629,26 @@ export default function MeltPlayerPage() {
       <TopBar progressionLabel={`LVL ${userLevel}`} />
       <div className="mx-auto max-w-4xl px-6 pt-10">
         <div className="mb-5 flex items-center justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-3">
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">MELT</h1>
+            <div className="mt-2 inline-flex rounded-lg border border-white/15 bg-white/5 p-1">
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${vialView === "current" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                onClick={() => setVialView("current")}
+                aria-pressed={vialView === "current"}
+              >
+                Current event
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${vialView === "next" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                onClick={() => setVialView("next")}
+                aria-pressed={vialView === "next"}
+              >
+                Next event
+              </button>
+            </div>
           </div>
           <WalletMultiButton />
         </div>
@@ -651,16 +675,18 @@ export default function MeltPlayerPage() {
 
             <div className="text-center">
               <div className="text-2xl font-semibold">
-                {showingNextCycle ? "Next MELT Cycle" : "MELT Vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports, 9n, 2)} / {formatAmount(capLamports, 9n, 2)} XNT
+                {showingNextCycle ? "Next event vial" : "Current event vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports, 9n, 2)} / {formatAmount(capLamports, 9n, 2)} XNT
               </div>
               <div className="mt-1 text-sm text-white/70">
-                {phase === "LIVE"
-                  ? countdown
-                  : phase === "ENDED"
-                    ? "MELT ended. Finalize MELT to unlock claim."
-                    : phase === "FINALIZED"
-                      ? `Previous MELT finalized. Claims open. Next cycle charging (${formatAmount(missingToStart, 9n, 2)} XNT to start).`
-                      : `Charging (vial filling)... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
+                {showingNextCycle
+                  ? `Charging for next round... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`
+                  : phase === "LIVE"
+                    ? countdown
+                    : phase === "ENDED"
+                      ? "MELT ended. Finalize MELT to unlock claim."
+                      : phase === "FINALIZED"
+                        ? `Previous MELT finalized. Claims open. Next cycle charging (${formatAmount(missingToStart, 9n, 2)} XNT to start).`
+                        : `Charging (vial filling)... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
               </div>
             </div>
           </div>

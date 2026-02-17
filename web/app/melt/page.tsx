@@ -617,6 +617,7 @@ export default function MeltPlayerPage() {
   }, [connection, melt.roundPda, meltProgramId, totalBurn, vPay]);
 
   const topRows = leaderboardRows.slice(0, 10);
+  const isLiveLeaderboard = phase === "LIVE";
   const yourRowIndex = publicKey
     ? leaderboardRows.findIndex((r) => r.wallet === publicKey.toBase58())
     : -1;
@@ -825,14 +826,14 @@ export default function MeltPlayerPage() {
           </div>
 
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className={`w-full text-sm ${isLiveLeaderboard ? "min-w-[640px]" : "min-w-[520px]"}`}>
               <thead className="text-left text-xs uppercase tracking-[0.16em] text-white/60">
                 <tr>
                   <th className="pb-2 whitespace-nowrap">Rank</th>
                   <th className="pb-2 whitespace-nowrap">Wallet</th>
                   <th className="pb-2 whitespace-nowrap">Burned (MIND)</th>
                   <th className="pb-2 whitespace-nowrap">Payout (XNT)</th>
-                  <th className="pb-2 whitespace-nowrap">RANK BONUS</th>
+                  {isLiveLeaderboard ? <th className="pb-2 whitespace-nowrap">RANK BONUS</th> : null}
                 </tr>
               </thead>
               <tbody className="text-white/85">
@@ -874,7 +875,7 @@ export default function MeltPlayerPage() {
                           <span className="ml-1 text-xs text-white/60">(+{row.rankBonusXnt} XNT 💎)</span>
                         ) : null}
                       </td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT 💎` : ""}</td>
+                      {isLiveLeaderboard ? <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT 💎` : ""}</td> : null}
                     </tr>
                   );
                 })}

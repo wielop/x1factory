@@ -825,7 +825,7 @@ export default function MeltPlayerPage() {
                       </td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.burned)}</td>
                       <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.payout)}</td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT ♦️` : "—"}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT 💎` : ""}</td>
                     </tr>
                   );
                 })}

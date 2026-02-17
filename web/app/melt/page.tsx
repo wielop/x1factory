@@ -28,6 +28,7 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
+const PODIUM_RANK_BONUS_XNT = 60;
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -662,7 +663,9 @@ export default function MeltPlayerPage() {
               {statusBadge}
             </div>
           </div>
-          <div className="mt-3 text-3xl font-semibold">{payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT</div>
+          <div className="mt-3 text-3xl font-semibold">
+            {payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT{phase === "LIVE" ? ` + ${PODIUM_RANK_BONUS_XNT} XNT RANK BONUS 💎` : ""}
+          </div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
           <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn, 9n, 1)} MIND</div>
           {(phase === "FINALIZED" || phase === "ENDED") ? (

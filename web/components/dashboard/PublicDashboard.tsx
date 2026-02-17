@@ -243,6 +243,7 @@ const RIG_PLAN_BY_TYPE: Record<RigType, RigPlan> = {
 };
 
 const LEADER_MEDALS = ["🥇", "🥈", "🥉"];
+const PODIUM_RANK_BONUS_XNT = 60;
 
 const RIG_BEST_FOR: Record<RigType, string> = {
   starter: "Quick rotations, testing, small setups.",
@@ -2479,6 +2480,7 @@ export function PublicDashboard() {
                     2
                   )}{" "}
                   / {meltValueOrDash(meltCapLamports, "XNT", 2)}
+                  {meltPhase === "LIVE" ? ` + ${PODIUM_RANK_BONUS_XNT} XNT RANK BONUS 💎` : ""}
                 </div>
               </div>
               <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">

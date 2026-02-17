@@ -74,6 +74,35 @@ type ActionState = {
 };
 
 const shortWallet = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
+const placeLabel = (index: number): "1st" | "2nd" | "3rd" | null => {
+  if (index === 0) return "1st";
+  if (index === 1) return "2nd";
+  if (index === 2) return "3rd";
+  return null;
+};
+const placeMedal = (index: number): "🥇" | "🥈" | "🥉" | null => {
+  if (index === 0) return "🥇";
+  if (index === 1) return "🥈";
+  if (index === 2) return "🥉";
+  return null;
+};
+const placeClass = (index: number) => {
+  if (index === 0) return "border-yellow-300/55 bg-gradient-to-r from-yellow-500/20 to-yellow-200/5 text-yellow-100 shadow-[0_0_20px_rgba(250,204,21,0.2)]";
+  if (index === 1) return "border-slate-200/45 bg-gradient-to-r from-slate-300/15 to-slate-200/5 text-slate-100 shadow-[0_0_14px_rgba(226,232,240,0.12)]";
+  if (index === 2) return "border-amber-600/50 bg-gradient-to-r from-amber-700/18 to-amber-600/5 text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.14)]";
+  return "";
+};
+const getRankBadge = (index: number) => {
+  const medal = placeMedal(index);
+  if (!medal) return `#${index + 1}`;
+  return `${medal} #${index + 1}`;
+};
+const getRowClass = (index: number) => {
+  if (index === 0) return "bg-yellow-500/10 shadow-[inset_0_0_0_1px_rgba(250,204,21,0.28)]";
+  if (index === 1) return "bg-slate-300/10 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.2)]";
+  if (index === 2) return "bg-amber-700/10 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.28)]";
+  return "";
+};
 
 export default function MeltPlayerPage() {
   const { publicKey } = useWallet();
@@ -634,15 +663,21 @@ export default function MeltPlayerPage() {
                   <div className="text-sm text-white/60">No winners data yet.</div>
                 ) : (
                   lastWinners.map((row, idx) => {
-                    const tone = idx === 0
-                      ? "border-yellow-300/40 bg-yellow-500/10 text-yellow-200"
-                      : idx === 1
-                        ? "border-slate-300/40 bg-slate-300/10 text-slate-100"
-                        : "border-amber-700/50 bg-amber-700/10 text-amber-200";
-                    const label = idx === 0 ? "TOP 1" : idx === 1 ? "TOP 2" : "TOP 3";
+                    const label = placeLabel(idx);
+                    const medal = placeMedal(idx);
                     return (
-                      <div key={row.wallet} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${tone}`}>
-                        <div className="text-sm font-semibold">{label} · {shortWallet(row.wallet)}</div>
+                      <div key={row.wallet} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${placeClass(idx)}`}>
+                        <div className="flex items-center gap-3">
+                          {label && medal ? (
+                            <span
+                              className="text-base font-extrabold tracking-wide"
+                              aria-label={`${label} place`}
+                            >
+                              {medal} {label}
+                            </span>
+                          ) : null}
+                          <div className="text-sm font-semibold">{shortWallet(row.wallet)}</div>
+                        </div>
                         <div className="text-right text-sm">
                           <div>Reward: {formatAmount(row.payout, 9n, 2)} XNT</div>
                           <div className="text-xs opacity-80">Burned: {formatAmount(row.burned, 9n, 1)} MIND</div>
@@ -748,9 +783,19 @@ export default function MeltPlayerPage() {
               <tbody className="text-white/85">
                 {topRows.map((row, idx) => {
                   const mine = publicKey?.toBase58() === row.wallet;
+                  const rowClass = getRowClass(idx);
+                  const label = placeLabel(idx);
                   return (
-                    <tr key={row.wallet} className={mine ? "bg-cyan-500/10" : ""}>
-                      <td className="py-1.5 pr-3">#{idx + 1}</td>
+                    <tr key={row.wallet} className={`${rowClass} ${mine ? "shadow-[inset_0_0_0_1px_rgba(34,211,238,0.5)]" : ""}`}>
+                      <td className="py-1.5 pr-3">
+                        {label ? (
+                          <span className="inline-flex items-center gap-1 text-sm font-bold text-white" aria-label={`${label} place`}>
+                            {getRankBadge(idx)}
+                          </span>
+                        ) : (
+                          getRankBadge(idx)
+                        )}
+                      </td>
                       <td className="py-1.5 pr-3">
                         <div className="flex items-center gap-2">
                           <span>{shortWallet(row.wallet)}</span>

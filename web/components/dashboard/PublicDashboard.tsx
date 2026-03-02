@@ -243,7 +243,10 @@ const RIG_PLAN_BY_TYPE: Record<RigType, RigPlan> = {
 };
 
 const LEADER_MEDALS = ["🥇", "🥈", "🥉"];
-const PODIUM_RANK_BONUS_XNT = 60;
+const getMeltRankBonusTotalXnt = (roundSeq: bigint | null): number => {
+  if (roundSeq !== null && roundSeq >= 2n) return 1000;
+  return 500;
+};
 
 const RIG_BEST_FOR: Record<RigType, string> = {
   starter: "Quick rotations, testing, small setups.",
@@ -2425,6 +2428,7 @@ export function PublicDashboard() {
   const meltValueOrDash = (value: bigint | null, label: "XNT" | "MIND", digits = 2) =>
     !meltSummary.envReady || value == null ? "—" : `${formatTokenAmount(value, XNT_DECIMALS, digits)} ${label}`;
   const meltCtaLabel = meltPhase === "FINALIZED" ? "Claim rewards →" : "Open MELT →";
+  const meltRankBonusTotalXnt = getMeltRankBonusTotalXnt(meltSummary.roundSeq);
   const showUserStats =
     !!publicKey &&
     meltSummary.envReady &&
@@ -2480,7 +2484,7 @@ export function PublicDashboard() {
                     2
                   )}{" "}
                   / {meltValueOrDash(meltCapLamports, "XNT", 2)}
-                  {meltPhase === "LIVE" ? ` + ${PODIUM_RANK_BONUS_XNT} XNT RANK BONUS 💎` : ""}
+                  {meltPhase === "LIVE" ? ` + ${meltRankBonusTotalXnt} XNT RANK BONUS 💎` : ""}
                 </div>
               </div>
               <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">

@@ -28,7 +28,27 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
-const RANK_BONUS_TOTAL_XNT = 60;
+// Rank bonus is versioned by round seq to preserve historical payouts.
+// seq=0 -> 60 XNT top3, seq=1 -> 500 XNT top8, seq>=2 -> 1000 XNT top8.
+const RANK_BONUS_SCHEME_ROUND0 = [30, 20, 10] as const;
+const RANK_BONUS_SCHEME_SEQ1 = [200, 120, 80, 30, 25, 20, 15, 10] as const;
+const RANK_BONUS_SCHEME_SEQ2_PLUS = [400, 240, 160, 60, 50, 40, 30, 20] as const;
+
+type RankBonusScheme = {
+  totalXnt: number;
+  byPlace: readonly number[];
+};
+
+const getRankBonusScheme = (roundSeq: bigint | null): RankBonusScheme => {
+  // Treat missing seq as latest scheme.
+  if (roundSeq !== null && roundSeq <= 0n) {
+    return { totalXnt: 60, byPlace: RANK_BONUS_SCHEME_ROUND0 };
+  }
+  if (roundSeq === 1n) {
+    return { totalXnt: 500, byPlace: RANK_BONUS_SCHEME_SEQ1 };
+  }
+  return { totalXnt: 1000, byPlace: RANK_BONUS_SCHEME_SEQ2_PLUS };
+};
 const HIDE_BONUS_WALLETS = new Set([
   "3365iM53o3btUUpZFh96Bgrehm8SE9smUfmZvgVb7RmY",
   "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
@@ -109,11 +129,9 @@ const getRowClass = (index: number) => {
   if (index === 2) return "bg-amber-700/10 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.28)]";
   return "";
 };
-const getRankBonus = (index: number): number | null => {
-  if (index === 0) return 30;
-  if (index === 1) return 20;
-  if (index === 2) return 10;
-  return null;
+const getRankBonus = (scheme: RankBonusScheme, index: number): number | null => {
+  const v = scheme.byPlace[index];
+  return typeof v === "number" ? v : null;
 };
 
 export default function MeltPlayerPage() {
@@ -128,6 +146,9 @@ export default function MeltPlayerPage() {
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [allFinalizedBurnLamports, setAllFinalizedBurnLamports] = useState<bigint>(0n);
+  const [allFinalizedDistributedLamports, setAllFinalizedDistributedLamports] = useState<bigint>(0n);
+  const [lastFinalizedBurnLamports, setLastFinalizedBurnLamports] = useState<bigint>(0n);
   const leaderboardRoundRef = useRef<string>("");
   const [lastWinners, setLastWinners] = useState<WinnerRow[]>([]);
   const [userLevel, setUserLevel] = useState(1);
@@ -460,14 +481,20 @@ export default function MeltPlayerPage() {
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
     : "Round payout";
-  const rankBonusTotalLamports = BigInt(RANK_BONUS_TOTAL_XNT) * 10n ** DECIMALS;
+  const rankBonusScheme = useMemo(() => getRankBonusScheme(roundSeq), [roundSeq]);
+  const rankBonusTotalLamports = BigInt(rankBonusScheme.totalXnt) * 10n ** DECIMALS;
   const payoutHeadlineValue = phase === "FINALIZED" || phase === "ENDED"
     ? `${((vPay + rankBonusTotalLamports) / 10n ** DECIMALS).toString()} XNT`
-    : `${formatAmount(vPay, 9n, 2)} XNT${phase === "LIVE" ? ` + ${RANK_BONUS_TOTAL_XNT} XNT RANK BONUS 💎` : ""}`;
+    : `${formatAmount(vPay, 9n, 2)} XNT${phase === "LIVE" ? ` + ${rankBonusScheme.totalXnt} XNT RANK BONUS 💎` : ""}`;
+  const displayedTotalBurn = phase === "FINALIZED" ? allFinalizedBurnLamports : totalBurn;
+
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || roundSeq === null) {
       setLeaderboardRows([]);
       leaderboardRoundRef.current = "";
+      setAllFinalizedBurnLamports(0n);
+      setAllFinalizedDistributedLamports(0n);
+      setLastFinalizedBurnLamports(0n);
       return;
     }
 
@@ -504,42 +531,70 @@ export default function MeltPlayerPage() {
 
       const totals = new Map<string, { burned: bigint; payout: bigint; rankBonusXnt: number }>();
       if (phase === "LIVE") {
+        setAllFinalizedBurnLamports(0n);
+        setAllFinalizedDistributedLamports(0n);
+        setLastFinalizedBurnLamports(0n);
         const byUser = roundBurns.get(melt.roundPda.toBase58()) ?? new Map<string, bigint>();
         for (const [walletAddr, burned] of byUser.entries()) {
           const payout = totalBurn > 0n ? (vPay * burned) / totalBurn : 0n;
           totals.set(walletAddr, { burned, payout, rankBonusXnt: 0 });
         }
       } else {
-        const roundKeys = Array.from(roundBurns.keys()).map((k) => new PublicKey(k));
-        for (let i = 0; i < roundKeys.length; i += 100) {
-          const chunk = roundKeys.slice(i, i + 100);
-          const infos = await connection.getMultipleAccountsInfo(chunk, "confirmed");
-          infos.forEach((info, idx) => {
-            if (!info || info.data.length < 58) return;
-            const status = info.data.readUInt8(56);
-            if (status !== 2) return;
-            const roundKey = chunk[idx].toBase58();
-            const vPayRound = info.data.readBigUInt64LE(40);
-            const totalBurnRound = info.data.readBigUInt64LE(48);
-            const byUser = roundBurns.get(roundKey);
-            if (!byUser) return;
-            const roundRanking = Array.from(byUser.entries()).sort((a, b) =>
-              a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1
-            );
-            const roundBonusByUser = new Map<string, number>();
-            roundRanking.slice(0, 3).forEach(([walletAddr], idx) => {
-              roundBonusByUser.set(walletAddr, idx === 0 ? 30 : idx === 1 ? 20 : 10);
-            });
-            for (const [walletAddr, burned] of byUser.entries()) {
-              const payout = totalBurnRound > 0n ? (vPayRound * burned) / totalBurnRound : 0n;
-              const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n, rankBonusXnt: 0 };
-              totals.set(walletAddr, {
-                burned: prev.burned + burned,
-                payout: prev.payout + payout,
-                rankBonusXnt: prev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
-              });
-            }
+        const finalizedRoundAccounts = await connection.getProgramAccounts(meltProgramId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: 58 }],
+        });
+        const finalizedRoundMeta = new Map<string, { seq: bigint; vPay: bigint; totalBurn: bigint }>();
+        let allBurn = 0n;
+        let allDistributed = 0n;
+        let latestSeq: bigint | null = null;
+        let latestTotalBurn = 0n;
+
+        for (const entry of finalizedRoundAccounts) {
+          const data = entry.account.data;
+          if (data.length < 58) continue;
+          const status = data.readUInt8(56);
+          if (status !== 2) continue;
+          const seq = data.readBigUInt64LE(8);
+          const vPayRound = data.readBigUInt64LE(40);
+          const totalBurnRound = data.readBigUInt64LE(48);
+          finalizedRoundMeta.set(entry.pubkey.toBase58(), {
+            seq,
+            vPay: vPayRound,
+            totalBurn: totalBurnRound,
           });
+          allBurn += totalBurnRound;
+          allDistributed += vPayRound + BigInt(getRankBonusScheme(seq).totalXnt) * 10n ** DECIMALS;
+          if (latestSeq === null || seq > latestSeq) {
+            latestSeq = seq;
+            latestTotalBurn = totalBurnRound;
+          }
+        }
+
+        setAllFinalizedBurnLamports(allBurn);
+        setAllFinalizedDistributedLamports(allDistributed);
+        setLastFinalizedBurnLamports(latestTotalBurn);
+
+        for (const [roundKey, byUser] of roundBurns.entries()) {
+          const roundMeta = finalizedRoundMeta.get(roundKey);
+          if (!roundMeta) continue;
+          const roundRanking = Array.from(byUser.entries()).sort((a, b) =>
+            a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1
+          );
+          const roundBonusByUser = new Map<string, number>();
+          const schemeForRound = getRankBonusScheme(roundMeta.seq);
+          roundRanking.slice(0, schemeForRound.byPlace.length).forEach(([walletAddr], idx) => {
+            roundBonusByUser.set(walletAddr, schemeForRound.byPlace[idx] ?? 0);
+          });
+          for (const [walletAddr, burned] of byUser.entries()) {
+            const payout = roundMeta.totalBurn > 0n ? (roundMeta.vPay * burned) / roundMeta.totalBurn : 0n;
+            const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n, rankBonusXnt: 0 };
+            totals.set(walletAddr, {
+              burned: prev.burned + burned,
+              payout: prev.payout + payout,
+              rankBonusXnt: prev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
+            });
+          }
         }
       }
 
@@ -708,7 +763,15 @@ export default function MeltPlayerPage() {
             {payoutTitle}: {payoutHeadlineValue}
           </div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
-          <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn, 9n, 1)} MIND</div>
+          <div className="mt-2 text-lg text-white/80">
+            {phase === "FINALIZED" ? "Total burned (all finalized)" : "Total burned"}: {formatAmount(displayedTotalBurn, 9n, 1)} MIND
+          </div>
+          {phase === "FINALIZED" ? (
+            <div className="mt-2 grid gap-1 text-sm text-white/75">
+              <div>All-time distributed: {formatAmount(allFinalizedDistributedLamports, 9n, 2)} XNT</div>
+              <div>Total burned (last round): {formatAmount(lastFinalizedBurnLamports, 9n, 1)} MIND</div>
+            </div>
+          ) : null}
           {(phase === "FINALIZED" || phase === "ENDED") ? (
             <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
               <div className="text-xs uppercase tracking-[0.18em] text-cyan-300">Last winners</div>
@@ -840,7 +903,7 @@ export default function MeltPlayerPage() {
                   const mine = publicKey?.toBase58() === row.wallet;
                   const rowClass = getRowClass(idx);
                   const label = placeLabel(idx);
-                  const bonus = getRankBonus(idx);
+                  const bonus = getRankBonus(rankBonusScheme, idx);
                   return (
                     <tr key={row.wallet} className={`${rowClass} ${mine ? "shadow-[inset_0_0_0_1px_rgba(34,211,238,0.5)]" : ""}`}>
                       <td className="py-1.5 pr-3 whitespace-nowrap">

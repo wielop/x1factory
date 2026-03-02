@@ -246,7 +246,7 @@ const RIG_PLAN_BY_TYPE: Record<RigType, RigPlan> = {
 
 const LEADER_MEDALS = ["🥇", "🥈", "🥉"];
 const getMeltRankBonusTotalXnt = (roundSeq: bigint | null): number => {
-  if (roundSeq !== null && roundSeq >= 2n) return 1000;
+  if (roundSeq !== null && roundSeq <= 0n) return 60;
   return 500;
 };
 

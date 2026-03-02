@@ -12,6 +12,7 @@ type MeltSummaryState = {
   loading: boolean;
   error: string | null;
   phase: MeltSummaryPhase;
+  roundSeq: bigint | null;
   capLamports: bigint | null;
   vialLamports: bigint | null;
   missingLamports: bigint | null;
@@ -44,6 +45,7 @@ const EMPTY_STATE: MeltSummaryState = {
   loading: false,
   error: null,
   phase: "IDLE",
+  roundSeq: null,
   capLamports: null,
   vialLamports: null,
   missingLamports: null,
@@ -162,6 +164,7 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
       }
 
       let phase: MeltSummaryPhase = "IDLE";
+      let roundSeq: bigint | null = null;
       let roundEndTs: number | null = null;
       let vPayLamports: bigint | null = null;
       let totalBurnLamports: bigint | null = null;
@@ -174,6 +177,7 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
         if (roundInfo) {
           const round = await (program.account as any).meltRound.fetch(roundPda);
           const status = readStatus(round.status as Record<string, unknown>);
+          roundSeq = BigInt(round.seq.toString());
           roundEndTs = Number(round.endTs.toString());
           vPayLamports = BigInt(round.vPay.toString());
           totalBurnLamports = BigInt(round.totalBurn.toString());
@@ -208,6 +212,7 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
         loading: false,
         error: null,
         phase,
+        roundSeq,
         capLamports,
         vialLamports,
         missingLamports,

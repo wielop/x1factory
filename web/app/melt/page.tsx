@@ -28,9 +28,8 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
-// Rank bonus is versioned by round seq to preserve historical payouts.
-// seq=0 -> 60 XNT top3, seq=1 -> 500 XNT top8, seq>=2 -> 1000 XNT top8.
-const RANK_BONUS_SCHEME_ROUND0 = [30, 20, 10] as const;
+// Rank bonus is versioned by round seq to preserve payouts policy.
+// seq<=1 -> 500 XNT top8, seq>=2 -> 1000 XNT top8.
 const RANK_BONUS_SCHEME_SEQ1 = [200, 120, 80, 30, 25, 20, 15, 10] as const;
 const RANK_BONUS_SCHEME_SEQ2_PLUS = [400, 240, 160, 60, 50, 40, 30, 20] as const;
 
@@ -41,10 +40,7 @@ type RankBonusScheme = {
 
 const getRankBonusScheme = (roundSeq: bigint | null): RankBonusScheme => {
   // Treat missing seq as latest scheme.
-  if (roundSeq !== null && roundSeq <= 0n) {
-    return { totalXnt: 60, byPlace: RANK_BONUS_SCHEME_ROUND0 };
-  }
-  if (roundSeq === 1n) {
+  if (roundSeq !== null && roundSeq <= 1n) {
     return { totalXnt: 500, byPlace: RANK_BONUS_SCHEME_SEQ1 };
   }
   return { totalXnt: 1000, byPlace: RANK_BONUS_SCHEME_SEQ2_PLUS };

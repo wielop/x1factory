@@ -28,22 +28,23 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
-// Rank bonus is versioned by round seq to preserve payouts policy.
-// seq<=1 -> 500 XNT top8, seq>=2 -> 1000 XNT top8.
-const RANK_BONUS_SCHEME_SEQ1 = [200, 120, 80, 30, 25, 20, 15, 10] as const;
-const RANK_BONUS_SCHEME_SEQ2_PLUS = [400, 240, 160, 60, 50, 40, 30, 20] as const;
+// Rank bonus is versioned by round seq to preserve historical payouts.
+// Legacy R1 can stay different; R2+ uses the current top8/500 scheme.
+const RANK_BONUS_SCHEME_R1_LEGACY = [30, 20, 10] as const;
+const RANK_BONUS_SCHEME_R2 = [200, 120, 80, 30, 25, 20, 15, 10] as const;
+const RANK_BONUS_TOTAL_R1_LEGACY_XNT = 60;
+const RANK_BONUS_TOTAL_R2_XNT = 500;
 
 type RankBonusScheme = {
   totalXnt: number;
   byPlace: readonly number[];
 };
 
-const getRankBonusScheme = (roundSeq: bigint | null): RankBonusScheme => {
-  // Treat missing seq as latest scheme.
-  if (roundSeq !== null && roundSeq <= 1n) {
-    return { totalXnt: 500, byPlace: RANK_BONUS_SCHEME_SEQ1 };
+const getRankBonusSchemeForSeq = (seq: bigint): RankBonusScheme => {
+  if (seq <= 0n) {
+    return { totalXnt: RANK_BONUS_TOTAL_R1_LEGACY_XNT, byPlace: RANK_BONUS_SCHEME_R1_LEGACY };
   }
-  return { totalXnt: 1000, byPlace: RANK_BONUS_SCHEME_SEQ2_PLUS };
+  return { totalXnt: RANK_BONUS_TOTAL_R2_XNT, byPlace: RANK_BONUS_SCHEME_R2 };
 };
 const HIDE_BONUS_WALLETS = new Set([
   "3365iM53o3btUUpZFh96Bgrehm8SE9smUfmZvgVb7RmY",
@@ -477,7 +478,10 @@ export default function MeltPlayerPage() {
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
     : "Round payout";
-  const rankBonusScheme = useMemo(() => getRankBonusScheme(roundSeq), [roundSeq]);
+  const rankBonusScheme = useMemo(
+    () => (roundSeq === null ? { totalXnt: RANK_BONUS_TOTAL_R2_XNT, byPlace: RANK_BONUS_SCHEME_R2 } : getRankBonusSchemeForSeq(roundSeq)),
+    [roundSeq]
+  );
   const rankBonusTotalLamports = BigInt(rankBonusScheme.totalXnt) * 10n ** DECIMALS;
   const payoutHeadlineValue = phase === "FINALIZED" || phase === "ENDED"
     ? `${((vPay + rankBonusTotalLamports) / 10n ** DECIMALS).toString()} XNT`
@@ -560,7 +564,7 @@ export default function MeltPlayerPage() {
             totalBurn: totalBurnRound,
           });
           allBurn += totalBurnRound;
-          allDistributed += vPayRound + BigInt(getRankBonusScheme(seq).totalXnt) * 10n ** DECIMALS;
+          allDistributed += vPayRound + BigInt(getRankBonusSchemeForSeq(seq).totalXnt) * 10n ** DECIMALS;
           if (latestSeq === null || seq > latestSeq) {
             latestSeq = seq;
             latestTotalBurn = totalBurnRound;
@@ -578,7 +582,7 @@ export default function MeltPlayerPage() {
             a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1
           );
           const roundBonusByUser = new Map<string, number>();
-          const schemeForRound = getRankBonusScheme(roundMeta.seq);
+          const schemeForRound = getRankBonusSchemeForSeq(roundMeta.seq);
           roundRanking.slice(0, schemeForRound.byPlace.length).forEach(([walletAddr], idx) => {
             roundBonusByUser.set(walletAddr, schemeForRound.byPlace[idx] ?? 0);
           });

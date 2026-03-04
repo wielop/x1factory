@@ -28,6 +28,28 @@ import { useMeltState } from "@/lib/useMeltState";
 
 const DECIMALS = 9n;
 const REFRESH_TOAST_COOLDOWN_MS = 20_000;
+// Rank bonus is versioned by round seq to preserve historical payouts.
+// Legacy R1 can stay different; R2+ uses the current top8/500 scheme.
+const RANK_BONUS_SCHEME_R1_LEGACY = [30, 20, 10] as const;
+const RANK_BONUS_SCHEME_R2 = [200, 120, 80, 30, 25, 20, 15, 10] as const;
+const RANK_BONUS_TOTAL_R1_LEGACY_XNT = 60;
+const RANK_BONUS_TOTAL_R2_XNT = 500;
+
+type RankBonusScheme = {
+  totalXnt: number;
+  byPlace: readonly number[];
+};
+
+const getRankBonusSchemeForSeq = (seq: bigint): RankBonusScheme => {
+  if (seq <= 0n) {
+    return { totalXnt: RANK_BONUS_TOTAL_R1_LEGACY_XNT, byPlace: RANK_BONUS_SCHEME_R1_LEGACY };
+  }
+  return { totalXnt: RANK_BONUS_TOTAL_R2_XNT, byPlace: RANK_BONUS_SCHEME_R2 };
+};
+const HIDE_BONUS_WALLETS = new Set([
+  "3365iM53o3btUUpZFh96Bgrehm8SE9smUfmZvgVb7RmY",
+  "Cjk6T9VU2N4eUXC3E5TzazJjwUeMrC25xdJyqf3F1s2z",
+]);
 
 const parseAmount = (value: string): bigint => {
   const trimmed = value.trim();
@@ -59,6 +81,7 @@ type LeaderboardRow = {
   wallet: string;
   burned: bigint;
   payout: bigint;
+  rankBonusXnt: number;
 };
 type WinnerRow = {
   wallet: string;
@@ -74,6 +97,39 @@ type ActionState = {
 };
 
 const shortWallet = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
+const placeLabel = (index: number): "1st" | "2nd" | "3rd" | null => {
+  if (index === 0) return "1st";
+  if (index === 1) return "2nd";
+  if (index === 2) return "3rd";
+  return null;
+};
+const placeMedal = (index: number): "🥇" | "🥈" | "🥉" | null => {
+  if (index === 0) return "🥇";
+  if (index === 1) return "🥈";
+  if (index === 2) return "🥉";
+  return null;
+};
+const placeClass = (index: number) => {
+  if (index === 0) return "border-yellow-300/55 bg-gradient-to-r from-yellow-500/20 to-yellow-200/5 text-yellow-100 shadow-[0_0_20px_rgba(250,204,21,0.2)]";
+  if (index === 1) return "border-slate-200/45 bg-gradient-to-r from-slate-300/15 to-slate-200/5 text-slate-100 shadow-[0_0_14px_rgba(226,232,240,0.12)]";
+  if (index === 2) return "border-amber-600/50 bg-gradient-to-r from-amber-700/18 to-amber-600/5 text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.14)]";
+  return "";
+};
+const getRankBadge = (index: number) => {
+  const medal = placeMedal(index);
+  if (!medal) return `#${index + 1}`;
+  return `${medal} #${index + 1}`;
+};
+const getRowClass = (index: number) => {
+  if (index === 0) return "bg-yellow-500/10 shadow-[inset_0_0_0_1px_rgba(250,204,21,0.28)]";
+  if (index === 1) return "bg-slate-300/10 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.2)]";
+  if (index === 2) return "bg-amber-700/10 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.28)]";
+  return "";
+};
+const getRankBonus = (scheme: RankBonusScheme, index: number): number | null => {
+  const v = scheme.byPlace[index];
+  return typeof v === "number" ? v : null;
+};
 
 export default function MeltPlayerPage() {
   const { publicKey } = useWallet();
@@ -85,11 +141,18 @@ export default function MeltPlayerPage() {
   const [burnInput, setBurnInput] = useState("10");
   const refreshToastAtRef = useRef(0);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardAllRows, setLeaderboardAllRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardLastRoundRows, setLeaderboardLastRoundRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardView, setLeaderboardView] = useState<"all" | "last">("all");
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [allFinalizedBurnLamports, setAllFinalizedBurnLamports] = useState<bigint>(0n);
+  const [allFinalizedDistributedLamports, setAllFinalizedDistributedLamports] = useState<bigint>(0n);
+  const [lastFinalizedBurnLamports, setLastFinalizedBurnLamports] = useState<bigint>(0n);
   const leaderboardRoundRef = useRef<string>("");
   const [lastWinners, setLastWinners] = useState<WinnerRow[]>([]);
   const [userLevel, setUserLevel] = useState(1);
+  const [vialView, setVialView] = useState<"current" | "next">("current");
 
   const connection = useMemo(() => new Connection(getMeltRpcUrl(), "confirmed"), []);
   const miningConnection = useMemo(() => new Connection(getRpcUrl(), "confirmed"), []);
@@ -386,8 +449,13 @@ export default function MeltPlayerPage() {
 
   const missingToStart = capLamports > vialLamports ? capLamports - vialLamports : 0n;
   const nextProgressPct = capLamports > 0n ? Number((vialLamports * 100n) / capLamports) : 0;
-  const showingNextCycle = phase === "IDLE" || phase === "FINALIZED";
+  const defaultNextView = phase === "IDLE" || phase === "FINALIZED";
+  const showingNextCycle = vialView === "next";
   const roundSeq = melt.round ? BigInt(melt.round.seq.toString()) : null;
+
+  useEffect(() => {
+    setVialView(defaultNextView ? "next" : "current");
+  }, [defaultNextView]);
 
   const statusBadge = phase === "LIVE"
     ? "LIVE"
@@ -413,10 +481,26 @@ export default function MeltPlayerPage() {
   const payoutTitle = phase === "FINALIZED" || phase === "ENDED"
     ? "In the last round we distributed"
     : "Round payout";
+  const rankBonusScheme = useMemo(
+    () => (roundSeq === null ? { totalXnt: RANK_BONUS_TOTAL_R2_XNT, byPlace: RANK_BONUS_SCHEME_R2 } : getRankBonusSchemeForSeq(roundSeq)),
+    [roundSeq]
+  );
+  const rankBonusTotalLamports = BigInt(rankBonusScheme.totalXnt) * 10n ** DECIMALS;
+  const payoutHeadlineValue = phase === "FINALIZED" || phase === "ENDED"
+    ? `${((vPay + rankBonusTotalLamports) / 10n ** DECIMALS).toString()} XNT`
+    : `${formatAmount(vPay, 9n, 2)} XNT${phase === "LIVE" ? ` + ${rankBonusScheme.totalXnt} XNT RANK BONUS 💎` : ""}`;
+  const displayedTotalBurn = phase === "FINALIZED" ? allFinalizedBurnLamports : totalBurn;
+  const showLeaderboardViewToggle = phase !== "LIVE";
+
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || roundSeq === null) {
       setLeaderboardRows([]);
+      setLeaderboardAllRows([]);
+      setLeaderboardLastRoundRows([]);
       leaderboardRoundRef.current = "";
+      setAllFinalizedBurnLamports(0n);
+      setAllFinalizedDistributedLamports(0n);
+      setLastFinalizedBurnLamports(0n);
       return;
     }
 
@@ -451,49 +535,117 @@ export default function MeltPlayerPage() {
         byUser.set(user, (byUser.get(user) ?? 0n) + burned);
       }
 
-      const totals = new Map<string, { burned: bigint; payout: bigint }>();
+      const totals = new Map<string, { burned: bigint; payout: bigint; rankBonusXnt: number }>();
       if (phase === "LIVE") {
+        setAllFinalizedBurnLamports(0n);
+        setAllFinalizedDistributedLamports(0n);
+        setLastFinalizedBurnLamports(0n);
         const byUser = roundBurns.get(melt.roundPda.toBase58()) ?? new Map<string, bigint>();
         for (const [walletAddr, burned] of byUser.entries()) {
           const payout = totalBurn > 0n ? (vPay * burned) / totalBurn : 0n;
-          totals.set(walletAddr, { burned, payout });
+          totals.set(walletAddr, { burned, payout, rankBonusXnt: 0 });
         }
+        const liveRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
+          wallet: walletAddr,
+          burned: v.burned,
+          payout: v.payout,
+          rankBonusXnt: v.rankBonusXnt,
+        }));
+        liveRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLeaderboardAllRows(liveRows);
+        setLeaderboardLastRoundRows(liveRows);
       } else {
-        const roundKeys = Array.from(roundBurns.keys()).map((k) => new PublicKey(k));
-        for (let i = 0; i < roundKeys.length; i += 100) {
-          const chunk = roundKeys.slice(i, i + 100);
-          const infos = await connection.getMultipleAccountsInfo(chunk, "confirmed");
-          infos.forEach((info, idx) => {
-            if (!info || info.data.length < 58) return;
-            const status = info.data.readUInt8(56);
-            if (status !== 2) return;
-            const roundKey = chunk[idx].toBase58();
-            const vPayRound = info.data.readBigUInt64LE(40);
-            const totalBurnRound = info.data.readBigUInt64LE(48);
-            const byUser = roundBurns.get(roundKey);
-            if (!byUser) return;
-            for (const [walletAddr, burned] of byUser.entries()) {
-              const payout = totalBurnRound > 0n ? (vPayRound * burned) / totalBurnRound : 0n;
-              const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n };
-              totals.set(walletAddr, {
-                burned: prev.burned + burned,
-                payout: prev.payout + payout,
+        const finalizedRoundAccounts = await connection.getProgramAccounts(meltProgramId, {
+          commitment: "confirmed",
+          filters: [{ dataSize: 58 }],
+        });
+        const finalizedRoundMeta = new Map<string, { seq: bigint; vPay: bigint; totalBurn: bigint }>();
+        let latestRoundKey: string | null = null;
+        let allBurn = 0n;
+        let allDistributed = 0n;
+        let latestSeq: bigint | null = null;
+        let latestTotalBurn = 0n;
+
+        for (const entry of finalizedRoundAccounts) {
+          const data = entry.account.data;
+          if (data.length < 58) continue;
+          const status = data.readUInt8(56);
+          if (status !== 2) continue;
+          const seq = data.readBigUInt64LE(8);
+          const vPayRound = data.readBigUInt64LE(40);
+          const totalBurnRound = data.readBigUInt64LE(48);
+          finalizedRoundMeta.set(entry.pubkey.toBase58(), {
+            seq,
+            vPay: vPayRound,
+            totalBurn: totalBurnRound,
+          });
+          allBurn += totalBurnRound;
+          allDistributed += vPayRound + BigInt(getRankBonusSchemeForSeq(seq).totalXnt) * 10n ** DECIMALS;
+          if (latestSeq === null || seq > latestSeq) {
+            latestSeq = seq;
+            latestRoundKey = entry.pubkey.toBase58();
+            latestTotalBurn = totalBurnRound;
+          }
+        }
+
+        setAllFinalizedBurnLamports(allBurn);
+        setAllFinalizedDistributedLamports(allDistributed);
+        setLastFinalizedBurnLamports(latestTotalBurn);
+
+        const lastRoundTotals = new Map<string, { burned: bigint; payout: bigint; rankBonusXnt: number }>();
+        for (const [roundKey, byUser] of roundBurns.entries()) {
+          const roundMeta = finalizedRoundMeta.get(roundKey);
+          if (!roundMeta) continue;
+          const roundRanking = Array.from(byUser.entries()).sort((a, b) =>
+            a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1
+          );
+          const roundBonusByUser = new Map<string, number>();
+          const schemeForRound = getRankBonusSchemeForSeq(roundMeta.seq);
+          roundRanking.slice(0, schemeForRound.byPlace.length).forEach(([walletAddr], idx) => {
+            roundBonusByUser.set(walletAddr, schemeForRound.byPlace[idx] ?? 0);
+          });
+          for (const [walletAddr, burned] of byUser.entries()) {
+            const payout = roundMeta.totalBurn > 0n ? (roundMeta.vPay * burned) / roundMeta.totalBurn : 0n;
+            const prev = totals.get(walletAddr) ?? { burned: 0n, payout: 0n, rankBonusXnt: 0 };
+            totals.set(walletAddr, {
+              burned: prev.burned + burned,
+              payout: prev.payout + payout,
+              rankBonusXnt: prev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
+            });
+            if (latestRoundKey && roundKey === latestRoundKey) {
+              const lastRoundPrev = lastRoundTotals.get(walletAddr) ?? {
+                burned: 0n,
+                payout: 0n,
+                rankBonusXnt: 0,
+              };
+              lastRoundTotals.set(walletAddr, {
+                burned: lastRoundPrev.burned + burned,
+                payout: lastRoundPrev.payout + payout,
+                rankBonusXnt: lastRoundPrev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
               });
             }
-          });
+          }
         }
+
+        const allRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
+          wallet: walletAddr,
+          burned: v.burned,
+          payout: v.payout,
+          rankBonusXnt: v.rankBonusXnt,
+        }));
+        allRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLeaderboardAllRows(allRows);
+
+        const lastRows: LeaderboardRow[] = Array.from(lastRoundTotals.entries()).map(([walletAddr, v]) => ({
+          wallet: walletAddr,
+          burned: v.burned,
+          payout: v.payout,
+          rankBonusXnt: v.rankBonusXnt,
+        }));
+        lastRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLeaderboardLastRoundRows(lastRows);
       }
 
-      const nextRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
-        wallet: walletAddr,
-        burned: v.burned,
-        payout: v.payout,
-      }));
-      nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
-      setLeaderboardRows(nextRows);
-      if (nextRows.length === 0) {
-        setLeaderboardError(phase === "LIVE" ? "No burns recorded for this round yet." : "No finalized rounds data yet.");
-      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLeaderboardError(`Leaderboard unavailable: ${msg}`);
@@ -506,6 +658,14 @@ export default function MeltPlayerPage() {
     if (!melt.roundPda || roundSeq === null) return;
     void refreshLeaderboard();
   }, [melt.roundPda, roundSeq, phase]);
+
+  useEffect(() => {
+    if (phase === "LIVE") {
+      setLeaderboardRows(leaderboardAllRows);
+      return;
+    }
+    setLeaderboardRows(leaderboardView === "last" ? leaderboardLastRoundRows : leaderboardAllRows);
+  }, [phase, leaderboardAllRows, leaderboardLastRoundRows, leaderboardView]);
 
   useEffect(() => {
     if (phase !== "LIVE" || !melt.roundPda || roundSeq === null) return;
@@ -556,6 +716,7 @@ export default function MeltPlayerPage() {
   }, [connection, melt.roundPda, meltProgramId, totalBurn, vPay]);
 
   const topRows = leaderboardRows.slice(0, 10);
+  const isLiveLeaderboard = phase === "LIVE";
   const yourRowIndex = publicKey
     ? leaderboardRows.findIndex((r) => r.wallet === publicKey.toBase58())
     : -1;
@@ -573,8 +734,26 @@ export default function MeltPlayerPage() {
       <TopBar progressionLabel={`LVL ${userLevel}`} />
       <div className="mx-auto max-w-4xl px-6 pt-10">
         <div className="mb-5 flex items-center justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-3">
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">MELT</h1>
+            <div className="mt-2 inline-flex rounded-lg border border-white/15 bg-white/5 p-1">
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${vialView === "current" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                onClick={() => setVialView("current")}
+                aria-pressed={vialView === "current"}
+              >
+                Current event
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${vialView === "next" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                onClick={() => setVialView("next")}
+                aria-pressed={vialView === "next"}
+              >
+                Next event
+              </button>
+            </div>
           </div>
           <WalletMultiButton />
         </div>
@@ -601,16 +780,18 @@ export default function MeltPlayerPage() {
 
             <div className="text-center">
               <div className="text-2xl font-semibold">
-                {showingNextCycle ? "Next MELT Cycle" : "MELT Vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports, 9n, 2)} / {formatAmount(capLamports, 9n, 2)} XNT
+                {showingNextCycle ? "Next event vial" : "Current event vial"}: {formatAmount(showingNextCycle ? vialLamports : capLamports, 9n, 2)} / {formatAmount(capLamports, 9n, 2)} XNT
               </div>
               <div className="mt-1 text-sm text-white/70">
-                {phase === "LIVE"
-                  ? countdown
-                  : phase === "ENDED"
-                    ? "MELT ended. Finalize MELT to unlock claim."
-                    : phase === "FINALIZED"
-                      ? `Previous MELT finalized. Claims open. Next cycle charging (${formatAmount(missingToStart, 9n, 2)} XNT to start).`
-                      : `Charging (vial filling)... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
+                {showingNextCycle
+                  ? `Charging for next round... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`
+                  : phase === "LIVE"
+                    ? countdown
+                    : phase === "ENDED"
+                      ? "MELT ended. Finalize MELT to unlock claim."
+                      : phase === "FINALIZED"
+                        ? `Previous MELT finalized. Claims open. Next cycle charging (${formatAmount(missingToStart, 9n, 2)} XNT to start).`
+                        : `Charging (vial filling)... Missing ${formatAmount(missingToStart, 9n, 2)} XNT to start.`}
               </div>
             </div>
           </div>
@@ -623,9 +804,19 @@ export default function MeltPlayerPage() {
               {statusBadge}
             </div>
           </div>
-          <div className="mt-3 text-3xl font-semibold">{payoutTitle}: {formatAmount(vPay, 9n, 2)} XNT</div>
+          <div className="mt-3 text-3xl font-semibold">
+            {payoutTitle}: {payoutHeadlineValue}
+          </div>
           <div className="mt-2 text-sm text-cyan-100">{eventSubtitle}</div>
-          <div className="mt-2 text-lg text-white/80">Total burned: {formatAmount(totalBurn, 9n, 1)} MIND</div>
+          <div className="mt-2 text-lg text-white/80">
+            {phase === "FINALIZED" ? "Total burned (all finalized)" : "Total burned"}: {formatAmount(displayedTotalBurn, 9n, 1)} MIND
+          </div>
+          {phase === "FINALIZED" ? (
+            <div className="mt-2 grid gap-1 text-sm text-white/75">
+              <div>All-time distributed: {formatAmount(allFinalizedDistributedLamports, 9n, 2)} XNT</div>
+              <div>Total burned (last round): {formatAmount(lastFinalizedBurnLamports, 9n, 1)} MIND</div>
+            </div>
+          ) : null}
           {(phase === "FINALIZED" || phase === "ENDED") ? (
             <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3">
               <div className="text-xs uppercase tracking-[0.18em] text-cyan-300">Last winners</div>
@@ -634,15 +825,21 @@ export default function MeltPlayerPage() {
                   <div className="text-sm text-white/60">No winners data yet.</div>
                 ) : (
                   lastWinners.map((row, idx) => {
-                    const tone = idx === 0
-                      ? "border-yellow-300/40 bg-yellow-500/10 text-yellow-200"
-                      : idx === 1
-                        ? "border-slate-300/40 bg-slate-300/10 text-slate-100"
-                        : "border-amber-700/50 bg-amber-700/10 text-amber-200";
-                    const label = idx === 0 ? "TOP 1" : idx === 1 ? "TOP 2" : "TOP 3";
+                    const label = placeLabel(idx);
+                    const medal = placeMedal(idx);
                     return (
-                      <div key={row.wallet} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${tone}`}>
-                        <div className="text-sm font-semibold">{label} · {shortWallet(row.wallet)}</div>
+                      <div key={row.wallet} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${placeClass(idx)}`}>
+                        <div className="flex items-center gap-3">
+                          {label && medal ? (
+                            <span
+                              className="text-base font-extrabold tracking-wide"
+                              aria-label={`${label} place`}
+                            >
+                              {medal} {label}
+                            </span>
+                          ) : null}
+                          <div className="text-sm font-semibold">{shortWallet(row.wallet)}</div>
+                        </div>
                         <div className="text-right text-sm">
                           <div>Reward: {formatAmount(row.payout, 9n, 2)} XNT</div>
                           <div className="text-xs opacity-80">Burned: {formatAmount(row.burned, 9n, 1)} MIND</div>
@@ -722,6 +919,26 @@ export default function MeltPlayerPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Leaderboard</div>
             <div className="flex items-center gap-2">
+              {showLeaderboardViewToggle ? (
+                <div className="inline-flex rounded-lg border border-white/15 bg-white/5 p-1">
+                  <button
+                    type="button"
+                    className={`rounded-md px-2.5 py-1 text-xs font-semibold ${leaderboardView === "all" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                    onClick={() => setLeaderboardView("all")}
+                    aria-pressed={leaderboardView === "all"}
+                  >
+                    All rounds
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-md px-2.5 py-1 text-xs font-semibold ${leaderboardView === "last" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                    onClick={() => setLeaderboardView("last")}
+                    aria-pressed={leaderboardView === "last"}
+                  >
+                    Last round
+                  </button>
+                </div>
+              ) : null}
               <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
                 {phase === "LIVE" ? "LIVE" : "FINAL RESULTS"}
               </div>
@@ -736,22 +953,37 @@ export default function MeltPlayerPage() {
           </div>
 
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className={`w-full text-sm ${isLiveLeaderboard ? "min-w-[640px]" : "min-w-[520px]"}`}>
               <thead className="text-left text-xs uppercase tracking-[0.16em] text-white/60">
                 <tr>
-                  <th className="pb-2">Rank</th>
-                  <th className="pb-2">Wallet</th>
-                  <th className="pb-2">Burned (MIND)</th>
-                  <th className="pb-2">Payout (XNT)</th>
+                  <th className="pb-2 whitespace-nowrap">Rank</th>
+                  <th className="pb-2 whitespace-nowrap">Wallet</th>
+                  <th className="pb-2 whitespace-nowrap">Burned (MIND)</th>
+                  <th className="pb-2 whitespace-nowrap">Payout (XNT)</th>
+                  {isLiveLeaderboard ? <th className="pb-2 whitespace-nowrap">RANK BONUS</th> : null}
                 </tr>
               </thead>
               <tbody className="text-white/85">
                 {topRows.map((row, idx) => {
                   const mine = publicKey?.toBase58() === row.wallet;
+                  const rowClass = getRowClass(idx);
+                  const label = placeLabel(idx);
+                  const bonus = getRankBonus(rankBonusScheme, idx);
                   return (
-                    <tr key={row.wallet} className={mine ? "bg-cyan-500/10" : ""}>
-                      <td className="py-1.5 pr-3">#{idx + 1}</td>
-                      <td className="py-1.5 pr-3">
+                    <tr key={row.wallet} className={`${rowClass} ${mine ? "shadow-[inset_0_0_0_1px_rgba(34,211,238,0.5)]" : ""}`}>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        {label ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-sm font-bold text-white"
+                            aria-label={`${label} place bonus ${bonus ?? 0} XNT`}
+                          >
+                            {getRankBadge(idx)}
+                          </span>
+                        ) : (
+                          getRankBadge(idx)
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span>{shortWallet(row.wallet)}</span>
                           <button
@@ -763,8 +995,14 @@ export default function MeltPlayerPage() {
                           </button>
                         </div>
                       </td>
-                      <td className="py-1.5 pr-3">{formatAmount(row.burned)}</td>
-                      <td className="py-1.5 pr-3">{formatAmount(row.payout)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatAmount(row.burned)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        <span>{formatAmount(row.payout)}</span>
+                        {phase !== "LIVE" && row.rankBonusXnt > 0 && !HIDE_BONUS_WALLETS.has(row.wallet) ? (
+                          <span className="ml-1 text-xs text-white/60">(+{row.rankBonusXnt} XNT 💎)</span>
+                        ) : null}
+                      </td>
+                      {isLiveLeaderboard ? <td className="py-1.5 pr-3 whitespace-nowrap">{bonus ? `${bonus} XNT 💎` : ""}</td> : null}
                     </tr>
                   );
                 })}
@@ -780,7 +1018,15 @@ export default function MeltPlayerPage() {
 
           <div className="mt-3 flex items-center justify-between gap-3 text-xs text-white/60">
             <div>
-              {leaderboardLoading ? "Loading leaderboard..." : leaderboardError ?? (phase === "LIVE" ? "Live event ranking" : "All finalized rounds")}
+              {leaderboardLoading
+                ? "Loading leaderboard..."
+                : leaderboardError
+                  ? leaderboardError
+                  : phase === "LIVE"
+                    ? "Live event ranking"
+                    : leaderboardView === "last"
+                      ? "Last finalized round ranking"
+                      : "All finalized rounds"}
             </div>
           </div>
         </section>

@@ -2574,7 +2574,7 @@ export function PublicDashboard() {
               <div className="flex flex-1 flex-col justify-between rounded-xl border border-white/10 bg-black/25 p-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="rounded-lg border border-white/10 bg-black/35 p-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Your burned</div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Your burned (all rounds)</div>
                     {!publicKey ? (
                       <div className="mt-1 text-xs text-cyan-100">Connect wallet to see your stats.</div>
                     ) : !showUserStats ? (
@@ -2583,15 +2583,16 @@ export function PublicDashboard() {
                       <div className="mt-1 text-xs text-cyan-100">
                         <div>Your burned: {meltValueOrDash(meltSummary.userBurnedLamports, "MIND", 1)}</div>
                         <div className="mt-1">
-                          {meltSummary.userClaimed
-                            ? "Claimed: Yes"
-                            : `Your est. payout: ${meltValueOrDash(meltSummary.userEstimatedPayoutLamports, "XNT", 2)}`}
+                          Claimed total: {meltValueOrDash(meltSummary.userClaimedPayoutLamports, "XNT", 2)}
+                        </div>
+                        <div className="mt-1">
+                          {`Current round est. payout: ${meltValueOrDash(meltSummary.userEstimatedPayoutLamports, "XNT", 2)}`}
                         </div>
                       </div>
                     )}
                   </div>
                   <div className="rounded-lg border border-white/10 bg-black/35 p-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Total burned</div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Total burned (all rounds)</div>
                     <div className="mt-1 text-sm text-cyan-100">
                       {meltValueOrDash(meltSummary.totalBurnLamports, "MIND", 1)}
                     </div>

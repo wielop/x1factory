@@ -21,6 +21,7 @@ type MeltSummaryState = {
   totalBurnLamports: bigint | null;
   userBurnedLamports: bigint | null;
   userEstimatedPayoutLamports: bigint | null;
+  userClaimedPayoutLamports: bigint | null;
   userClaimed: boolean;
 };
 
@@ -54,6 +55,7 @@ const EMPTY_STATE: MeltSummaryState = {
   totalBurnLamports: null,
   userBurnedLamports: null,
   userEstimatedPayoutLamports: null,
+  userClaimedPayoutLamports: null,
   userClaimed: false,
 };
 
@@ -167,10 +169,12 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
       let roundSeq: bigint | null = null;
       let roundEndTs: number | null = null;
       let vPayLamports: bigint | null = null;
-      let totalBurnLamports: bigint | null = null;
-      let userBurnedLamports: bigint | null = null;
+      let totalBurnLamports: bigint | null = 0n;
+      let userBurnedLamports: bigint | null = publicKey ? 0n : null;
       let userEstimatedPayoutLamports: bigint | null = null;
+      let userClaimedPayoutLamports: bigint | null = publicKey ? 0n : null;
       let userClaimed = false;
+      let currentRoundTotalBurnLamports: bigint | null = null;
 
       if (roundPda) {
         const roundInfo = await connection.getAccountInfo(roundPda, "confirmed");
@@ -180,7 +184,7 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
           roundSeq = BigInt(round.seq.toString());
           roundEndTs = Number(round.endTs.toString());
           vPayLamports = BigInt(round.vPay.toString());
-          totalBurnLamports = BigInt(round.totalBurn.toString());
+          currentRoundTotalBurnLamports = BigInt(round.totalBurn.toString());
           const nowSec = Math.floor(Date.now() / 1000);
           if (status === "finalized") {
             phase = "FINALIZED";
@@ -194,16 +198,68 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
             const userRoundPda = deriveUserRoundPda(configuredEnv.programId, publicKey, roundPda);
             const userRound = await (program.account as any).meltUserRound.fetchNullable(userRoundPda);
             if (userRound) {
-              userBurnedLamports = BigInt(userRound.burned.toString());
+              const userRoundBurnedLamports = BigInt(userRound.burned.toString());
               userClaimed = !!userRound.claimed;
-              if (totalBurnLamports > 0n && vPayLamports != null) {
-                userEstimatedPayoutLamports = (vPayLamports * userBurnedLamports) / totalBurnLamports;
+              if (currentRoundTotalBurnLamports > 0n && vPayLamports != null) {
+                userEstimatedPayoutLamports =
+                  (vPayLamports * userRoundBurnedLamports) / currentRoundTotalBurnLamports;
               } else {
                 userEstimatedPayoutLamports = 0n;
               }
             }
           }
         }
+      }
+
+      const roundAccounts = await connection.getProgramAccounts(configuredEnv.programId, {
+        commitment: "confirmed",
+        filters: [{ dataSize: 58 }],
+      });
+      let allRoundsBurn = 0n;
+      const finalizedRoundMeta = new Map<string, { vPayLamports: bigint; totalBurnLamports: bigint }>();
+      for (const entry of roundAccounts) {
+        const data = entry.account.data;
+        if (data.length < 58) continue;
+        const totalBurnRound = data.readBigUInt64LE(48);
+        allRoundsBurn += totalBurnRound;
+        const status = data.readUInt8(56);
+        if (status !== 2) continue;
+        finalizedRoundMeta.set(entry.pubkey.toBase58(), {
+          vPayLamports: data.readBigUInt64LE(40),
+          totalBurnLamports: totalBurnRound,
+        });
+      }
+      totalBurnLamports = allRoundsBurn;
+
+      if (publicKey) {
+        const userRoundAccounts = await connection.getProgramAccounts(configuredEnv.programId, {
+          commitment: "confirmed",
+          filters: [
+            { dataSize: 82 },
+            {
+              memcmp: {
+                offset: 8,
+                bytes: publicKey.toBase58(),
+              },
+            },
+          ],
+        });
+        let allUserBurned = 0n;
+        let allUserClaimedPayout = 0n;
+        for (const entry of userRoundAccounts) {
+          const data = entry.account.data;
+          if (data.length < 81) continue;
+          const roundPk = new PublicKey(data.subarray(40, 72)).toBase58();
+          const burned = data.readBigUInt64LE(72);
+          const claimed = data.readUInt8(80) === 1;
+          allUserBurned += burned;
+          if (!claimed) continue;
+          const roundMeta = finalizedRoundMeta.get(roundPk);
+          if (!roundMeta || roundMeta.totalBurnLamports <= 0n) continue;
+          allUserClaimedPayout += (roundMeta.vPayLamports * burned) / roundMeta.totalBurnLamports;
+        }
+        userBurnedLamports = allUserBurned;
+        userClaimedPayoutLamports = allUserClaimedPayout;
       }
 
       if (!mountedRef.current) return;
@@ -221,6 +277,7 @@ export function useMeltSummary({ publicKey, anchorWallet, pollMs = 6000 }: UseMe
         totalBurnLamports,
         userBurnedLamports,
         userEstimatedPayoutLamports,
+        userClaimedPayoutLamports,
         userClaimed,
       });
     } catch (e) {

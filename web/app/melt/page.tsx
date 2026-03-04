@@ -141,6 +141,9 @@ export default function MeltPlayerPage() {
   const [burnInput, setBurnInput] = useState("10");
   const refreshToastAtRef = useRef(0);
   const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardAllRows, setLeaderboardAllRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardLastRoundRows, setLeaderboardLastRoundRows] = useState<LeaderboardRow[]>([]);
+  const [leaderboardView, setLeaderboardView] = useState<"all" | "last">("all");
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [allFinalizedBurnLamports, setAllFinalizedBurnLamports] = useState<bigint>(0n);
@@ -487,10 +490,13 @@ export default function MeltPlayerPage() {
     ? `${((vPay + rankBonusTotalLamports) / 10n ** DECIMALS).toString()} XNT`
     : `${formatAmount(vPay, 9n, 2)} XNT${phase === "LIVE" ? ` + ${rankBonusScheme.totalXnt} XNT RANK BONUS 💎` : ""}`;
   const displayedTotalBurn = phase === "FINALIZED" ? allFinalizedBurnLamports : totalBurn;
+  const showLeaderboardViewToggle = phase !== "LIVE";
 
   const refreshLeaderboard = async () => {
     if (!melt.roundPda || roundSeq === null) {
       setLeaderboardRows([]);
+      setLeaderboardAllRows([]);
+      setLeaderboardLastRoundRows([]);
       leaderboardRoundRef.current = "";
       setAllFinalizedBurnLamports(0n);
       setAllFinalizedDistributedLamports(0n);
@@ -539,12 +545,22 @@ export default function MeltPlayerPage() {
           const payout = totalBurn > 0n ? (vPay * burned) / totalBurn : 0n;
           totals.set(walletAddr, { burned, payout, rankBonusXnt: 0 });
         }
+        const liveRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
+          wallet: walletAddr,
+          burned: v.burned,
+          payout: v.payout,
+          rankBonusXnt: v.rankBonusXnt,
+        }));
+        liveRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLeaderboardAllRows(liveRows);
+        setLeaderboardLastRoundRows(liveRows);
       } else {
         const finalizedRoundAccounts = await connection.getProgramAccounts(meltProgramId, {
           commitment: "confirmed",
           filters: [{ dataSize: 58 }],
         });
         const finalizedRoundMeta = new Map<string, { seq: bigint; vPay: bigint; totalBurn: bigint }>();
+        let latestRoundKey: string | null = null;
         let allBurn = 0n;
         let allDistributed = 0n;
         let latestSeq: bigint | null = null;
@@ -567,6 +583,7 @@ export default function MeltPlayerPage() {
           allDistributed += vPayRound + BigInt(getRankBonusSchemeForSeq(seq).totalXnt) * 10n ** DECIMALS;
           if (latestSeq === null || seq > latestSeq) {
             latestSeq = seq;
+            latestRoundKey = entry.pubkey.toBase58();
             latestTotalBurn = totalBurnRound;
           }
         }
@@ -575,6 +592,7 @@ export default function MeltPlayerPage() {
         setAllFinalizedDistributedLamports(allDistributed);
         setLastFinalizedBurnLamports(latestTotalBurn);
 
+        const lastRoundTotals = new Map<string, { burned: bigint; payout: bigint; rankBonusXnt: number }>();
         for (const [roundKey, byUser] of roundBurns.entries()) {
           const roundMeta = finalizedRoundMeta.get(roundKey);
           if (!roundMeta) continue;
@@ -594,21 +612,40 @@ export default function MeltPlayerPage() {
               payout: prev.payout + payout,
               rankBonusXnt: prev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
             });
+            if (latestRoundKey && roundKey === latestRoundKey) {
+              const lastRoundPrev = lastRoundTotals.get(walletAddr) ?? {
+                burned: 0n,
+                payout: 0n,
+                rankBonusXnt: 0,
+              };
+              lastRoundTotals.set(walletAddr, {
+                burned: lastRoundPrev.burned + burned,
+                payout: lastRoundPrev.payout + payout,
+                rankBonusXnt: lastRoundPrev.rankBonusXnt + (roundBonusByUser.get(walletAddr) ?? 0),
+              });
+            }
           }
         }
+
+        const allRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
+          wallet: walletAddr,
+          burned: v.burned,
+          payout: v.payout,
+          rankBonusXnt: v.rankBonusXnt,
+        }));
+        allRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLeaderboardAllRows(allRows);
+
+        const lastRows: LeaderboardRow[] = Array.from(lastRoundTotals.entries()).map(([walletAddr, v]) => ({
+          wallet: walletAddr,
+          burned: v.burned,
+          payout: v.payout,
+          rankBonusXnt: v.rankBonusXnt,
+        }));
+        lastRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
+        setLeaderboardLastRoundRows(lastRows);
       }
 
-      const nextRows: LeaderboardRow[] = Array.from(totals.entries()).map(([walletAddr, v]) => ({
-        wallet: walletAddr,
-        burned: v.burned,
-        payout: v.payout,
-        rankBonusXnt: v.rankBonusXnt,
-      }));
-      nextRows.sort((a, b) => (a.burned === b.burned ? 0 : a.burned > b.burned ? -1 : 1));
-      setLeaderboardRows(nextRows);
-      if (nextRows.length === 0) {
-        setLeaderboardError(phase === "LIVE" ? "No burns recorded for this round yet." : "No finalized rounds data yet.");
-      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLeaderboardError(`Leaderboard unavailable: ${msg}`);
@@ -621,6 +658,14 @@ export default function MeltPlayerPage() {
     if (!melt.roundPda || roundSeq === null) return;
     void refreshLeaderboard();
   }, [melt.roundPda, roundSeq, phase]);
+
+  useEffect(() => {
+    if (phase === "LIVE") {
+      setLeaderboardRows(leaderboardAllRows);
+      return;
+    }
+    setLeaderboardRows(leaderboardView === "last" ? leaderboardLastRoundRows : leaderboardAllRows);
+  }, [phase, leaderboardAllRows, leaderboardLastRoundRows, leaderboardView]);
 
   useEffect(() => {
     if (phase !== "LIVE" || !melt.roundPda || roundSeq === null) return;
@@ -874,6 +919,26 @@ export default function MeltPlayerPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="text-xs uppercase tracking-[0.2em] text-cyan-300">Leaderboard</div>
             <div className="flex items-center gap-2">
+              {showLeaderboardViewToggle ? (
+                <div className="inline-flex rounded-lg border border-white/15 bg-white/5 p-1">
+                  <button
+                    type="button"
+                    className={`rounded-md px-2.5 py-1 text-xs font-semibold ${leaderboardView === "all" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                    onClick={() => setLeaderboardView("all")}
+                    aria-pressed={leaderboardView === "all"}
+                  >
+                    All rounds
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-md px-2.5 py-1 text-xs font-semibold ${leaderboardView === "last" ? "bg-cyan-500/25 text-cyan-100" : "text-white/70 hover:bg-white/10"}`}
+                    onClick={() => setLeaderboardView("last")}
+                    aria-pressed={leaderboardView === "last"}
+                  >
+                    Last round
+                  </button>
+                </div>
+              ) : null}
               <div className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
                 {phase === "LIVE" ? "LIVE" : "FINAL RESULTS"}
               </div>
@@ -953,7 +1018,15 @@ export default function MeltPlayerPage() {
 
           <div className="mt-3 flex items-center justify-between gap-3 text-xs text-white/60">
             <div>
-              {leaderboardLoading ? "Loading leaderboard..." : leaderboardError ?? (phase === "LIVE" ? "Live event ranking" : "All finalized rounds")}
+              {leaderboardLoading
+                ? "Loading leaderboard..."
+                : leaderboardError
+                  ? leaderboardError
+                  : phase === "LIVE"
+                    ? "Live event ranking"
+                    : leaderboardView === "last"
+                      ? "Last finalized round ranking"
+                      : "All finalized rounds"}
             </div>
           </div>
         </section>

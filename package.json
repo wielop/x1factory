@@ -1,0 +1,28 @@
+{
+  "name": "x1factory-seasons-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telegram bot for X1Factory seasons, profiles, and rankings.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.8.2",
+    "@solana/web3.js": "^1.98.4",
+    "dotenv": "^16.4.5",
+    "pino": "^9.3.2",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prisma": "^7.8.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

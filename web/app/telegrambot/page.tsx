@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { TelegramBotPanel } from "@/components/telegrambot/TelegramBotPanel";
+import { ReactorTapPanel } from "@/components/telegrambot/ReactorTapPanel";
 
 export const metadata: Metadata = {
   title: "MIND FACTORY // Telegram Clicker",
-  description: "Telegram Mini App route for the MIND FACTORY factory clicker.",
+  description: "Telegram Mini App route for the MIND FACTORY reactor tap clicker.",
 };
 
 export default function TelegramBotPage() {
-  return <TelegramBotPanel />;
+  return <ReactorTapPanel />;
 }

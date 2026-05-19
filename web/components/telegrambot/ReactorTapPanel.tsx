@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 const DEFAULT_CLAIM_RATE_XNT = 0.015;
 const DEFAULT_DAILY_TAP_CAP = 50;
 const DEFAULT_INITIAL_TREASURY_MIND = 5000;
-const STORAGE_KEY = "x1factory.telegrambot.reactor.v1";
+const STORAGE_KEY = "x1factory.telegrambot.reactor.v2";
 
 type ClickerConfig = {
   claimRateXnt: number;
@@ -26,27 +26,21 @@ type ClickerState = {
   claimStatus: "none" | "pending" | "ready";
   feed: string[];
   lastAction: string;
+  reactorCoreLevel: number;
+  fuelCellLevel: number;
+  claimTerminalLevel: number;
+  stabilityModuleLevel: number;
 };
 
-type Burst = {
-  id: number;
-  value: string;
-  top: number;
-  left: number;
-};
+type Burst = { id: number; value: string; top: number; left: number };
+type FeedItem = { title: string; detail: string };
 
 function formatMind(value: number) {
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: value >= 1 ? 2 : 4,
-    maximumFractionDigits: 4,
-  });
+  return value.toLocaleString("en-US", { minimumFractionDigits: value >= 1 ? 2 : 4, maximumFractionDigits: 4 });
 }
 
 function formatXnt(value: number) {
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
+  return value.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 function ReactorCore({ pulse }: { pulse: boolean }) {
@@ -64,11 +58,8 @@ function ReactorCore({ pulse }: { pulse: boolean }) {
           <stop offset="0.5" stopColor="#141b23" />
           <stop offset="1" stopColor="#4b5662" />
         </linearGradient>
-        <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation={pulse ? 18 : 12} />
-        </filter>
+        <filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation={pulse ? 18 : 12} /></filter>
       </defs>
-
       <rect width="960" height="960" fill="#02060a" />
       <circle cx="480" cy="480" r="360" fill="url(#metal)" stroke="#7b8794" strokeOpacity="0.14" strokeWidth="8" />
       <circle cx="480" cy="480" r="292" fill="#0c1118" stroke="#374151" strokeWidth="10" />
@@ -120,10 +111,14 @@ export function ReactorTapPanel() {
   const [seasonMind, setSeasonMind] = useState(0.04);
   const [claimStatus, setClaimStatus] = useState<"none" | "pending" | "ready">("none");
   const [lastAction, setLastAction] = useState("Reactor online.");
-  const [feed, setFeed] = useState<string[]>([
-    "Tap the reactor core to build claimable MIND.",
-    "The clicker wallet funds claims. The season wallet receives payouts.",
-    "Season 0 is a test line. Season 1 starts clean.",
+  const [reactorCoreLevel, setReactorCoreLevel] = useState(1);
+  const [fuelCellLevel, setFuelCellLevel] = useState(1);
+  const [claimTerminalLevel, setClaimTerminalLevel] = useState(1);
+  const [stabilityModuleLevel, setStabilityModuleLevel] = useState(1);
+  const [feed, setFeed] = useState<FeedItem[]>([
+    { title: "Factory online", detail: "Tap the reactor core to build claimable MIND." },
+    { title: "Wallet split", detail: "Funding wallet takes XNT. Season wallet receives payouts." },
+    { title: "Season line", detail: "Season 0 is test mode. Season 1 starts clean." },
   ]);
   const [pulse, setPulse] = useState(false);
   const [burst, setBurst] = useState<Burst | null>(null);
@@ -133,17 +128,16 @@ export function ReactorTapPanel() {
   useEffect(() => {
     const webApp = (window as Window & { Telegram?: { WebApp?: any } }).Telegram?.WebApp;
     if (!webApp) return;
-
     webAppRef.current = webApp;
     webApp.ready?.();
     webApp.expand?.();
     webApp.setHeaderColor?.("#03060a");
     webApp.setBackgroundColor?.("#03060a");
     webApp.BackButton?.show?.();
-    const onBackButtonClick = () => webApp.close?.();
-    webApp.BackButton?.onClick?.(onBackButtonClick);
+    const onBack = () => webApp.close?.();
+    webApp.BackButton?.onClick?.(onBack);
     return () => {
-      webApp.BackButton?.offClick?.(onBackButtonClick);
+      webApp.BackButton?.offClick?.(onBack);
       webApp.BackButton?.hide?.();
     };
   }, []);
@@ -168,12 +162,23 @@ export function ReactorTapPanel() {
 
   useEffect(() => {
     try {
-      const payload: ClickerState = { taps, claimableMind, seasonMind, claimStatus, feed, lastAction };
+      const payload: ClickerState = {
+        taps,
+        claimableMind,
+        seasonMind,
+        claimStatus,
+        feed: feed.map((item) => `${item.title}::${item.detail}`),
+        lastAction,
+        reactorCoreLevel,
+        fuelCellLevel,
+        claimTerminalLevel,
+        stabilityModuleLevel,
+      };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore cache errors
     }
-  }, [claimStatus, claimableMind, feed, lastAction, seasonMind, taps]);
+  }, [claimStatus, claimableMind, feed, lastAction, seasonMind, taps, reactorCoreLevel, fuelCellLevel, claimTerminalLevel, stabilityModuleLevel]);
 
   useEffect(() => {
     try {
@@ -183,11 +188,18 @@ export function ReactorTapPanel() {
       if (typeof parsed.taps === "number") setTaps(parsed.taps);
       if (typeof parsed.claimableMind === "number") setClaimableMind(parsed.claimableMind);
       if (typeof parsed.seasonMind === "number") setSeasonMind(parsed.seasonMind);
-      if (parsed.claimStatus === "none" || parsed.claimStatus === "pending" || parsed.claimStatus === "ready") {
-        setClaimStatus(parsed.claimStatus);
-      }
+      if (parsed.claimStatus === "none" || parsed.claimStatus === "pending" || parsed.claimStatus === "ready") setClaimStatus(parsed.claimStatus);
       if (typeof parsed.lastAction === "string") setLastAction(parsed.lastAction);
-      if (Array.isArray(parsed.feed)) setFeed(parsed.feed.filter((value): value is string => typeof value === "string"));
+      if (typeof parsed.reactorCoreLevel === "number") setReactorCoreLevel(Math.max(1, parsed.reactorCoreLevel));
+      if (typeof parsed.fuelCellLevel === "number") setFuelCellLevel(Math.max(1, parsed.fuelCellLevel));
+      if (typeof parsed.claimTerminalLevel === "number") setClaimTerminalLevel(Math.max(1, parsed.claimTerminalLevel));
+      if (typeof parsed.stabilityModuleLevel === "number") setStabilityModuleLevel(Math.max(1, parsed.stabilityModuleLevel));
+      if (Array.isArray(parsed.feed)) {
+        setFeed(parsed.feed.filter((value): value is string => typeof value === "string").map((value) => {
+          const [title, detail] = value.split("::");
+          return { title: title ?? "Factory feed", detail: detail ?? value };
+        }));
+      }
     } catch {
       // ignore malformed cache
     }
@@ -196,74 +208,91 @@ export function ReactorTapPanel() {
   const claimCostXnt = useMemo(() => claimableMind * config.claimRateXnt, [claimableMind, config.claimRateXnt]);
   const tapsLeft = Math.max(0, config.dailyTapCap - taps);
   const progress = Math.min(100, (taps / config.dailyTapCap) * 100);
+  const operatorLevel = Math.max(1, reactorCoreLevel + fuelCellLevel + claimTerminalLevel + stabilityModuleLevel - 3);
+  const tapPower = (0.0012 * (1 + (reactorCoreLevel - 1) * 0.18)).toFixed(4);
+  const claimRate = (config.claimRateXnt * Math.max(0.7, 1 - (claimTerminalLevel - 1) * 0.04)).toFixed(3);
+  const streakBonus = `${Math.min(25, 5 + (stabilityModuleLevel - 1) * 5)}%`;
+  const energyCap = config.dailyTapCap + (fuelCellLevel - 1) * 10;
 
-  const pushFeed = (line: string) => setFeed((current) => [line, ...current].slice(0, 5));
-
+  const pushFeed = (title: string, detail: string) => setFeed((current) => [{ title, detail }, ...current].slice(0, 5));
   const flashBurst = (value: string) => {
     const id = burstIdRef.current + 1;
     burstIdRef.current = id;
-    setBurst({
-      id,
-      value,
-      top: 22 + Math.floor(Math.random() * 42),
-      left: 28 + Math.floor(Math.random() * 44),
-    });
-    window.setTimeout(() => {
-      setBurst((current) => (current?.id === id ? null : current));
-    }, 700);
+    setBurst({ id, value, top: 22 + Math.floor(Math.random() * 42), left: 28 + Math.floor(Math.random() * 44) });
+    window.setTimeout(() => setBurst((current) => (current?.id === id ? null : current)), 700);
   };
 
   const tapReactor = () => {
     if (taps >= config.dailyTapCap) {
       setLastAction("Daily tap cap reached.");
-      pushFeed("Daily cap reached. Come back tomorrow.");
+      pushFeed("Daily cap reached", "Come back tomorrow.");
       return;
     }
-
     setPulse(true);
     window.setTimeout(() => setPulse(false), 180);
     setTaps((current) => current + 1);
-    setClaimableMind((current) => Number((current + 0.0012).toFixed(4)));
-    setSeasonMind((current) => Number((current + 0.0012).toFixed(4)));
+    setClaimableMind((current) => Number((current + Number(tapPower)).toFixed(4)));
+    setSeasonMind((current) => Number((current + Number(tapPower)).toFixed(4)));
     setClaimStatus("none");
     setLastAction("Reactor tapped.");
-    pushFeed("Reactor hit: +0.0012 MIND claimable.");
-    flashBurst("+0.0012");
+    pushFeed("Reactor hit", `+${tapPower} MIND claimable.`);
+    flashBurst(`+${tapPower}`);
   };
 
   const beginClaim = () => {
     if (claimableMind <= 0) {
       setLastAction("Nothing to claim.");
-      pushFeed("Claim blocked: no MIND available.");
+      pushFeed("Claim blocked", "Build some balance first.");
       return;
     }
-
     setClaimStatus("pending");
     setLastAction(`Claim ready at ${formatXnt(claimCostXnt)} XNT.`);
-    pushFeed(`Claim opened: ${formatMind(claimableMind)} MIND for ${formatXnt(claimCostXnt)} XNT.`);
+    pushFeed("Claim opened", `${formatMind(claimableMind)} MIND for ${formatXnt(claimCostXnt)} XNT.`);
   };
 
   const confirmClaim = () => {
     if (claimStatus !== "pending") return;
     setClaimStatus("ready");
     setLastAction("Claim marked ready for settlement.");
-    pushFeed("Claim marked ready. MIND goes to the registered season wallet.");
+    pushFeed("Claim ready", "MIND goes to the registered season wallet after funding.");
   };
 
   const cancelClaim = () => {
     setClaimStatus("none");
     setLastAction("Claim cancelled.");
-    pushFeed("Claim cancelled by operator.");
+    pushFeed("Claim cancelled", "You can keep tapping and try again later.");
+  };
+
+  const upgradeModule = (module: "reactor" | "fuel" | "claim" | "stability") => {
+    if (module === "reactor") {
+      setReactorCoreLevel((current) => Math.min(10, current + 1));
+      pushFeed("Upgrade installed", "Reactor Core output increased.");
+      setLastAction("Reactor Core upgraded.");
+      return;
+    }
+    if (module === "fuel") {
+      setFuelCellLevel((current) => Math.min(10, current + 1));
+      pushFeed("Upgrade installed", "Fuel Cell increased daily energy.");
+      setLastAction("Fuel Cell upgraded.");
+      return;
+    }
+    if (module === "claim") {
+      setClaimTerminalLevel((current) => Math.min(10, current + 1));
+      pushFeed("Upgrade installed", "Claim Terminal lowered claim friction.");
+      setLastAction("Claim Terminal upgraded.");
+      return;
+    }
+    setStabilityModuleLevel((current) => Math.min(10, current + 1));
+    pushFeed("Upgrade installed", "Stability Module improved streak safety.");
+    setLastAction("Stability Module upgraded.");
   };
 
   useEffect(() => {
     const webApp = webAppRef.current;
     if (!webApp?.MainButton) return;
-
     const label = claimStatus === "pending" ? "Confirm Claim" : "Tap Reactor";
     webApp.MainButton.setText?.(label);
     webApp.MainButton.show?.();
-
     const onClick = () => {
       if (claimStatus === "pending") {
         confirmClaim();
@@ -271,12 +300,9 @@ export function ReactorTapPanel() {
       }
       tapReactor();
     };
-
     webApp.MainButton.offClick?.(onClick);
     webApp.MainButton.onClick?.(onClick);
-    return () => {
-      webApp.MainButton.offClick?.(onClick);
-    };
+    return () => webApp.MainButton.offClick?.(onClick);
   }, [claimStatus]);
 
   return (
@@ -287,20 +313,11 @@ export function ReactorTapPanel() {
             <div className="space-y-1">
               <p className="text-[11px] uppercase tracking-[0.3em] text-cyan-300/75">MIND FACTORY // TELEGRAMBOT</p>
               <h1 className="text-2xl font-semibold text-white sm:text-3xl">Factory Clicker</h1>
-              <p className="max-w-2xl text-sm leading-6 text-zinc-300">
-                Tap the reactor core. Build claimable MIND. Fund claims with XNT. Payouts stay tied to the season wallet registered at the start of the season.
-              </p>
+              <p className="max-w-2xl text-sm leading-6 text-zinc-300">Tap the reactor core. Build claimable MIND. Fund claims with XNT. Payouts stay tied to the season wallet registered at the start of the season.</p>
             </div>
-
             <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-2 lg:min-w-[320px]">
-              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 p-3">
-                <div className="text-zinc-500">Payout wallet</div>
-                <div className="mt-1 font-mono text-sm text-white">{config.payoutWalletLabel}</div>
-              </div>
-              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 p-3">
-                <div className="text-zinc-500">Funding wallet</div>
-                <div className="mt-1 font-mono text-sm text-white">{config.fundingWalletLabel}</div>
-              </div>
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 p-3"><div className="text-zinc-500">Payout wallet</div><div className="mt-1 font-mono text-sm text-white">{config.payoutWalletLabel}</div></div>
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 p-3"><div className="text-zinc-500">Funding wallet</div><div className="mt-1 font-mono text-sm text-white">{config.fundingWalletLabel}</div></div>
             </div>
           </div>
         </Card>
@@ -310,115 +327,88 @@ export function ReactorTapPanel() {
             <Card className="overflow-hidden border-cyan-400/15 bg-[#081018]/90 p-4">
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-zinc-500">
                 <span>{config.seasonName}</span>
-                <span>{config.mode}</span>
+                <span>{config.mode === "test" ? "test mode" : "live mode"}</span>
               </div>
-
-              <button
-                type="button"
-                onClick={tapReactor}
-                className="relative mt-4 block w-full overflow-hidden rounded-[28px] border border-cyan-400/10 bg-[#03060a] shadow-[0_18px_50px_rgba(0,0,0,0.45)]"
-              >
+              <button type="button" onClick={tapReactor} aria-label="Tap reactor core" className="relative mt-4 block w-full overflow-hidden rounded-[28px] border border-cyan-400/10 bg-[#03060a] shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(34,211,238,0.12),_transparent_55%)]" />
-                <div className={`relative aspect-square w-full transition-transform duration-150 ${pulse ? "scale-[0.985]" : "scale-100"}`}>
-                  <ReactorCore pulse={pulse} />
-                </div>
-                {burst ? (
-                  <span
-                    className="pointer-events-none absolute z-20 rounded-full border border-cyan-200/30 bg-cyan-300/12 px-3 py-1 text-sm font-semibold text-cyan-100"
-                    style={{ top: `${burst.top}%`, left: `${burst.left}%` }}
-                  >
-                    {burst.value}
-                  </span>
-                ) : null}
+                <div className={`relative aspect-square w-full transition-transform duration-150 ${pulse ? "scale-[0.985]" : "scale-100"}`}><ReactorCore pulse={pulse} /></div>
+                {burst ? <span className="pointer-events-none absolute z-20 rounded-full border border-cyan-200/30 bg-cyan-300/12 px-3 py-1 text-sm font-semibold text-cyan-100" style={{ top: `${burst.top}%`, left: `${burst.left}%` }}>{burst.value}</span> : null}
                 <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-[#03060a] via-[#03060a]/80 to-transparent p-4">
                   <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.22em] text-zinc-400">Tap reactor</div>
-                      <div className="mt-1 text-lg font-semibold text-white">{formatMind(claimableMind)} claimable MIND</div>
-                    </div>
-                    <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/10 px-3 py-2 text-right text-xs text-cyan-100">
-                      <div className="text-cyan-100/60">Taps left</div>
-                      <div className="mt-1 text-base font-semibold">{tapsLeft}</div>
-                    </div>
+                    <div><div className="text-xs uppercase tracking-[0.22em] text-zinc-400">Tap reactor</div><div className="mt-1 text-lg font-semibold text-white">{formatMind(claimableMind)} claimable MIND</div></div>
+                    <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/10 px-3 py-2 text-right text-xs text-cyan-100"><div className="text-cyan-100/60">Taps left</div><div className="mt-1 text-base font-semibold">{tapsLeft}</div></div>
                   </div>
                 </div>
               </button>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">Claimable MIND</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{formatMind(claimableMind)}</div>
-                </div>
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">Season output</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{formatMind(seasonMind)}</div>
-                </div>
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-wide text-zinc-500">Tap progress</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{Math.round(progress)}%</div>
-                </div>
+                <div className="rounded-2xl border border-white/5 bg-white/5 p-4"><div className="text-xs uppercase tracking-wide text-zinc-500">Claimable MIND</div><div className="mt-2 text-2xl font-semibold text-white">{formatMind(claimableMind)}</div></div>
+                <div className="rounded-2xl border border-white/5 bg-white/5 p-4"><div className="text-xs uppercase tracking-wide text-zinc-500">Season output</div><div className="mt-2 text-2xl font-semibold text-white">{formatMind(seasonMind)}</div></div>
+                <div className="rounded-2xl border border-white/5 bg-white/5 p-4"><div className="text-xs uppercase tracking-wide text-zinc-500">Operator level</div><div className="mt-2 text-2xl font-semibold text-white">Lv {operatorLevel}</div></div>
               </div>
 
               <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
-                  <span>Daily line</span>
-                  <span>{taps}/{config.dailyTapCap}</span>
-                </div>
-                <div className="h-2 rounded-full bg-white/5">
-                  <div
-                    className="h-2 rounded-full bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
+                <div className="mb-2 flex items-center justify-between text-xs text-zinc-500"><span>Daily line</span><span>{taps}/{config.dailyTapCap}</span></div>
+                <div className="h-2 rounded-full bg-white/5"><div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-300" style={{ width: `${progress}%` }} /></div>
               </div>
             </Card>
 
             <Card className="border-cyan-400/15 bg-[#081018]/90 p-4">
               <div className="grid gap-3 md:grid-cols-3">
-                <Button size="lg" onClick={beginClaim} className="w-full">
-                  Claim MIND
-                </Button>
-                <Button size="lg" variant="secondary" onClick={cancelClaim} className="w-full">
-                  Cancel Claim
-                </Button>
-                <Button
-                  size="lg"
-                  variant="ghost"
-                  onClick={() => webAppRef.current?.close?.()}
-                  className="w-full"
-                >
-                  Close
-                </Button>
+                <Button size="lg" onClick={beginClaim} className="w-full">Claim MIND</Button>
+                <Button size="lg" variant="secondary" onClick={cancelClaim} className="w-full">Cancel Claim</Button>
+                <Button size="lg" variant="ghost" onClick={() => webAppRef.current?.close?.()} className="w-full">Close</Button>
               </div>
-
               <div className="mt-4 rounded-2xl border border-cyan-400/10 bg-white/5 p-4 text-sm text-zinc-300">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-zinc-500">Status:</span>
-                  <span className="text-white">{lastAction}</span>
+                <div className="flex flex-wrap items-center gap-2"><span className="text-zinc-500">Status:</span><span className="text-white">{lastAction}</span></div>
+                <div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-zinc-500">Claim state:</span><span className="font-medium text-cyan-300">{claimStatus}</span><span className="text-zinc-500">Claim cost:</span><span className="font-medium text-white">{formatXnt(claimCostXnt)} XNT</span></div>
+                <div className="mt-2 text-zinc-400">Top up the funding wallet to release claims. MIND still pays to the season wallet registered at the start of the season.</div>
+              </div>
+            </Card>
+
+            <Card className="border-cyan-400/15 bg-[#081018]/90 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-100">Workshop</h2>
+                  <p className="text-xs text-zinc-500">Upgrade the four modules. Costs are paid in MIND from the factory line.</p>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-zinc-500">Claim state:</span>
-                  <span className="font-medium text-cyan-300">{claimStatus}</span>
-                  <span className="text-zinc-500">Claim cost:</span>
-                  <span className="font-medium text-white">{formatXnt(claimCostXnt)} XNT</span>
-                </div>
-                <div className="mt-2 text-zinc-400">
-                  Top up the funding wallet to release claims. MIND still pays to the season wallet registered at the start of the season.
-                </div>
+                <div className="rounded-2xl border border-cyan-400/10 bg-white/5 px-3 py-2 text-xs text-zinc-300">Energy cap {energyCap}</div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { key: "reactor", title: "Reactor Core", level: reactorCoreLevel, detail: `Tap power ${tapPower} MIND`, action: () => upgradeModule("reactor") },
+                  { key: "fuel", title: "Fuel Cell", level: fuelCellLevel, detail: `Daily cap ${energyCap}`, action: () => upgradeModule("fuel") },
+                  { key: "claim", title: "Claim Terminal", level: claimTerminalLevel, detail: `Claim fee ${claimRate} XNT / MIND`, action: () => upgradeModule("claim") },
+                  { key: "stability", title: "Stability Module", level: stabilityModuleLevel, detail: `Streak bonus ${streakBonus}`, action: () => upgradeModule("stability") },
+                ].map((module) => (
+                  <div key={module.key} className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                    <div className="text-xs uppercase tracking-wide text-zinc-500">{module.title}</div>
+                    <div className="mt-1 text-lg font-semibold text-white">Lv {module.level}</div>
+                    <div className="mt-2 text-xs text-zinc-400">{module.detail}</div>
+                    <Button size="sm" variant="secondary" className="mt-3 w-full" onClick={module.action}>Upgrade</Button>
+                  </div>
+                ))}
               </div>
             </Card>
           </div>
 
           <div className="space-y-4">
             <Card className="border-cyan-400/15 bg-[#081018]/90 p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-zinc-100">Factory feed</h2>
-                <span className="text-xs uppercase tracking-[0.22em] text-zinc-500">live</span>
+              <h2 className="text-sm font-semibold text-zinc-100">Play styles</h2>
+              <div className="mt-4 space-y-3 text-sm text-zinc-300">
+                <div className="rounded-2xl border border-white/5 bg-white/5 p-3"><div className="font-semibold text-white">Grinder</div><div className="mt-1 text-zinc-400">Push Reactor Core and Fuel Cell first. Tap more, claim later.</div></div>
+                <div className="rounded-2xl border border-white/5 bg-white/5 p-3"><div className="font-semibold text-white">Optimizer</div><div className="mt-1 text-zinc-400">Upgrade Claim Terminal and Stability Module to reduce friction and smooth claims.</div></div>
+                <div className="rounded-2xl border border-white/5 bg-white/5 p-3"><div className="font-semibold text-white">Balanced</div><div className="mt-1 text-zinc-400">Split upgrades across all four modules to keep taps, fees, and streaks aligned.</div></div>
               </div>
+            </Card>
+
+            <Card className="border-cyan-400/15 bg-[#081018]/90 p-4">
+              <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-zinc-100">Factory feed</h2><span className="text-xs uppercase tracking-[0.22em] text-zinc-500">live</span></div>
               <div className="mt-4 space-y-3">
-                {feed.map((line, index) => (
-                  <div key={`${index}-${line}`} className="rounded-2xl border border-white/5 bg-white/5 p-3 text-sm text-zinc-300">
-                    {line}
+                {feed.map((item, index) => (
+                  <div key={`${item.title}-${index}`} className="rounded-2xl border border-white/5 bg-white/5 p-3 text-sm text-zinc-300">
+                    <div className="font-semibold text-zinc-100">{item.title}</div>
+                    <div className="mt-1 leading-6 text-zinc-300/80">{item.detail}</div>
                   </div>
                 ))}
               </div>
@@ -427,17 +417,9 @@ export function ReactorTapPanel() {
             <Card className="border-cyan-400/15 bg-[#081018]/90 p-4">
               <h2 className="text-sm font-semibold text-zinc-100">Wiring</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-300">
-                <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-3 py-2">
-                  <span>Season wallet</span>
-                  <span className="font-mono text-zinc-100">{config.payoutWalletLabel}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-3 py-2">
-                  <span>Funding wallet</span>
-                  <span className="font-mono text-zinc-100">{config.fundingWalletLabel}</span>
-                </div>
-                <div className="rounded-2xl border border-white/5 bg-white/5 px-3 py-2 text-zinc-400">
-                  The reactor is the tap target. Buttons below handle claim and exit.
-                </div>
+                <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-3 py-2"><span>Season wallet</span><span className="font-mono text-zinc-100">{config.payoutWalletLabel}</span></div>
+                <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-3 py-2"><span>Funding wallet</span><span className="font-mono text-zinc-100">{config.fundingWalletLabel}</span></div>
+                <div className="rounded-2xl border border-white/5 bg-white/5 px-3 py-2 text-zinc-400">The reactor is the tap target. Buttons below handle claim, upgrades, and exit.</div>
               </div>
             </Card>
           </div>

@@ -4,7 +4,6 @@ Public app (Vercel-ready) for interacting with the on-chain program:
 
 - Public panel: `/` (create position, deposit, claim)
 - Admin panel: `/admin` (admin_update_config)
-- Telegram Mini App: `/telegrambot` (factory clicker shell)
 
 ## Env vars (Vercel)
 

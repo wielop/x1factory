@@ -59,5 +59,3 @@ Root Directory: `web`
 Env vars:
 - `NEXT_PUBLIC_RPC_URL=https://rpc.mainnet.x1.xyz`
 - `NEXT_PUBLIC_PROGRAM_ID=uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw`
-- Telegram Mini App route: `/telegrambot`
-- Suggested public URL: `https://x1factory.xyz/telegrambot`

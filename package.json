@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "web:dev": "node dist/web/server.js",
     "build": "tsc -p tsconfig.json",
+    "vercel-build": "npm run build && node scripts/build-vercel-output.js",
     "start": "node dist/index.js",
     "web:start": "node dist/web/server.js",
     "prisma:generate": "prisma generate",

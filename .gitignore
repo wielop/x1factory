@@ -6,3 +6,4 @@ dist
 coverage
 *.log
 .vercel/output
+dist-vercel

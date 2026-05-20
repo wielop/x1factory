@@ -1,20 +1,38 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
-const outputRoot = resolve(root, "dist-vercel");
+const outputRoot = resolve(root, ".vercel", "output");
+const staticRoot = resolve(outputRoot, "static");
 
 rmSync(outputRoot, { recursive: true, force: true });
-mkdirSync(outputRoot, { recursive: true });
-cpSync(resolve(root, "web"), outputRoot, { recursive: true });
-mkdirSync(resolve(outputRoot, "telegrambot"), { recursive: true });
-mkdirSync(resolve(outputRoot, "reactor"), { recursive: true });
-cpSync(resolve(root, "web", "reactor.html"), resolve(outputRoot, "index.html"));
-cpSync(resolve(root, "web", "reactor.html"), resolve(outputRoot, "telegrambot", "index.html"));
-cpSync(resolve(root, "web", "reactor.html"), resolve(outputRoot, "reactor", "index.html"));
+mkdirSync(staticRoot, { recursive: true });
+cpSync(resolve(root, "web"), staticRoot, { recursive: true });
+mkdirSync(resolve(staticRoot, "telegrambot"), { recursive: true });
+mkdirSync(resolve(staticRoot, "reactor"), { recursive: true });
+cpSync(resolve(root, "web", "reactor.html"), resolve(staticRoot, "index.html"));
+cpSync(resolve(root, "web", "reactor.html"), resolve(staticRoot, "telegrambot", "index.html"));
+cpSync(resolve(root, "web", "reactor.html"), resolve(staticRoot, "reactor", "index.html"));
 
-if (!existsSync(resolve(outputRoot, "telegrambot", "index.html"))) {
-  throw new Error("Vercel static build failed to create dist-vercel/telegrambot/index.html");
+writeFileSync(
+  resolve(outputRoot, "config.json"),
+  JSON.stringify(
+    {
+      version: 3,
+      routes: [
+        { src: "/telegrambot", dest: "/telegrambot/index.html" },
+        { src: "/reactor", dest: "/reactor/index.html" },
+        { handle: "filesystem" },
+        { src: "/", dest: "/index.html" }
+      ]
+    },
+    null,
+    2
+  )
+);
+
+if (!existsSync(resolve(staticRoot, "telegrambot", "index.html"))) {
+  throw new Error("Vercel static build failed to create .vercel/output/static/telegrambot/index.html");
 }
 
-console.log("Vercel static output ready: dist-vercel/");
+console.log("Vercel Build Output API ready: .vercel/output/");

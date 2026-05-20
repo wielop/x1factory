@@ -39,6 +39,23 @@ export async function findUserByTelegramId(telegramId: bigint): Promise<User | n
   });
 }
 
+export async function findUserByUsername(username: string): Promise<User | null> {
+  const normalizedUsername = username.replace(/^@/, "").trim();
+
+  if (!normalizedUsername) {
+    return null;
+  }
+
+  return prisma.user.findFirst({
+    where: {
+      username: {
+        equals: normalizedUsername,
+        mode: "insensitive"
+      }
+    }
+  });
+}
+
 export async function findUserById(userId: number): Promise<User | null> {
   return prisma.user.findUnique({
     where: { id: userId }

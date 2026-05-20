@@ -1,8 +1,12 @@
-import type { RankingEntry } from "../services/mockData.js";
+import type { LeaderboardEntry } from "../services/leaderboardService.js";
 
-export function formatRanking(entries: RankingEntry[]): string {
+function formatRankingUser(entry: LeaderboardEntry): string {
+  return entry.username === entry.telegramId.toString() ? entry.telegramId.toString() : `@${entry.username}`;
+}
+
+export function formatRanking(entries: LeaderboardEntry[]): string {
   return entries
-    .map((entry) => `${entry.rank}. @${entry.username} — ${entry.points} pts, ${entry.wins} wins`)
+    .map((entry) => `${entry.rank}. ${formatRankingUser(entry)} - ${entry.points} pts`)
     .join("\n");
 }
 

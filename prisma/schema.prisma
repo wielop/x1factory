@@ -29,84 +29,116 @@ enum PointSource {
   PENALTY
 }
 
+enum ClickerClaimStatus {
+  PENDING
+  PAID
+  CANCELLED
+  EXPIRED
+}
+
+enum ClickerSessionStatus {
+  ACTIVE
+  CLOSED
+}
+
 model User {
-  id                    Int                  @id @default(autoincrement())
-  telegramId            BigInt               @unique
+  id                    Int                    @id @default(autoincrement())
+  telegramId            BigInt                 @unique
   username              String?
   firstName             String?
   lastName              String?
   languageCode          String?
-  activeWalletId        Int?                 @unique
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  activeWalletId        Int?                   @unique
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
   lastSeenAt            DateTime?
-  activeWallet          Wallet?              @relation("UserActiveWallet", fields: [activeWalletId], references: [id])
-  wallets               Wallet[]             @relation("UserWallets")
+  activeWallet          Wallet?                @relation("UserActiveWallet", fields: [activeWalletId], references: [id])
+  wallets               Wallet[]               @relation("UserWallets")
   seasonRegistrations   SeasonRegistration[]
   seasonPoints          SeasonPoint[]
   seasonStats           UserSeasonStats[]
   userBadges            UserBadge[]
+  clickerProfiles       ClickerProfile[]
+  clickerSessions       ClickerSession[]
+  clickerClaims         ClickerClaim[]
+  clickerUpgrades       ClickerUpgrade[]
+  clickerBoosts         ClickerBoost[]
+  reactorEnergyBalances ReactorEnergyBalance[]
+  reactorEnergyDeposits ReactorEnergyDeposit[]
+  clickerMilestones     ClickerMilestone[]
 }
 
 model Wallet {
-  id                   Int                  @id @default(autoincrement())
-  address              String               @unique
-  label                String?
-  isActive             Boolean              @default(false)
-  userId               Int?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  user                 User?                @relation("UserWallets", fields: [userId], references: [id], onDelete: SetNull)
-  activeForUser        User?                @relation("UserActiveWallet")
-  seasonRegistrations  SeasonRegistration[]
-  seasonPoints         SeasonPoint[]
-  detectedEvents       DetectedEvent[]
-  scannerCursor        WalletScannerCursor?
+  id                     Int                  @id @default(autoincrement())
+  address                String               @unique
+  label                  String?
+  isActive               Boolean              @default(false)
+  userId                 Int?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  user                   User?                @relation("UserWallets", fields: [userId], references: [id], onDelete: SetNull)
+  activeForUser          User?                @relation("UserActiveWallet")
+  seasonRegistrations    SeasonRegistration[]
+  seasonPoints           SeasonPoint[]
+  detectedEvents         DetectedEvent[]
+  scannerCursor          WalletScannerCursor?
+  clickerFundingProfiles ClickerProfile[]     @relation("ClickerFundingWallet")
+  clickerFundingSessions ClickerSession[]     @relation("ClickerSessionFundingWallet")
+  clickerPayoutClaims    ClickerClaim[]       @relation("ClickerClaimPayoutWallet")
+  clickerFundingClaims   ClickerClaim[]       @relation("ClickerClaimFundingWallet")
 
   @@index([userId])
   @@index([userId, isActive])
 }
 
 model WalletScannerCursor {
-  id            Int       @id @default(autoincrement())
-  walletId      Int       @unique
-  lastSlot      BigInt?
-  snapshot      Json?
-  scannedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  wallet        Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  id        Int       @id @default(autoincrement())
+  walletId  Int       @unique
+  lastSlot  BigInt?
+  snapshot  Json?
+  scannedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  wallet    Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
 }
 
 model Season {
-  id                   Int                  @id @default(autoincrement())
-  slug                 String               @unique
-  name                 String
-  description          String?
-  status               SeasonStatus         @default(DRAFT)
-  startsAt             DateTime
-  endsAt               DateTime
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  registrations        SeasonRegistration[]
-  points               SeasonPoint[]
-  detectedEvents       DetectedEvent[]
-  userStats            UserSeasonStats[]
-  userBadges           UserBadge[]
+  id                    Int                    @id @default(autoincrement())
+  slug                  String                 @unique
+  name                  String
+  description           String?
+  status                SeasonStatus           @default(DRAFT)
+  startsAt              DateTime
+  endsAt                DateTime
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  registrations         SeasonRegistration[]
+  points                SeasonPoint[]
+  detectedEvents        DetectedEvent[]
+  userStats             UserSeasonStats[]
+  userBadges            UserBadge[]
+  clickerProfiles       ClickerProfile[]
+  clickerSessions       ClickerSession[]
+  clickerClaims         ClickerClaim[]
+  clickerUpgrades       ClickerUpgrade[]
+  clickerBoosts         ClickerBoost[]
+  reactorEnergyBalances ReactorEnergyBalance[]
+  reactorEnergyDeposits ReactorEnergyDeposit[]
+  clickerMilestones     ClickerMilestone[]
 }
 
 model SeasonRegistration {
-  id            Int                @id @default(autoincrement())
-  userId        Int
-  walletId      Int
-  seasonId      Int
-  status        RegistrationStatus @default(ACTIVE)
-  registeredAt  DateTime           @default(now())
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  wallet        Wallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  season        Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  id           Int                @id @default(autoincrement())
+  userId       Int
+  walletId     Int
+  seasonId     Int
+  status       RegistrationStatus @default(ACTIVE)
+  registeredAt DateTime           @default(now())
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet       Wallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  season       Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
 
   @@unique([userId, seasonId])
   @@unique([walletId, seasonId])
@@ -114,21 +146,21 @@ model SeasonRegistration {
 }
 
 model SeasonPoint {
-  id               Int            @id @default(autoincrement())
-  seasonId         Int
-  userId           Int
-  walletId         Int?
-  detectedEventId  Int?
-  points           Int
-  category         String
-  source           PointSource    @default(EVENT)
-  reason           String
-  metadata         Json?
-  createdAt        DateTime       @default(now())
-  season           Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  wallet           Wallet?        @relation(fields: [walletId], references: [id], onDelete: SetNull)
-  detectedEvent    DetectedEvent? @relation(fields: [detectedEventId], references: [id], onDelete: SetNull)
+  id              Int            @id @default(autoincrement())
+  seasonId        Int
+  userId          Int
+  walletId        Int?
+  detectedEventId Int?
+  points          Int
+  category        String
+  source          PointSource    @default(EVENT)
+  reason          String
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  season          Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet          Wallet?        @relation(fields: [walletId], references: [id], onDelete: SetNull)
+  detectedEvent   DetectedEvent? @relation(fields: [detectedEventId], references: [id], onDelete: SetNull)
 
   @@index([seasonId, userId])
   @@index([seasonId, category])
@@ -136,19 +168,19 @@ model SeasonPoint {
 }
 
 model DetectedEvent {
-  id             Int            @id @default(autoincrement())
-  txHash         String
-  eventType      String
-  walletId       Int
-  seasonId       Int?
-  blockNumber    BigInt?
-  logIndex       Int?
-  occurredAt     DateTime
-  rawData        Json?
-  createdAt      DateTime       @default(now())
-  wallet         Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  season         Season?        @relation(fields: [seasonId], references: [id], onDelete: SetNull)
-  seasonPoints   SeasonPoint[]
+  id           Int           @id @default(autoincrement())
+  txHash       String
+  eventType    String
+  walletId     Int
+  seasonId     Int?
+  blockNumber  BigInt?
+  logIndex     Int?
+  occurredAt   DateTime
+  rawData      Json?
+  createdAt    DateTime      @default(now())
+  wallet       Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  season       Season?       @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  seasonPoints SeasonPoint[]
 
   @@unique([txHash, eventType, walletId])
   @@index([seasonId, occurredAt])
@@ -156,46 +188,227 @@ model DetectedEvent {
 }
 
 model UserSeasonStats {
-  id              Int       @id @default(autoincrement())
-  userId          Int
-  seasonId        Int
-  totalPoints     Int       @default(0)
-  rank            Int?
-  eventsCount     Int       @default(0)
-  badgesCount     Int       @default(0)
-  lastEventAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  season          Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  seasonId    Int
+  totalPoints Int       @default(0)
+  rank        Int?
+  eventsCount Int       @default(0)
+  badgesCount Int       @default(0)
+  lastEventAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season      Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
 
   @@unique([userId, seasonId])
   @@index([seasonId, rank])
 }
 
 model Badge {
-  id            Int        @id @default(autoincrement())
-  code          String     @unique
-  name          String
-  description   String?
-  icon          String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  userBadges    UserBadge[]
+  id          Int         @id @default(autoincrement())
+  code        String      @unique
+  name        String
+  description String?
+  icon        String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  userBadges  UserBadge[]
 }
 
 model UserBadge {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  badgeId     Int
-  seasonId    Int?
-  reason      String?
-  awardedAt   DateTime  @default(now())
-  createdAt   DateTime  @default(now())
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  badge       Badge     @relation(fields: [badgeId], references: [id], onDelete: Cascade)
-  season      Season?   @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  badgeId   Int
+  seasonId  Int?
+  reason    String?
+  awardedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  season    Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
 
   @@unique([userId, badgeId, seasonId])
   @@index([seasonId, awardedAt])
+}
+
+model ClickerProfile {
+  id                   Int       @id @default(autoincrement())
+  userId               Int
+  seasonId             Int
+  clickerWalletId      Int?
+  hashPoints           BigInt    @default(0)
+  totalHashPoints      BigInt    @default(0)
+  energy               Int       @default(100)
+  energyCap            Int       @default(100)
+  hashPerClick         Int       @default(1)
+  passiveHashPerHour   Int       @default(0)
+  storageHours         Int       @default(4)
+  lastCollectedAt      DateTime?
+  lastEnergyAt         DateTime?
+  lastMineAt           DateTime?
+  dailyClicks          Int       @default(0)
+  dailyClicksDate      DateTime?
+  factoryLevel         Int       @default(1)
+  claimableMindMicro   BigInt    @default(0)
+  dailyTapsUsed        Int       @default(0)
+  dailyTapCap          Int       @default(50)
+  lastTapAt            DateTime?
+  streakDays           Int       @default(0)
+  reactorCoreLevel     Int       @default(1)
+  fuelCellLevel        Int       @default(1)
+  claimTerminalLevel   Int       @default(1)
+  stabilityModuleLevel Int       @default(1)
+  currentBoostType     String?
+  boostExpiresAt       DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season               Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  clickerWallet        Wallet?   @relation("ClickerFundingWallet", fields: [clickerWalletId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, seasonId])
+  @@index([seasonId, updatedAt])
+  @@index([seasonId, totalHashPoints])
+  @@index([seasonId, dailyClicks])
+  @@index([clickerWalletId])
+}
+
+model ClickerUpgrade {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  seasonId    Int
+  upgradeType String
+  level       Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season      Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId, upgradeType])
+  @@index([seasonId, upgradeType, level])
+}
+
+model ClickerBoost {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  seasonId   Int
+  boostType  String
+  multiplier Float    @default(1)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season     Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, seasonId, boostType, expiresAt])
+  @@index([seasonId, boostType, expiresAt])
+}
+
+model ReactorEnergyBalance {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  seasonId    Int
+  balance     Int      @default(0)
+  totalEarned Int      @default(0)
+  totalSpent  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season      Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId])
+  @@index([seasonId, balance])
+}
+
+model ReactorEnergyDeposit {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  seasonId     Int
+  wallet       String
+  txHash       String?
+  amountXnt    Decimal  @db.Decimal(20, 9)
+  energyAmount Int
+  status       String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season       Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([txHash])
+  @@index([userId, seasonId, status])
+}
+
+model ClickerMilestone {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  seasonId  Int
+  key       String
+  points    Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season    Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId, key])
+  @@index([seasonId, key])
+}
+
+model ClickerSession {
+  id              Int                  @id @default(autoincrement())
+  userId          Int
+  seasonId        Int
+  clickerWalletId Int?
+  sessionDate     DateTime
+  tapsUsed        Int                  @default(0)
+  mindEarnedMicro BigInt               @default(0)
+  xntSpentMicro   BigInt               @default(0)
+  status          ClickerSessionStatus @default(ACTIVE)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season          Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  clickerWallet   Wallet?              @relation("ClickerSessionFundingWallet", fields: [clickerWalletId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, seasonId, sessionDate])
+  @@index([seasonId, sessionDate])
+}
+
+model ClickerClaim {
+  id                 Int                @id @default(autoincrement())
+  userId             Int
+  walletId           Int
+  clickerWalletId    Int
+  seasonId           Int
+  claimableMindMicro BigInt
+  xntRequiredMicro   BigInt
+  paymentStatus      ClickerClaimStatus @default(PENDING)
+  paymentTxHash      String?
+  payoutTxHash       String?
+  expiresAt          DateTime
+  paidAt             DateTime?
+  claimedAt          DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet             Wallet             @relation("ClickerClaimPayoutWallet", fields: [walletId], references: [id], onDelete: Cascade)
+  clickerWallet      Wallet             @relation("ClickerClaimFundingWallet", fields: [clickerWalletId], references: [id], onDelete: Cascade)
+  season             Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, paymentStatus])
+  @@index([seasonId, paymentStatus])
+  @@index([walletId, paymentStatus])
+  @@index([clickerWalletId, paymentStatus])
+}
+
+model TreasuryConfig {
+  id                       Int      @id @default(1)
+  mindReserveFloorMicro    BigInt   @default(500000000)
+  mindTreasuryBalanceMicro BigInt   @default(5000000000)
+  xntTreasuryBalanceMicro  BigInt   @default(0)
+  xntPerMindMicro          BigInt   @default(15000)
+  minimumClaimMindMicro    BigInt   @default(1000000)
+  dailyTapCap              Int      @default(50)
+  claimTimeoutMinutes      Int      @default(10)
+  claimPaused              Boolean  @default(false)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }

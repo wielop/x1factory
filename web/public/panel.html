@@ -96,10 +96,20 @@
           </div>
         </div>
 
+        <!-- Wallet registered -->
         <div class="wallet-card card" id="wallet-card">
           <span class="card-label">Season Wallet</span>
-          <span class="wallet-address mono" id="wallet-address">Not registered</span>
-          <span class="wallet-hint" id="wallet-hint">Use /register in the bot to link a wallet</span>
+          <span class="wallet-address mono cyan" id="wallet-address"></span>
+          <span class="wallet-hint" id="wallet-hint">Registered season wallet</span>
+        </div>
+
+        <!-- Register wallet (shown when no wallet) -->
+        <div class="register-card card hidden" id="register-card">
+          <div class="register-title">Register Your Wallet</div>
+          <p class="register-hint">Paste your Solana wallet address to start earning season points.</p>
+          <input type="text" id="wallet-input" class="wallet-input" placeholder="Solana address (e.g. 4xMj...)" autocomplete="off" spellcheck="false" />
+          <button class="register-btn" id="register-btn" onclick="submitWallet()">Register Wallet</button>
+          <div class="register-error hidden" id="register-error"></div>
         </div>
 
         <div class="section-header">

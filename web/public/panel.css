@@ -1,8 +1,8 @@
 /* ── Design tokens (x1factory.xyz theme) ─────────────── */
 :root {
-  --bg:           #050610;
-  --bg-card:      #0c0f1e;
-  --bg-card-alt:  #0f1228;
+  --bg:           #030d12;
+  --bg-card:      #071a20;
+  --bg-card-alt:  #0a2128;
   --border:       rgba(255,255,255,0.07);
   --border-cyan:  rgba(34,211,238,0.22);
   --border-em:    rgba(16,185,129,0.22);
@@ -521,4 +521,61 @@ button { font-family: inherit; }
 .lb-sep {
   height: 1px; background: var(--border);
   margin: 4px 0;
+}
+
+/* ── Register wallet ─────────────────────────────────── */
+.register-card {
+  background: linear-gradient(135deg, var(--bg-card) 0%, #051c22 100%);
+  border-color: var(--border-cyan);
+  box-shadow: var(--glow-c);
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.register-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+}
+
+.register-hint {
+  font-size: 13px; color: var(--text-2); line-height: 1.5;
+}
+
+.wallet-input {
+  width: 100%; padding: 12px 14px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border-cyan);
+  border-radius: var(--rs);
+  color: var(--text); font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  outline: none; transition: border-color .15s;
+}
+
+.wallet-input::placeholder { color: var(--text-3); }
+.wallet-input:focus { border-color: var(--cyan); }
+
+.register-btn {
+  width: 100%; height: 44px;
+  background: linear-gradient(135deg, rgba(34,211,238,.22), rgba(16,185,129,.14));
+  color: var(--cyan); border: 1px solid var(--border-cyan);
+  box-shadow: var(--glow-c); font-size: 14px; font-weight: 600;
+  border-radius: 100px; cursor: pointer; font-family: inherit;
+  transition: opacity .15s;
+}
+
+.register-btn:active { opacity: .75; }
+.register-btn:disabled { opacity: .4; cursor: default; }
+
+.register-error {
+  font-size: 12px; color: #fb7185;
+  padding: 8px 12px;
+  background: rgba(251,113,133,0.1);
+  border-radius: var(--rs);
+  border: 1px solid rgba(251,113,133,0.2);
+}
+
+.register-success {
+  font-size: 12px; color: var(--emerald);
+  padding: 8px 12px;
+  background: rgba(16,185,129,0.1);
+  border-radius: var(--rs);
+  border: 1px solid var(--border-em);
 }

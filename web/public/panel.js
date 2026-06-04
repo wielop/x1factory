@@ -24,11 +24,6 @@ async function init() {
 
   myTelegramId = String(tg.initDataUnsafe?.user?.id ?? '');
 
-  // Apply Telegram theme colors if available
-  if (tg.themeParams?.bg_color) {
-    document.documentElement.style.setProperty('--bg', tg.themeParams.bg_color);
-  }
-
   try {
     const data = await get('/api/panel/me');
     if (!data.ok) throw new Error(data.error || 'Failed to load.');
@@ -71,6 +66,76 @@ async function get(path) {
   return res.json();
 }
 
+async function post(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'x-telegram-init-data': initData(),
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  return res.json();
+}
+
+/* ── Wallet registration ───────────────────────────────── */
+async function submitWallet() {
+  const input = q('#wallet-input');
+  const btn   = q('#register-btn');
+  const err   = q('#register-error');
+  const address = input.value.trim();
+
+  err.classList.add('hidden');
+
+  if (!address) {
+    showRegisterError('Paste your Solana wallet address.');
+    return;
+  }
+
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+    showRegisterError('Invalid Solana address. Check and try again.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Registering...';
+
+  try {
+    const data = await post('/api/panel/register', { address });
+
+    if (!data.ok) {
+      showRegisterError(data.error || 'Registration failed.');
+      btn.disabled = false;
+      btn.textContent = 'Register Wallet';
+      return;
+    }
+
+    S.wallet = data.wallet;
+    btn.textContent = '✓ Registered!';
+
+    setTimeout(async () => {
+      const refresh = await get('/api/panel/me');
+      if (refresh.ok) {
+        S.wallet = refresh.wallet;
+        S.stats  = refresh.stats;
+        S.recentEvents = refresh.recentEvents || [];
+        renderHomeTab();
+      }
+    }, 800);
+
+  } catch (e) {
+    showRegisterError('Network error. Try again.');
+    btn.disabled = false;
+    btn.textContent = 'Register Wallet';
+  }
+}
+
+function showRegisterError(msg) {
+  const el = q('#register-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
 /* ── Tab switching ─────────────────────────────────────── */
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -110,12 +175,12 @@ function renderHomeTab() {
 
   // Wallet
   if (w) {
-    const el = q('#wallet-address');
-    el.textContent = w.address;
-    el.classList.add('cyan');
-    q('#wallet-hint').textContent = 'Registered season wallet';
+    q('#wallet-address').textContent = w.address;
+    show('wallet-card');
+    hide('register-card');
   } else {
-    q('#wallet-hint').textContent = 'Use /register in the bot to link a wallet';
+    hide('wallet-card');
+    show('register-card');
   }
 
   renderFeed();

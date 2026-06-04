@@ -1,41 +1,37 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>X1Factory</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/panel.css" />
+  <link rel="stylesheet" href="/panel.css"/>
 </head>
 <body>
 
-  <!-- Outside Telegram -->
   <div id="gate-outside" class="gate hidden">
     <div class="gate-glow"></div>
     <div class="gate-icon">⚡</div>
     <h1>X1Factory</h1>
-    <p>Open this app inside Telegram to access your operator panel.</p>
+    <p>Open in Telegram to access your operator passport.</p>
     <a href="https://t.me/x1factory_bot" class="btn btn-primary">Open in Telegram</a>
   </div>
 
-  <!-- Error -->
   <div id="gate-error" class="gate hidden">
     <div class="gate-icon" style="font-size:36px">⚠</div>
     <h2>Something went wrong</h2>
-    <p id="error-message">Unable to load your profile.</p>
+    <p id="error-message">Unable to load.</p>
     <button class="btn btn-primary" onclick="retryInit()">Try again</button>
   </div>
 
-  <!-- Loading -->
   <div id="loading" class="loading-overlay">
     <div class="loader-ring"></div>
     <span>Loading operator data...</span>
   </div>
 
-  <!-- App -->
   <div id="app" class="hidden">
 
     <header class="header">
@@ -47,50 +43,90 @@
     </header>
 
     <nav class="tab-bar">
-      <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
-        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 0 1 .7.3l7 7a1 1 0 0 1-1.4 1.4L16 10.4V17a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3H9v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6.6l-.3.3a1 1 0 1 1-1.4-1.4l7-7A1 1 0 0 1 10 2z"/></svg>
-        <span class="tab-label">Operator</span>
+      <button class="tab-btn active" data-tab="passport" onclick="switchTab('passport')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+        <span class="tab-label">Passport</span>
       </button>
       <button class="tab-btn" data-tab="season" onclick="switchTab('season')">
-        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 0 0-1 1v1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1V3a1 1 0 1 0-2 0v1H7V3a1 1 0 0 0-1-1zm0 5a1 1 0 0 0 0 2h8a1 1 0 1 0 0-2H6z" clip-rule="evenodd"/></svg>
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
         <span class="tab-label">Season</span>
       </button>
       <button class="tab-btn" data-tab="leaderboard" onclick="switchTab('leaderboard')">
-        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z"/></svg>
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
         <span class="tab-label">Rankings</span>
       </button>
     </nav>
 
     <main class="content">
 
-      <!-- ── Operator tab ── -->
-      <section id="tab-home" class="tab-panel">
+      <!-- ═══ PASSPORT TAB ═══ -->
+      <section id="tab-passport" class="tab-panel">
 
-        <!-- Profile identity -->
-        <div class="profile-card card rank-offline" id="profile-card">
-          <div class="profile-avatar" id="profile-avatar">?</div>
-          <div class="profile-info">
-            <div class="profile-name" id="profile-name">—</div>
-            <div class="profile-rank-row">
-              <span class="profile-rank-title" id="profile-rank-title">OFFLINE</span>
-              <span class="profile-season-label" id="profile-season-label"></span>
+        <!-- Passport document -->
+        <div class="passport-card rank-offline" id="passport-card">
+          <div class="passport-header">
+            <span class="passport-brand">X1Factory</span>
+            <span class="passport-type">Operator Passport</span>
+          </div>
+          <div class="passport-body">
+            <div class="passport-avatar" id="passport-avatar">?</div>
+            <div class="passport-info">
+              <div class="passport-name" id="passport-name">—</div>
+              <div class="passport-rank" id="passport-rank">OFFLINE</div>
+              <div class="passport-status">
+                <span class="status-dot"></span>
+                <span class="status-text" id="passport-status">Online</span>
+              </div>
             </div>
+          </div>
+          <div class="passport-id-row">
+            <span class="passport-id mono" id="passport-id">OP-0000</span>
+            <span class="passport-since" id="passport-since"></span>
           </div>
         </div>
 
-        <!-- Points hero -->
-        <div class="points-hero card" id="points-hero">
-          <div class="points-label">Season Points</div>
-          <div class="points-value" id="points-value">0</div>
-          <div class="points-meta" id="points-meta"></div>
-          <div class="goal-bar-wrap" id="goal-bar-wrap">
-            <div class="goal-bar-label">
+        <!-- Current season performance -->
+        <div class="season-current-card card" id="season-current-card">
+          <div class="scn-top">
+            <span class="scn-title" id="scn-season-name">This Season</span>
+            <span class="status-pill" id="scn-status-pill"></span>
+          </div>
+          <div class="scn-pts" id="scn-pts">0</div>
+          <div class="scn-meta" id="scn-meta"></div>
+          <div class="goal-bar" id="goal-bar">
+            <div class="goal-bar-labels">
               <span id="goal-label">—</span>
               <strong id="goal-pct">—</strong>
             </div>
             <div class="goal-track">
               <div class="goal-fill" id="goal-fill" style="width:0%"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- Battle card -->
+        <div class="battle-card card hidden" id="battle-card">
+          <div class="battle-title">⚔ Battle Position</div>
+          <div id="battle-above" class="battle-row hidden">
+            <span class="battle-arrow">↑</span>
+            <span class="battle-rank" id="b-above-rank"></span>
+            <span class="battle-name" id="b-above-name"></span>
+            <span class="battle-pts" id="b-above-pts"></span>
+            <span class="battle-gap above" id="b-above-gap"></span>
+          </div>
+          <div class="battle-row is-me">
+            <span class="battle-arrow" style="color:var(--cyan)">●</span>
+            <span class="battle-rank me-rank" id="b-me-rank"></span>
+            <span class="battle-name is-me" id="b-me-name"></span>
+            <span class="battle-pts is-me" id="b-me-pts"></span>
+            <span style="width:48px"></span>
+          </div>
+          <div id="battle-below" class="battle-row hidden">
+            <span class="battle-arrow">↓</span>
+            <span class="battle-rank" id="b-below-rank"></span>
+            <span class="battle-name" id="b-below-name"></span>
+            <span class="battle-pts" id="b-below-pts"></span>
+            <span class="battle-gap below" id="b-below-gap"></span>
           </div>
         </div>
 
@@ -104,43 +140,73 @@
           <div class="stat-card card">
             <span class="stat-label">Events</span>
             <strong class="stat-value" id="stat-events">0</strong>
-            <span class="stat-sub">recorded</span>
+            <span class="stat-sub">this season</span>
           </div>
           <div class="stat-card card">
-            <span class="stat-label">Streak</span>
-            <strong class="stat-value amber" id="stat-streak">—</strong>
-            <span class="stat-sub">days</span>
+            <span class="stat-label">Best Rank</span>
+            <strong class="stat-value amber" id="stat-best-rank">—</strong>
+            <span class="stat-sub">all-time</span>
           </div>
         </div>
 
-        <!-- Wallet registered -->
+        <!-- All-time career -->
+        <div class="alltime-card card">
+          <div class="alltime-title">Career Record</div>
+          <div class="alltime-grid">
+            <div class="alltime-item">
+              <span class="alltime-val cyan" id="at-pts">0</span>
+              <span class="alltime-lbl">All-time pts</span>
+            </div>
+            <div class="alltime-item">
+              <span class="alltime-val" id="at-seasons">0</span>
+              <span class="alltime-lbl">Seasons</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Season stamps -->
+        <div class="stamps-card card" id="stamps-card">
+          <div class="stamps-title">Season Stamps</div>
+          <div class="stamps-row" id="stamps-row">
+            <div class="empty-state" style="padding:8px 0;background:none;border:none;">No seasons yet.</div>
+          </div>
+        </div>
+
+        <!-- Badges -->
+        <div class="badges-card card">
+          <div class="badges-title">Badges</div>
+          <div class="badges-grid" id="badges-grid">
+            <span class="no-badges muted">Complete actions to earn badges.</span>
+          </div>
+        </div>
+
+        <!-- Wallet -->
         <div class="wallet-card card hidden" id="wallet-card">
-          <span class="card-label">Season Wallet</span>
+          <span class="card-label">Payout Wallet</span>
           <span class="wallet-address mono cyan" id="wallet-address"></span>
-          <span class="wallet-hint muted">Registered payout wallet</span>
         </div>
 
         <!-- Register wallet -->
         <div class="register-card card" id="register-card">
           <div class="register-title">⚡ Connect Your Wallet</div>
-          <p class="register-hint">Register your Solana wallet to start earning season points for your X1Factory activity.</p>
-          <input type="text" id="wallet-input" class="wallet-input mono" placeholder="Paste Solana address..." autocomplete="off" spellcheck="false" />
+          <p class="register-hint">Register your Solana wallet to start earning season points for X1Factory activity.</p>
+          <input type="text" id="wallet-input" class="wallet-input" placeholder="Paste Solana address..." autocomplete="off" spellcheck="false"/>
           <button class="register-btn" id="register-btn" onclick="submitWallet()">Register Wallet</button>
           <div class="register-error hidden" id="register-error"></div>
         </div>
 
-        <!-- Activity -->
+        <!-- Recent activity -->
         <div class="section-header">
           <span>Recent Activity</span>
           <span class="section-meta" id="events-total"></span>
         </div>
         <div id="activity-feed" class="activity-feed">
-          <div class="empty-state">No activity yet.</div>
+          <div class="empty-state">No activity yet.<br>Earn points on X1Factory.</div>
         </div>
 
       </section>
 
-      <!-- ── Season tab ── -->
+      <!-- ═══ SEASON TAB ═══ -->
       <section id="tab-season" class="tab-panel hidden">
 
         <div class="season-card card" id="season-card">
@@ -159,7 +225,6 @@
         </div>
 
         <div class="section-header"><span>How to Earn Points</span></div>
-
         <div class="earn-list">
           <div class="earn-group">
             <div class="earn-group-head">🔑 Registration</div>
@@ -197,11 +262,11 @@
           </div>
           <div class="earn-group">
             <div class="earn-group-head">🔒 Staking (XNT)</div>
-            <div class="earn-row"><span>≥ 100 XNT staked</span><b class="cyan">+25</b></div>
-            <div class="earn-row"><span>≥ 500 XNT staked</span><b class="cyan">+100</b></div>
-            <div class="earn-row"><span>≥ 1,000 XNT staked</span><b class="cyan">+250</b></div>
-            <div class="earn-row"><span>≥ 2,500 XNT staked</span><b class="cyan">+600</b></div>
-            <div class="earn-row"><span>≥ 5,000 XNT staked</span><b class="cyan">+1,200</b></div>
+            <div class="earn-row"><span>≥ 100 XNT</span><b class="cyan">+25</b></div>
+            <div class="earn-row"><span>≥ 500 XNT</span><b class="cyan">+100</b></div>
+            <div class="earn-row"><span>≥ 1,000 XNT</span><b class="cyan">+250</b></div>
+            <div class="earn-row"><span>≥ 2,500 XNT</span><b class="cyan">+600</b></div>
+            <div class="earn-row"><span>≥ 5,000 XNT</span><b class="cyan">+1,200</b></div>
           </div>
           <div class="earn-group">
             <div class="earn-group-head">🔥 Streaks <span class="earn-tag">bonus</span></div>
@@ -214,7 +279,7 @@
 
       </section>
 
-      <!-- ── Rankings tab ── -->
+      <!-- ═══ RANKINGS TAB ═══ -->
       <section id="tab-leaderboard" class="tab-panel hidden">
         <div class="lb-header">
           <span class="lb-season-name" id="lb-season-name">Rankings</span>

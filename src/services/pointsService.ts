@@ -150,6 +150,13 @@ export async function addSeasonPoints(
     throw new Error("User not found.");
   }
 
+  // Capture rank before transaction so we can detect improvements
+  const statsBefore = await prisma.userSeasonStats.findUnique({
+    where: { userId_seasonId: { userId, seasonId } },
+    select: { rank: true }
+  });
+  const rankBefore = statsBefore?.rank ?? null;
+
   const result = await prisma.$transaction(async (tx) => {
     const fullUser = await tx.user.findUnique({
       where: { id: userId },
@@ -245,6 +252,19 @@ export async function addSeasonPoints(
   });
 
   if (result.created && !suppressDefaultNotification) {
+    const rankImproved = result.rank !== null && (rankBefore === null || result.rank < rankBefore);
+    const rankLines: string[] = [];
+
+    if (rankImproved && result.rank !== null) {
+      if (rankBefore !== null) {
+        rankLines.push(`📈 Rank improved: #${rankBefore} → #${result.rank}`);
+      } else {
+        rankLines.push(`📈 Ranked for the first time: #${result.rank}`);
+      }
+    } else {
+      rankLines.push(`Operator rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
+    }
+
     await notifyTelegramUser(
       user.telegramId,
       [
@@ -252,12 +272,16 @@ export async function addSeasonPoints(
         "",
         amount >= 0 ? `Factory output: +${amount} ${FACTORY_XP}` : `Factory correction: -${Math.abs(amount)} ${FACTORY_XP}`,
         `Source: ${formatEventCategory(category)}`,
-        `Why: ${reason}`,
         "",
         `Season total: ${result.totalPoints} ${FACTORY_XP}`,
-        `Operator rank: ${result.rank ? `#${result.rank}` : "unranked"}`
+        ...rankLines
       ].join("\n")
     );
+
+    // Notify the user who just got overtaken
+    if (rankImproved && result.rank !== null && rankBefore !== null && result.rank < rankBefore) {
+      void notifyOvertakenUser(seasonId, result.rank + 1, userId).catch(() => undefined);
+    }
   }
 
   return result;
@@ -552,4 +576,96 @@ export async function processDailyCheckin(
     totalPoints: refreshedStats?.totalPoints ?? checkinResult.totalPoints,
     rank: refreshedStats?.rank ?? checkinResult.rank
   };
+}
+
+// ── Rank battle notifications ───────────────────────────
+
+async function notifyOvertakenUser(seasonId: number, overtakenRank: number, scorerUserId: number): Promise<void> {
+  const overtakenStats = await prisma.userSeasonStats.findFirst({
+    where: { seasonId, rank: overtakenRank },
+    include: { user: true }
+  });
+
+  if (!overtakenStats || overtakenStats.userId === scorerUserId) return;
+
+  const scorer = await prisma.user.findUnique({ where: { id: scorerUserId } });
+  const scorerName = scorer?.username ? `@${scorer.username}` : "Another operator";
+
+  await notifyTelegramUser(
+    overtakenStats.user.telegramId,
+    [
+      factoryHeader("BATTLE ALERT"),
+      "",
+      `⚠️ ${scorerName} just overtook you!`,
+      `You dropped to rank #${overtakenRank}.`,
+      "",
+      `Season total: ${overtakenStats.totalPoints} ${FACTORY_XP}`,
+      "Counter-attack — keep your rigs running!"
+    ].join("\n")
+  ).catch(() => undefined);
+}
+
+// ── Season end countdown notifications ─────────────────
+
+export async function checkSeasonEndNotifications(): Promise<void> {
+  const season = await prisma.season.findFirst({ where: { status: "ACTIVE" } });
+  if (!season) return;
+
+  const now = Date.now();
+  const msLeft = season.endsAt.getTime() - now;
+  const daysLeft = msLeft / (24 * 60 * 60 * 1000);
+
+  // Notify at exactly 3 days and 1 day remaining (with 1h tolerance)
+  const isThreeDays = daysLeft <= 3 && daysLeft > 2.958;
+  const isOneDay    = daysLeft <= 1 && daysLeft > 0.958;
+
+  if (!isThreeDays && !isOneDay) return;
+
+  const urgency = isOneDay ? "⏰ FINAL 24 HOURS" : "⚡ 3 DAYS LEFT";
+  const label   = isOneDay ? "1 day" : "3 days";
+
+  const topStats = await prisma.userSeasonStats.findMany({
+    where: { seasonId: season.id },
+    orderBy: { rank: "asc" },
+    take: 100,
+    include: { user: true }
+  });
+
+  const prizeTotal = Number(process.env.SEASON_PRIZE_POOL_XNT ?? 0);
+
+  for (const stats of topStats) {
+    if (!stats.user.telegramId) continue;
+
+    const prizeLines: string[] = [];
+    if (prizeTotal > 0 && stats.rank !== null) {
+      const prize = getEstimatedPrize(stats.rank, prizeTotal);
+      if (prize > 0) {
+        prizeLines.push(`🏆 Estimated prize: ~${prize} XNT`);
+      }
+    }
+
+    await notifyTelegramUser(
+      stats.user.telegramId,
+      [
+        factoryHeader("SEASON ALERT"),
+        "",
+        `${urgency} — ${season.name} ends in ${label}!`,
+        "",
+        `Your rank: #${stats.rank ?? "unranked"}`,
+        `Season points: ${stats.totalPoints} ${FACTORY_XP}`,
+        ...prizeLines,
+        "",
+        "Final push — every point counts now!"
+      ].join("\n")
+    ).catch(() => undefined);
+  }
+}
+
+function getEstimatedPrize(rank: number, total: number): number {
+  if (rank === 1) return Math.round(total * 0.35);
+  if (rank === 2) return Math.round(total * 0.20);
+  if (rank === 3) return Math.round(total * 0.15);
+  if (rank >= 4 && rank <= 5) return Math.round(total * 0.075);
+  if (rank >= 6 && rank <= 10) return Math.round(total * 0.03);
+  return 0;
 }

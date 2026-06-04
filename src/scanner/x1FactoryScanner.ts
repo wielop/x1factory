@@ -5,7 +5,7 @@ import { logger } from "../config/logger.js";
 import { createDetectedEvent, findDetectedEvent } from "../db/eventRepository.js";
 import { getWalletScannerCursor, upsertWalletScannerCursor } from "../db/scannerRepository.js";
 import { getActiveSeason, getActiveSeasonRegistrationsWithWallets } from "../db/seasonRepository.js";
-import { processDailyClaim, processEvent, processStakeSnapshot } from "../services/pointsService.js";
+import { checkSeasonEndNotifications, processDailyClaim, processEvent, processStakeSnapshot } from "../services/pointsService.js";
 import { scanAndSettlePendingClickerClaims } from "../services/clickerSettlementService.js";
 
 import { RealX1FactoryAdapter } from "./realAdapter.js";
@@ -594,6 +594,9 @@ export function startScanner(intervalSeconds: number): () => void {
   timer = setInterval(() => {
     void runScannerOnce().catch((error) => {
       logger.error({ error }, "Scheduled scanner run failed");
+    });
+    void checkSeasonEndNotifications().catch((error) => {
+      logger.warn({ error }, "Season end notification check failed");
     });
   }, intervalMs);
 

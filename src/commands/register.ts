@@ -1,43 +1,64 @@
-import type { BotInstance } from "../bot/types.js";
+import type { BotContext, BotInstance } from "../bot/types.js";
 import { startWalletRegistration } from "../bot/registrationState.js";
+import { FACTORY_XP, factoryHeader, formatTestingNotice, mainMenuKeyboard, shortWallet, walletInputKeyboard } from "../bot/ui.js";
 import { getActiveWalletForUser } from "../db/walletRepository.js";
-import { registerProfile } from "../services/profileService.js";
+import { registerActiveWalletForCurrentSeason, registerProfile } from "../services/profileService.js";
+import { getCurrentSeason, getSeasonTestingNotice } from "../services/seasonService.js";
 
-export function registerRegisterCommand(bot: BotInstance): void {
-  bot.command("register", async (ctx) => {
-    const from = ctx.from;
+export async function showConnectWallet(ctx: BotContext): Promise<void> {
+  const from = ctx.from;
 
-    if (!from) {
-      await ctx.reply("Unable to read Telegram user info for this chat.");
-      return;
-    }
+  if (!from) {
+    await ctx.reply("MIND FACTORY could not read your Telegram profile. Try again in a private chat.");
+    return;
+  }
 
-    const profile = await registerProfile(from);
-    const activeWallet = await getActiveWalletForUser(profile.id);
+  const profile = await registerProfile(from);
+  const activeWallet = await getActiveWalletForUser(profile.id);
+  const season = await getCurrentSeason();
+  const testingNotice = getSeasonTestingNotice(season?.name);
 
-    if (activeWallet) {
-      await ctx.reply(
-        [
-          "Wallet already registered.",
-          `Active wallet: ${activeWallet.address}`,
-          "Wallet changes are allowed only through the admin command."
-        ].join("\n")
-      );
-      return;
-    }
-
-    startWalletRegistration(from.id);
+  if (activeWallet) {
+    const seasonRegistration = await registerActiveWalletForCurrentSeason({
+      userId: profile.id,
+      walletId: activeWallet.id,
+      walletAddress: activeWallet.address
+    });
 
     await ctx.reply(
       [
-        "Profile registered.",
-        `Telegram ID: ${profile.telegramId.toString()}`,
-        `Username: ${profile.username ? `@${profile.username}` : "not set"}`,
-        `Name: ${[profile.firstName, profile.lastName].filter(Boolean).join(" ") || "not set"}`,
+        factoryHeader("WALLET CONNECTED"),
         "",
-        "Send your wallet address to complete registration.",
-        "Wallet changes are blocked for regular users and must be done by admin."
-      ].join("\n")
+        `Your factory is already linked to ${shortWallet(activeWallet.address)}.`,
+        `Season line: ${seasonRegistration.season?.name ?? "not open yet"}`,
+        seasonRegistration.registration ? "Status: ready to earn Factory XP" : "Status: waiting for the next season",
+        "",
+        "Need to change wallets? Ask an admin to move your factory safely.",
+        ...formatTestingNotice(testingNotice)
+      ].join("\n"),
+      mainMenuKeyboard()
     );
-  });
+    return;
+  }
+
+  startWalletRegistration(from.id);
+
+  await ctx.reply(
+    [
+      factoryHeader("CONNECT WALLET"),
+      "",
+      "Paste your X1/Solana wallet address in the next message.",
+      "",
+      "Once connected, this wallet becomes your factory ID for the season.",
+      `Season registration grants 50 ${FACTORY_XP}.`,
+      "",
+      "Wallet changes are admin-only, so check the address before sending.",
+      ...formatTestingNotice(testingNotice)
+    ].join("\n"),
+    walletInputKeyboard()
+  );
+}
+
+export function registerRegisterCommand(bot: BotInstance): void {
+  bot.command("register", showConnectWallet);
 }

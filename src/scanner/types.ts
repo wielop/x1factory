@@ -1,43 +1,103 @@
-import type { PointCategory } from "../config/points.js";
+export type RigType = "starter" | "pro" | "industrial";
 
-export type RigTier = "starter" | "pro" | "industrial";
+export type ScannerEventType =
+  | "starter_rig_purchase"
+  | "pro_rig_purchase"
+  | "industrial_rig_purchase"
+  | "starter_renewal"
+  | "pro_renewal"
+  | "industrial_renewal"
+  | "claim_mind_daily"
+  | "stake_snapshot"
+  | "daily_active_starter"
+  | "daily_active_pro"
+  | "daily_active_industrial";
 
-export type X1FactoryState = {
-  slot: number;
-  starterRigs: number;
-  proRigs: number;
-  industrialRigs: number;
-  renewalsCount: number;
-  totalMindClaimed: number;
-  hasStake: boolean;
-  totalMindBurned: number;
-  activeRigToday: boolean;
-  activeRigDayKey: string | null;
+export type UserFactoryPosition = {
+  index: number;
+  rigType: RigType;
+  hp: number;
+  startTs: number;
+  active: boolean;
+  deactivated: boolean;
+  expired: boolean;
+  endTs: number;
 };
 
-export type X1FactoryRecentEvent = {
-  slot: number;
+export type UserFactoryState = {
+  wallet: string;
+  activeRigs: number;
+  activeStarterCount: number;
+  activeProCount: number;
+  activeIndustrialCount: number;
+  totalActiveHp: number;
+  stakedMindAmount: number;
+  pendingClaimableMind: number | null;
+  lastUpdatedSlot: number;
+  positions: UserFactoryPosition[];
+};
+
+export type X1FactoryEvent = {
+  wallet: string;
+  eventType: ScannerEventType;
   txHash: string;
-  category: PointCategory;
-  reason: string;
-  multiplier?: number;
-  metadata?: Record<string, unknown>;
+  slot: number;
+  blockTime: Date | null;
+  amount: number | null;
+  rigType: RigType | null;
+  raw: Record<string, unknown>;
+};
+
+export type ScannerDiagnosticCandidate = {
+  txHash: string;
+  slot: number;
+  blockTime: Date | null;
+  instructionNames: string[];
+  eventNames: string[];
+  rawSummary: string;
+  reason?: string;
+};
+
+export type ScannerDiagnostics = {
+  wallet: string;
+  parserConfirmed: boolean;
+  parserMessage: string;
+  candidates: ScannerDiagnosticCandidate[];
 };
 
 export interface IX1FactoryAdapter {
-  getUserFactoryState(wallet: string): Promise<X1FactoryState | null>;
-  getRecentUserEvents(wallet: string, sinceSlot?: number): Promise<X1FactoryRecentEvent[]>;
+  getUserFactoryState(wallet: string): Promise<UserFactoryState | null>;
+  getRecentUserEvents(wallet: string, sinceSlot?: number): Promise<X1FactoryEvent[]>;
+  getCurrentSlot(): Promise<number>;
 }
 
-export type ScannerRegistration = {
-  userId: number;
-  walletId: number;
-  walletAddress: string;
+export type ScannerCursorSnapshot = {
+  seasonId?: number | null;
+  state: UserFactoryState | null;
+  claimDailyTotals: Record<string, number>;
+  awardedDailyActiveKeys: Record<string, string[]>;
+  stakeBaselineAmount?: number | null;
 };
 
-export type ScannerDerivedEvent = {
-  txHash: string;
-  category: PointCategory;
-  reason: string;
-  multiplier?: number;
+export type ScannerWalletResult = {
+  wallet: string;
+  parserConfirmed: boolean;
+  parserMessage: string;
+  state: UserFactoryState | null;
+  events: X1FactoryEvent[];
+  diagnostics: ScannerDiagnosticCandidate[];
+  currentSlot: number | null;
+};
+
+export type ScannerRunSummary = {
+  startedAt: Date;
+  finishedAt: Date;
+  seasonId: number | null;
+  walletsScanned: number;
+  eventsDetected: number;
+  pointsAwarded: number;
+  clickerTopUpsDetected: number;
+  clickerClaimsSettled: number;
+  errors: number;
+  message: string;
 };

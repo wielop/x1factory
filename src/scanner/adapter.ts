@@ -1,11 +1,6 @@
 import type { IX1FactoryAdapter } from "./types.js";
-import { MockX1FactoryAdapter } from "./mockAdapter.js";
-import { RpcX1FactoryAdapter } from "./rpcAdapter.js";
+import { RealX1FactoryAdapter } from "./realAdapter.js";
 
-export function createX1FactoryAdapter(mode: string): IX1FactoryAdapter {
-  if (mode === "rpc") {
-    return new RpcX1FactoryAdapter();
-  }
-
-  return new MockX1FactoryAdapter();
+export function createX1FactoryAdapter(): IX1FactoryAdapter {
+  return new RealX1FactoryAdapter();
 }

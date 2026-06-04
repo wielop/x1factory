@@ -1,7 +1,5 @@
 import { prisma } from "../db/prisma.js";
-import { seasons } from "./mockData.js";
 import {
-  createSeasonAfterBreak,
   endActiveSeason,
   getActiveOrUpcomingSeason,
   getActiveSeason,
@@ -11,6 +9,18 @@ import {
 const SEASON_DURATION_DAYS = 21;
 const BREAK_DURATION_DAYS = 7;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+export function getSeasonTestingNotice(seasonName?: string | null): string | null {
+  if (!seasonName) {
+    return null;
+  }
+
+  if (!/^season 0\b/i.test(seasonName.trim())) {
+    return null;
+  }
+
+  return "Season 0 is for testing only. Season 1 starts from zero.";
+}
 
 function startOfUtcDay(input: Date): Date {
   return new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
@@ -33,25 +43,7 @@ export async function getSeasonOverview() {
   const season = await getActiveOrUpcomingSeason();
 
   if (!season) {
-    const mockSeason = seasons.find((entry) => entry.status === "active") ?? seasons[0];
-
-    return {
-      season: {
-        name: mockSeason.name,
-        status: mockSeason.status.toUpperCase(),
-        startsAt: new Date(mockSeason.startsAt),
-        endsAt: new Date(mockSeason.endsAt)
-      },
-      dayNumber: 1,
-      timeLeft: "mock mode",
-      registeredMiners: 0,
-      activeMinersToday: 0,
-      totalPointsDistributed: 0,
-      defaults: {
-        seasonDurationDays: SEASON_DURATION_DAYS,
-        breakDurationDays: BREAK_DURATION_DAYS
-      }
-    };
+    return null;
   }
 
   const now = new Date();
@@ -121,13 +113,51 @@ export async function adminEndSeason() {
   return endActiveSeason();
 }
 
-export async function adminCreateNextSeason() {
-  return createSeasonAfterBreak({
-    durationDays: SEASON_DURATION_DAYS,
-    breakDays: BREAK_DURATION_DAYS
-  });
-}
-
 export async function getCurrentSeason() {
   return getActiveSeason();
+}
+
+export async function getAdminSeasonStatus() {
+  const activeSeason = await getActiveSeason();
+
+  if (!activeSeason) {
+    return null;
+  }
+
+  const [registeredUsers, totalPointsResult, topUsers] = await Promise.all([
+    prisma.seasonRegistration.count({
+      where: {
+        seasonId: activeSeason.id,
+        status: "ACTIVE"
+      }
+    }),
+    prisma.seasonPoint.aggregate({
+      where: {
+        seasonId: activeSeason.id
+      },
+      _sum: {
+        points: true
+      }
+    }),
+    prisma.userSeasonStats.findMany({
+      where: {
+        seasonId: activeSeason.id
+      },
+      orderBy: [
+        { rank: "asc" },
+        { totalPoints: "desc" }
+      ],
+      take: 5,
+      include: {
+        user: true
+      }
+    })
+  ]);
+
+  return {
+    season: activeSeason,
+    registeredUsers,
+    totalPoints: totalPointsResult._sum.points ?? 0,
+    topUsers
+  };
 }

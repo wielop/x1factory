@@ -104,6 +104,31 @@
           </div>
         </div>
 
+        <!-- Prize pool -->
+        <div class="prize-card card hidden" id="prize-card">
+          <div class="prize-header">
+            <span class="prize-header-label">🏆 Season Prize Pool</span>
+            <span class="prize-total" id="prize-total"></span>
+          </div>
+          <div class="prize-body">
+            <div class="prize-my" id="prize-my">
+              <span class="prize-my-amount" id="prize-my-amount">0</span>
+              <div>
+                <div class="prize-my-label">XNT estimated</div>
+                <span class="prize-my-tier" id="prize-my-tier"></span>
+              </div>
+            </div>
+            <div class="prize-no-rank hidden" id="prize-no-rank">Earn points to enter the prize pool.</div>
+            <div class="prize-breakdown" id="prize-breakdown"></div>
+          </div>
+        </div>
+
+        <!-- Daily missions -->
+        <div class="missions-card card hidden" id="missions-card">
+          <div class="missions-title">Today's Missions</div>
+          <div class="missions-row" id="missions-row"></div>
+        </div>
+
         <!-- Battle card -->
         <div class="battle-card card hidden" id="battle-card">
           <div class="battle-title">⚔ Battle Position</div>
@@ -196,9 +221,15 @@
         </div>
 
         <!-- Recent activity -->
-        <div class="section-header">
-          <span>Recent Activity</span>
-          <span class="section-meta" id="events-total"></span>
+        <div class="refresh-row">
+          <div class="section-header" style="padding:0">
+            <span>Recent Activity</span>
+            <span class="section-meta" id="events-total"></span>
+          </div>
+          <button class="refresh-btn" id="refresh-btn" onclick="doRefresh()">
+            <span class="refresh-icon">↻</span>
+            <span class="refresh-time" id="refresh-time"></span>
+          </button>
         </div>
         <div id="activity-feed" class="activity-feed">
           <div class="empty-state">No activity yet.<br>Earn points on X1Factory.</div>

@@ -374,6 +374,129 @@ button{font-family:inherit;}
   line-height:1.6;
 }
 
+/* ── Prize pool ──────────────────────────────────────── */
+.prize-card{
+  background:linear-gradient(135deg,#071a20 0%,#0a1f10 100%);
+  border-color:var(--border-e);box-shadow:var(--glow-e);
+  padding:0;overflow:hidden;
+}
+.prize-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.prize-header-label{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);
+}
+.prize-total{
+  font-size:10px;font-weight:700;letter-spacing:.06em;
+  color:var(--emerald);
+}
+.prize-body{padding:14px 16px;}
+.prize-my{
+  display:flex;align-items:baseline;gap:8px;margin-bottom:12px;
+}
+.prize-my-amount{
+  font-size:36px;font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  letter-spacing:-.03em;color:var(--emerald);line-height:1;
+}
+.prize-my-label{font-size:13px;color:var(--text-2);}
+.prize-my-tier{
+  font-size:11px;font-weight:600;letter-spacing:.06em;
+  padding:2px 8px;border-radius:100px;
+  background:rgba(16,185,129,.12);color:var(--emerald);
+  border:1px solid var(--border-e);
+}
+.prize-no-rank{font-size:13px;color:var(--text-2);margin-bottom:12px;}
+.prize-breakdown{
+  display:flex;flex-direction:column;gap:4px;
+  padding:10px 0 0;border-top:1px solid rgba(255,255,255,.05);
+}
+.prize-tier-row{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 0;font-size:12px;
+}
+.prize-tier-row.is-mine{
+  background:rgba(16,185,129,.07);
+  border-radius:var(--rs);padding:5px 8px;margin:0 -8px;
+}
+.prize-tier-rank{width:52px;color:var(--text-3);flex-shrink:0;}
+.prize-tier-label{flex:1;color:var(--text-2);}
+.prize-tier-amount{
+  font-family:'JetBrains Mono',monospace;font-weight:700;
+  color:var(--emerald);flex-shrink:0;
+}
+.prize-tier-row.is-mine .prize-tier-rank,
+.prize-tier-row.is-mine .prize-tier-label,
+.prize-tier-row.is-mine .prize-tier-amount{color:var(--emerald);}
+
+/* ── Daily missions ──────────────────────────────────── */
+.missions-card{
+  background:var(--bg-card);border-color:var(--border);
+  padding:12px 14px;
+}
+.missions-title{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:10px;
+}
+.missions-row{display:flex;gap:8px;}
+.mission{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:10px 6px;border-radius:var(--rs);
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  transition:all .2s;
+}
+.mission.done{
+  background:rgba(16,185,129,.1);border-color:var(--border-e);
+}
+.mission-icon{font-size:20px;line-height:1;}
+.mission-label{font-size:10px;font-weight:600;color:var(--text-2);text-align:center;line-height:1.3;}
+.mission-pts{
+  font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;
+  color:var(--text-3);
+}
+.mission.done .mission-label{color:var(--emerald);}
+.mission.done .mission-pts{color:var(--emerald);}
+.mission.done .mission-icon::after{
+  content:'✓';position:absolute;font-size:10px;
+  background:var(--emerald);color:#fff;
+  border-radius:50%;width:14px;height:14px;
+  display:flex;align-items:center;justify-content:center;
+  margin-left:-8px;margin-top:-6px;
+}
+.mission{position:relative;}
+.mission-check{
+  position:absolute;top:5px;right:5px;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--emerald);
+  display:none;align-items:center;justify-content:center;
+  font-size:9px;color:#fff;font-weight:700;
+}
+.mission.done .mission-check{display:flex;}
+
+/* ── Refresh button ──────────────────────────────────── */
+.refresh-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:2px 2px 0;
+}
+.refresh-btn{
+  display:flex;align-items:center;gap:5px;
+  background:none;border:none;cursor:pointer;
+  font-size:11px;color:var(--text-3);padding:4px 8px;
+  border-radius:100px;transition:color .15s;
+}
+.refresh-btn:active{color:var(--cyan);}
+.refresh-icon{font-size:13px;transition:transform .4s ease;}
+.refresh-btn.spinning .refresh-icon{animation:spin .4s linear;}
+.refresh-time{font-size:10px;color:var(--text-3);}
+
+/* ── New event flash ─────────────────────────────────── */
+@keyframes flashIn {
+  0%{opacity:0;transform:translateY(-6px);}
+  100%{opacity:1;transform:translateY(0);}
+}
+.activity-item.new{animation:flashIn .3s ease;}
+
 /* ── Wallet & Register ───────────────────────────────── */
 .wallet-card{display:flex;flex-direction:column;gap:5px;}
 .card-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-2);}

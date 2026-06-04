@@ -32,6 +32,37 @@ function operatorId(userId: number): string {
   return "OP-" + String(userId).padStart(4, "0");
 }
 
+// ── Prize pool ────────────────────────────────────────
+const PRIZE_TIERS = [
+  { label: "1st place",  rankMin: 1,  rankMax: 1,  sharePct: 35 },
+  { label: "2nd place",  rankMin: 2,  rankMax: 2,  sharePct: 20 },
+  { label: "3rd place",  rankMin: 3,  rankMax: 3,  sharePct: 15 },
+  { label: "Top 5",      rankMin: 4,  rankMax: 5,  sharePct: 15 }, // 7.5% each
+  { label: "Top 10",     rankMin: 6,  rankMax: 10, sharePct: 15 }, // 3% each
+];
+
+function getPrizePool() {
+  const raw = process.env.SEASON_PRIZE_POOL_XNT;
+  return raw ? Number(raw) : 0;
+}
+
+function getPrizeForRank(rank: number | null | undefined, total: number) {
+  if (!rank || total <= 0) return { amount: 0, tier: null as string | null };
+  const tier = PRIZE_TIERS.find(t => rank >= t.rankMin && rank <= t.rankMax);
+  if (!tier) return { amount: 0, tier: null };
+  const perPerson = total * (tier.sharePct / 100) / (tier.rankMax - tier.rankMin + 1);
+  return { amount: Math.round(perPerson), tier: tier.label };
+}
+
+function buildPrizeBreakdown(total: number) {
+  return PRIZE_TIERS.map(t => {
+    const count = t.rankMax - t.rankMin + 1;
+    const perPerson = Math.round(total * (t.sharePct / 100) / count);
+    const rankLabel = t.rankMin === t.rankMax ? `#${t.rankMin}` : `#${t.rankMin}–${t.rankMax}`;
+    return { rankLabel, label: t.label, perPerson, total: Math.round(total * t.sharePct / 100) };
+  });
+}
+
 function computeBadges(cats: Set<string>, allTimeStats: { rank: number | null }[], seasonsCount: number) {
   const badges: { key: string; label: string; icon: string }[] = [];
   const bestRank = allTimeStats.reduce<number | null>((best, s) => {
@@ -103,6 +134,7 @@ export async function GET(req: NextRequest) {
     });
 
     const now = Date.now();
+    const todayUtcStart = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
 
     // Parallel: current season, wallet, all seasons, all-time stats, event categories
     const [season, wallet, allSeasons, allTimeStatsList, eventCategoryRows] = await Promise.all([
@@ -124,19 +156,26 @@ export async function GET(req: NextRequest) {
     ]);
 
     // Current season data
-    const stats = season
-      ? await prisma.userSeasonStats.findUnique({
-          where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-        })
-      : null;
-
-    const recentPoints = season
-      ? await prisma.seasonPoint.findMany({
-          where: { userId: user.id, seasonId: season.id },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        })
-      : [];
+    const [stats, recentPoints, todayPoints] = await Promise.all([
+      season
+        ? prisma.userSeasonStats.findUnique({
+            where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
+          })
+        : Promise.resolve(null),
+      season
+        ? prisma.seasonPoint.findMany({
+            where: { userId: user.id, seasonId: season.id },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      season
+        ? prisma.seasonPoint.findMany({
+            where: { userId: user.id, seasonId: season.id, createdAt: { gte: todayUtcStart } },
+            select: { category: true, points: true },
+          })
+        : Promise.resolve([]),
+    ]);
 
     // Battle card: who's just above and just below in rankings
     let nearbyRanks: { above: object | null; below: object | null } = { above: null, below: null };
@@ -195,6 +234,47 @@ export async function GET(req: NextRequest) {
     const cats = new Set(eventCategoryRows.map((e) => e.category));
     const badges = computeBadges(cats, allTimeStatsList, seasonsCount);
 
+    // Daily missions
+    const todayCats = new Set(todayPoints.map((p) => p.category));
+    const dailyMissions = [
+      {
+        key: "checkin",
+        label: "Daily Check-in",
+        icon: "📅",
+        pts: 10,
+        done: todayCats.has("daily_checkin"),
+      },
+      {
+        key: "claim",
+        label: "Claim MIND",
+        icon: "💎",
+        pts: 5,
+        done: todayCats.has("claim_mind_daily"),
+      },
+      {
+        key: "active_rig",
+        label: "Active Rig",
+        icon: "⚡",
+        pts: 2,
+        done: ["daily_active_starter", "daily_active_pro", "daily_active_industrial"].some((c) =>
+          todayCats.has(c)
+        ),
+      },
+    ];
+
+    // Prize pool
+    const prizeTotal = getPrizePool();
+    const myPrize = getPrizeForRank(stats?.rank, prizeTotal);
+    const prizePool = prizeTotal > 0
+      ? {
+          total: prizeTotal,
+          currency: "XNT",
+          myEstimated: myPrize.amount,
+          myTier: myPrize.tier,
+          breakdown: buildPrizeBreakdown(prizeTotal),
+        }
+      : null;
+
     // Season days
     const totalDays = season
       ? Math.max(1, Math.ceil((season.endsAt.getTime() - season.startsAt.getTime()) / 86400000))
@@ -242,6 +322,9 @@ export async function GET(req: NextRequest) {
       seasonStamps,
       badges,
       nearbyRanks,
+      dailyMissions,
+      prizePool,
+      syncedAt: new Date().toISOString(),
       recentEvents: recentPoints.map((p) => ({
         points: p.points,
         category: p.category,

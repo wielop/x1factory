@@ -22,8 +22,9 @@ const ICONS = {
 const S = {
   user:null, wallet:null, season:null, stats:null, allTime:null,
   seasonStamps:[], badges:[], nearbyRanks:null,
+  dailyMissions:[], prizePool:null, syncedAt:null,
   recentEvents:[], leaderboard:null, myRank:null,
-  lbLoaded:false, countdownTimer:null
+  lbLoaded:false, countdownTimer:null, prevEventCount:0
 };
 let myTelegramId = null;
 
@@ -42,15 +43,19 @@ async function init() {
     const data = await get('/api/panel/me');
     if (!data.ok) throw new Error(data.error || 'Failed to load.');
 
-    S.user         = data.user;
-    S.wallet       = data.wallet;
-    S.season       = data.season;
-    S.stats        = data.stats;
-    S.allTime      = data.allTime;
-    S.seasonStamps = data.seasonStamps || [];
-    S.badges       = data.badges || [];
-    S.nearbyRanks  = data.nearbyRanks || null;
-    S.recentEvents = data.recentEvents || [];
+    S.user          = data.user;
+    S.wallet        = data.wallet;
+    S.season        = data.season;
+    S.stats         = data.stats;
+    S.allTime       = data.allTime;
+    S.seasonStamps  = data.seasonStamps || [];
+    S.badges        = data.badges || [];
+    S.nearbyRanks   = data.nearbyRanks || null;
+    S.dailyMissions = data.dailyMissions || [];
+    S.prizePool     = data.prizePool || null;
+    S.syncedAt      = data.syncedAt || null;
+    S.prevEventCount = S.recentEvents.length;
+    S.recentEvents  = data.recentEvents || [];
 
     renderHeader();
     renderPassport();
@@ -162,6 +167,15 @@ function renderPassport() {
   // Badges
   renderBadges();
 
+  // Prize pool
+  renderPrizePool();
+
+  // Daily missions
+  renderMissions();
+
+  // Refresh time
+  updateRefreshTime();
+
   // Wallet
   if (S.wallet) {
     q('#wallet-address').textContent = S.wallet.address;
@@ -234,6 +248,80 @@ function renderBadges() {
   ).join('');
 }
 
+/* ── Prize pool ────────────────────────────────────────── */
+function renderPrizePool() {
+  const pp = S.prizePool;
+  if (!pp) { hide('prize-card'); return; }
+  show('prize-card');
+
+  q('#prize-total').textContent = fmtNum(pp.total) + ' XNT prize pool';
+
+  if (pp.myEstimated > 0 && pp.myTier) {
+    q('#prize-my-amount').textContent = fmtNum(pp.myEstimated);
+    q('#prize-my-tier').textContent   = pp.myTier;
+    show('prize-my'); hide('prize-no-rank');
+  } else {
+    hide('prize-my'); show('prize-no-rank');
+  }
+
+  if (pp.breakdown) {
+    q('#prize-breakdown').innerHTML = pp.breakdown.map(tier => {
+      const isMe = pp.myTier === tier.label;
+      return `
+        <div class="prize-tier-row${isMe?' is-mine':''}">
+          <span class="prize-tier-rank">${esc(tier.rankLabel)}</span>
+          <span class="prize-tier-label">${esc(tier.label)}</span>
+          <span class="prize-tier-amount">${fmtNum(tier.perPerson)} XNT</span>
+        </div>`;
+    }).join('');
+  }
+}
+
+/* ── Daily missions ────────────────────────────────────── */
+function renderMissions() {
+  const ms = S.dailyMissions;
+  if (!ms.length || !S.season) { hide('missions-card'); return; }
+  show('missions-card');
+
+  q('#missions-row').innerHTML = ms.map(m => `
+    <div class="mission${m.done?' done':''}">
+      <div class="mission-check">✓</div>
+      <span class="mission-icon">${m.icon}</span>
+      <span class="mission-label">${esc(m.label)}</span>
+      <span class="mission-pts">${m.done ? 'done' : '+'+m.pts+' pts'}</span>
+    </div>`
+  ).join('');
+}
+
+/* ── Refresh ───────────────────────────────────────────── */
+function updateRefreshTime() {
+  if (!S.syncedAt) return;
+  const ago = timeAgo(S.syncedAt);
+  q('#refresh-time').textContent = ago;
+}
+
+async function doRefresh() {
+  const btn = q('#refresh-btn');
+  btn.classList.add('spinning');
+  try {
+    const data = await get('/api/panel/me');
+    if (!data.ok) return;
+    const hadEvents = S.recentEvents.length;
+    S.stats         = data.stats;
+    S.wallet        = data.wallet;
+    S.badges        = data.badges || [];
+    S.nearbyRanks   = data.nearbyRanks || null;
+    S.dailyMissions = data.dailyMissions || [];
+    S.prizePool     = data.prizePool || null;
+    S.syncedAt      = data.syncedAt;
+    S.prevEventCount = hadEvents;
+    S.recentEvents  = data.recentEvents || [];
+    renderPassport();
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
 /* ── Feed ──────────────────────────────────────────────── */
 function renderFeed() {
   const feed = q('#activity-feed');
@@ -243,11 +331,13 @@ function renderFeed() {
     feed.innerHTML = '<div class="empty-state">No activity yet.<br>Earn points on X1Factory.</div>';
     return;
   }
-  feed.innerHTML = evs.map(ev => {
+  const newCount = Math.max(0, evs.length - S.prevEventCount);
+  feed.innerHTML = evs.map((ev, i) => {
     const cat  = catClass(ev.category);
     const icon = ICONS[cat] || ICONS.other;
+    const isNew = i < newCount;
     return `
-      <div class="activity-item">
+      <div class="activity-item${isNew?' new':''}">
         <span class="a-icon">${icon}</span>
         <span class="a-reason">${esc(ev.reason)}</span>
         <span class="a-pts">+${ev.points}</span>

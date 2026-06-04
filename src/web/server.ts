@@ -22,6 +22,10 @@ import {
   mineHashRush
 } from "../services/hashRushService.js";
 import { parseTelegramWebAppAuth } from "./webAppAuth.js";
+import { upsertTelegramUser } from "../db/userRepository.js";
+import { getActiveOrUpcomingSeason } from "../db/seasonRepository.js";
+import { getActiveWalletForUser } from "../db/walletRepository.js";
+import { formatEventCategory } from "../services/eventLabels.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -439,6 +443,132 @@ async function handleApi(req: IncomingMessage, res: ServerResponse): Promise<voi
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/panel/me") {
+      const user = await upsertTelegramUser({
+        telegramId: BigInt(auth.user.id),
+        username: auth.user.username,
+        firstName: auth.user.first_name,
+        lastName: auth.user.last_name,
+        languageCode: auth.user.language_code
+      });
+
+      const now = Date.now();
+      const [season, wallet] = await Promise.all([
+        getActiveOrUpcomingSeason(),
+        getActiveWalletForUser(user.id)
+      ]);
+
+      const stats = season
+        ? await prisma.userSeasonStats.findUnique({
+            where: { userId_seasonId: { userId: user.id, seasonId: season.id } }
+          })
+        : null;
+
+      const recentPoints = season
+        ? await prisma.seasonPoint.findMany({
+            where: { userId: user.id, seasonId: season.id },
+            orderBy: { createdAt: "desc" },
+            take: 10
+          })
+        : [];
+
+      const totalDays = season
+        ? Math.max(1, Math.ceil((season.endsAt.getTime() - season.startsAt.getTime()) / 86400000))
+        : 21;
+
+      const day = season
+        ? Math.max(1, Math.min(totalDays, Math.floor((now - season.startsAt.getTime()) / 86400000) + 1))
+        : 1;
+
+      writeJson(res, 200, {
+        ok: true,
+        user: {
+          telegramId: user.telegramId.toString(),
+          username: user.username,
+          firstName: user.firstName
+        },
+        wallet: wallet
+          ? {
+              address: wallet.address,
+              short: wallet.address.length > 12
+                ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+                : wallet.address
+            }
+          : null,
+        season: season
+          ? {
+              id: season.id,
+              name: season.name,
+              status: season.status,
+              startsAt: season.startsAt.toISOString(),
+              endsAt: season.endsAt.toISOString(),
+              day,
+              totalDays,
+              timeLeftMs: Math.max(0, season.endsAt.getTime() - now)
+            }
+          : null,
+        stats: stats
+          ? {
+              totalPoints: stats.totalPoints,
+              rank: stats.rank,
+              eventsCount: stats.eventsCount,
+              lastEventAt: stats.lastEventAt?.toISOString() ?? null
+            }
+          : null,
+        recentEvents: recentPoints.map(p => ({
+          points: p.points,
+          category: p.category,
+          reason: formatEventCategory(p.category),
+          createdAt: p.createdAt.toISOString()
+        }))
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/panel/leaderboard") {
+      const user = await upsertTelegramUser({
+        telegramId: BigInt(auth.user.id),
+        username: auth.user.username,
+        firstName: auth.user.first_name,
+        lastName: auth.user.last_name,
+        languageCode: auth.user.language_code
+      });
+
+      const season = await getActiveOrUpcomingSeason();
+
+      if (!season) {
+        writeJson(res, 200, { ok: true, season: null, myRank: null, rows: [] });
+        return;
+      }
+
+      const [topStats, myStats] = await Promise.all([
+        prisma.userSeasonStats.findMany({
+          where: { seasonId: season.id },
+          orderBy: [{ rank: "asc" }, { totalPoints: "desc" }],
+          take: 50,
+          include: { user: true }
+        }),
+        prisma.userSeasonStats.findUnique({
+          where: { userId_seasonId: { userId: user.id, seasonId: season.id } }
+        })
+      ]);
+
+      writeJson(res, 200, {
+        ok: true,
+        season: { id: season.id, name: season.name },
+        myRank: myStats?.rank ?? null,
+        rows: topStats.map((s, i) => ({
+          rank: s.rank ?? (i + 1),
+          telegramId: s.user.telegramId.toString(),
+          username: s.user.username,
+          firstName: s.user.firstName,
+          points: s.totalPoints,
+          eventsCount: s.eventsCount
+        }))
+      });
+      return;
+    }
+
     writeJson(res, 404, {
       ok: false,
       error: "Not found"
@@ -460,6 +590,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (url.pathname.startsWith("/api/")) {
     await handleApi(req, res);
+    return;
+  }
+
+  if (url.pathname === "/panel") {
+    const file = await readFile(resolve(WEB_ROOT, "panel.html"));
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(file);
     return;
   }
 

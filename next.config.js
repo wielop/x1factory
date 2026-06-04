@@ -3,12 +3,8 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: "/telegrambot",
-        destination: "/reactor.html"
-      },
-      {
-        source: "/reactor",
-        destination: "/reactor.html"
+        source: "/panel",
+        destination: "/panel.html"
       }
     ];
   }

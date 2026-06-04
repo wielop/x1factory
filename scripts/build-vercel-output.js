@@ -8,11 +8,10 @@ const staticRoot = resolve(outputRoot, "static");
 rmSync(outputRoot, { recursive: true, force: true });
 mkdirSync(staticRoot, { recursive: true });
 cpSync(resolve(root, "web"), staticRoot, { recursive: true });
-mkdirSync(resolve(staticRoot, "telegrambot"), { recursive: true });
-mkdirSync(resolve(staticRoot, "reactor"), { recursive: true });
-cpSync(resolve(root, "web", "reactor.html"), resolve(staticRoot, "index.html"));
-cpSync(resolve(root, "web", "reactor.html"), resolve(staticRoot, "telegrambot", "index.html"));
-cpSync(resolve(root, "web", "reactor.html"), resolve(staticRoot, "reactor", "index.html"));
+
+// /panel → panel/index.html
+mkdirSync(resolve(staticRoot, "panel"), { recursive: true });
+cpSync(resolve(root, "web", "panel.html"), resolve(staticRoot, "panel", "index.html"));
 
 writeFileSync(
   resolve(outputRoot, "config.json"),
@@ -20,10 +19,8 @@ writeFileSync(
     {
       version: 3,
       routes: [
-        { src: "/telegrambot", dest: "/telegrambot/index.html" },
-        { src: "/reactor", dest: "/reactor/index.html" },
-        { handle: "filesystem" },
-        { src: "/", dest: "/index.html" }
+        { src: "/panel", dest: "/panel/index.html" },
+        { handle: "filesystem" }
       ]
     },
     null,
@@ -31,8 +28,8 @@ writeFileSync(
   )
 );
 
-if (!existsSync(resolve(staticRoot, "telegrambot", "index.html"))) {
-  throw new Error("Vercel static build failed to create .vercel/output/static/telegrambot/index.html");
+if (!existsSync(resolve(staticRoot, "panel", "index.html"))) {
+  throw new Error("Vercel static build failed to create .vercel/output/static/panel/index.html");
 }
 
 console.log("Vercel Build Output API ready: .vercel/output/");

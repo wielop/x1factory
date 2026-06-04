@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>X1Factory</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/panel.css" />
+</head>
+<body>
+
+  <!-- Gate: outside Telegram -->
+  <div id="gate-outside" class="gate hidden">
+    <div class="gate-glow"></div>
+    <div class="gate-icon">⚡</div>
+    <h1>X1Factory</h1>
+    <p>Open this app inside Telegram to access your season panel.</p>
+    <a href="https://t.me/x1factory_bot" class="btn btn-primary">Open in Telegram</a>
+  </div>
+
+  <!-- Gate: error -->
+  <div id="gate-error" class="gate hidden">
+    <div class="gate-icon" style="font-size:36px">⚠</div>
+    <h2>Something went wrong</h2>
+    <p id="error-message">Unable to load your profile.</p>
+    <button class="btn btn-primary" onclick="retryInit()">Try again</button>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="loading-overlay">
+    <div class="loader-ring"></div>
+    <span>Loading...</span>
+  </div>
+
+  <!-- Main app -->
+  <div id="app" class="hidden">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="brand-logo">⚡</span>
+        <span class="brand-name">X1FACTORY</span>
+      </div>
+      <span id="season-badge" class="season-badge hidden"></span>
+    </header>
+
+    <!-- Tab bar -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 0 1 .7.3l7 7a1 1 0 0 1-1.4 1.4L16 10.4V17a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3H9v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6.6l-.3.3a1 1 0 1 1-1.4-1.4l7-7A1 1 0 0 1 10 2z"/></svg>
+        <span class="tab-label">Profile</span>
+      </button>
+      <button class="tab-btn" data-tab="season" onclick="switchTab('season')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 0 0-1 1v1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1V3a1 1 0 1 0-2 0v1H7V3a1 1 0 0 0-1-1zm0 5a1 1 0 0 0 0 2h8a1 1 0 1 0 0-2H6z" clip-rule="evenodd"/></svg>
+        <span class="tab-label">Season</span>
+      </button>
+      <button class="tab-btn" data-tab="leaderboard" onclick="switchTab('leaderboard')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z"/></svg>
+        <span class="tab-label">Ranking</span>
+      </button>
+    </nav>
+
+    <!-- Content -->
+    <main class="content">
+
+      <!-- ── Profile tab ── -->
+      <section id="tab-home" class="tab-panel">
+
+        <div class="profile-card card">
+          <div class="profile-avatar" id="profile-avatar">?</div>
+          <div class="profile-info">
+            <div class="profile-name" id="profile-name">—</div>
+            <div class="profile-season" id="profile-season-label">—</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card card">
+            <span class="stat-label">Season Points</span>
+            <strong class="stat-value cyan" id="stat-points">—</strong>
+          </div>
+          <div class="stat-card card">
+            <span class="stat-label">Rank</span>
+            <strong class="stat-value emerald" id="stat-rank">—</strong>
+          </div>
+          <div class="stat-card card">
+            <span class="stat-label">Events</span>
+            <strong class="stat-value" id="stat-events">—</strong>
+          </div>
+          <div class="stat-card card">
+            <span class="stat-label">Last Active</span>
+            <strong class="stat-value sm" id="stat-last">—</strong>
+          </div>
+        </div>
+
+        <div class="wallet-card card" id="wallet-card">
+          <span class="card-label">Season Wallet</span>
+          <span class="wallet-address mono" id="wallet-address">Not registered</span>
+          <span class="wallet-hint" id="wallet-hint">Use /register in the bot to link a wallet</span>
+        </div>
+
+        <div class="section-header">
+          <span>Recent Activity</span>
+          <span class="section-meta" id="events-total"></span>
+        </div>
+        <div id="activity-feed" class="activity-feed">
+          <div class="empty-state">No activity yet.</div>
+        </div>
+
+      </section>
+
+      <!-- ── Season tab ── -->
+      <section id="tab-season" class="tab-panel hidden">
+
+        <div class="season-card card" id="season-card">
+          <div class="season-top-row">
+            <h2 class="season-title" id="season-name-big">—</h2>
+            <span class="status-pill" id="season-status-pill">—</span>
+          </div>
+          <div class="season-meta-row">
+            <span id="season-day-text" class="text-muted">Day — / —</span>
+            <span class="countdown mono" id="season-countdown">—</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="season-progress" style="width:0%"></div>
+          </div>
+          <div class="season-dates" id="season-dates"></div>
+        </div>
+
+        <div class="section-header"><span>How to Earn Points</span></div>
+
+        <div class="earn-list">
+          <div class="earn-group">
+            <div class="earn-group-head">Registration</div>
+            <div class="earn-row"><span>Wallet registration</span><b class="cyan">+50</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">Rig Purchase</div>
+            <div class="earn-row"><span>Starter rig</span><b class="cyan">+20</b></div>
+            <div class="earn-row"><span>Pro rig</span><b class="cyan">+75</b></div>
+            <div class="earn-row"><span>Industrial rig</span><b class="cyan">+150</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">Renewals</div>
+            <div class="earn-row"><span>Starter renewal</span><b class="cyan">+10</b></div>
+            <div class="earn-row"><span>Pro renewal</span><b class="cyan">+40</b></div>
+            <div class="earn-row"><span>Industrial renewal</span><b class="cyan">+80</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">Daily Active Rigs <span class="earn-tag">per day</span></div>
+            <div class="earn-row"><span>Starter rig active</span><b class="emerald">+2</b></div>
+            <div class="earn-row"><span>Pro rig active</span><b class="emerald">+8</b></div>
+            <div class="earn-row"><span>Industrial rig active</span><b class="emerald">+20</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">Daily Check-in <span class="earn-tag">per day</span></div>
+            <div class="earn-row"><span>Daily check-in</span><b class="emerald">+10</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">MIND Claim <span class="earn-tag">daily cap</span></div>
+            <div class="earn-row"><span>Any amount</span><b class="cyan">+5</b></div>
+            <div class="earn-row"><span>≥ 50 MIND</span><b class="cyan">+15</b></div>
+            <div class="earn-row"><span>≥ 100 MIND</span><b class="cyan">+30</b></div>
+            <div class="earn-row"><span>≥ 250 MIND</span><b class="cyan">+80</b></div>
+            <div class="earn-row"><span>≥ 500 MIND</span><b class="cyan">+150</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">Staking (XNT)</div>
+            <div class="earn-row"><span>≥ 100 XNT staked</span><b class="cyan">+25</b></div>
+            <div class="earn-row"><span>≥ 500 XNT staked</span><b class="cyan">+100</b></div>
+            <div class="earn-row"><span>≥ 1,000 XNT staked</span><b class="cyan">+250</b></div>
+            <div class="earn-row"><span>≥ 2,500 XNT staked</span><b class="cyan">+600</b></div>
+            <div class="earn-row"><span>≥ 5,000 XNT staked</span><b class="cyan">+1,200</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">Streaks <span class="earn-tag">bonus</span></div>
+            <div class="earn-row"><span>3-day streak</span><b class="emerald">+50</b></div>
+            <div class="earn-row"><span>7-day streak</span><b class="emerald">+150</b></div>
+            <div class="earn-row"><span>14-day streak</span><b class="emerald">+350</b></div>
+            <div class="earn-row"><span>21-day streak</span><b class="emerald">+700</b></div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── Leaderboard tab ── -->
+      <section id="tab-leaderboard" class="tab-panel hidden">
+
+        <div class="lb-header">
+          <span class="lb-season-name" id="lb-season-name">Rankings</span>
+          <span class="lb-my-pos" id="lb-my-pos"></span>
+        </div>
+        <div id="lb-list" class="lb-list">
+          <div class="empty-state">Loading...</div>
+        </div>
+
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/panel.js"></script>
+</body>
+</html>

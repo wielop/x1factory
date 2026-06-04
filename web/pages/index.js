@@ -5,7 +5,7 @@ export default function Home() {
 export async function getServerSideProps() {
   return {
     redirect: {
-      destination: "/telegrambot",
+      destination: "/panel",
       permanent: false
     }
   };

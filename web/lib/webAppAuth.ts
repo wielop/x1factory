@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 
 export type TelegramWebAppUser = {
   id: number;
@@ -29,7 +29,7 @@ export function parseTelegramWebAppAuth(
   const age = Math.floor(Date.now() / 1000) - authDate;
   if (age < 0 || age > MAX_AGE_SECONDS) return null;
 
-  const secretKey = createHash("sha256").update(botToken).digest();
+  const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
   const dataCheckString = [...params.entries()]
     .filter(([k]) => k !== "hash")
     .sort(([a], [b]) => a.localeCompare(b))

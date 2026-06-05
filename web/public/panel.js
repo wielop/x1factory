@@ -292,7 +292,9 @@ function renderStamps() {
     const cls      = isActive ? 'active' : isDone ? 'done' : 'skip';
     const code     = seasonCode(s.name, i);
     const label    = s.name.replace(/season\s*/i, '').trim() || s.name;
-    const statusTxt = isActive ? 'ACTIVE' : isDone ? 'COMPLETE' : 'UPCOMING';
+    const pts      = s.points || 0;
+    const ptsLabel = pts > 0 ? `${fmtNum(pts)} SP` : (isActive ? 'ACTIVE' : 'UPCOMING');
+    const rankLabel = s.rank ? ` · #${s.rank}` : '';
     return `
       <div class="stamp-item ${cls}">
         <div class="stamp-seal">
@@ -303,7 +305,7 @@ function renderStamps() {
         </div>
         <div class="stamp-foot">
           <span class="stamp-full-name">${esc(s.name)}</span>
-          <span class="stamp-status-tag ${cls}">${statusTxt}</span>
+          <span class="stamp-status-tag ${cls}">${ptsLabel}${rankLabel}</span>
         </div>
       </div>`;
   }).join('');

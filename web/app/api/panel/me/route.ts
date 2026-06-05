@@ -9,7 +9,6 @@ function shortWallet(address: string) {
   return address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
 }
 
-const ENERGY_MAX = 5;
 const WEEKLY_CHECKIN_GOAL = 5;
 
 function weekStartUTC(): Date {
@@ -191,7 +190,7 @@ export async function GET(req: NextRequest) {
     const weekStart = weekStartUTC();
 
     // Current season data
-    const [stats, recentPoints, todayPoints, todayTaps, weeklyCheckins, weeklyMissionAwarded] = await Promise.all([
+    const [stats, recentPoints, todayPoints, weeklyCheckins, weeklyMissionAwarded] = await Promise.all([
       season
         ? prisma.userSeasonStats.findUnique({
             where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
@@ -210,16 +209,6 @@ export async function GET(req: NextRequest) {
             select: { category: true, points: true },
           })
         : Promise.resolve([]),
-      season
-        ? prisma.seasonPoint.count({
-            where: {
-              userId: user.id,
-              seasonId: season.id,
-              category: { in: ["daily_checkin", "energy_tap"] },
-              createdAt: { gte: todayUtcStart, lt: todayUtcEnd },
-            },
-          })
-        : Promise.resolve(0),
       season
         ? prisma.seasonPoint.count({
             where: {
@@ -288,12 +277,17 @@ export async function GET(req: NextRequest) {
     }, null);
 
     // Season stamps
-    const seasonStamps = allSeasons.map((s) => ({
-      id: s.id,
-      name: s.name,
-      status: s.status.toLowerCase(),
-      participated: participatedSeasonIds.has(s.id),
-    }));
+    const seasonStamps = allSeasons.map((s) => {
+      const st = allTimeStatsList.find(r => r.seasonId === s.id);
+      return {
+        id: s.id,
+        name: s.name,
+        status: s.status.toLowerCase(),
+        participated: participatedSeasonIds.has(s.id),
+        points: st?.totalPoints ?? 0,
+        rank: st?.rank ?? null,
+      };
+    });
 
     // Badges
     const cats = new Set(eventCategoryRows.map((e) => e.category));
@@ -326,9 +320,6 @@ export async function GET(req: NextRequest) {
         ),
       },
     ];
-
-    const tomorrowUtcStart = todayUtcEnd;
-    const energyCurrent = Math.max(0, ENERGY_MAX - todayTaps);
 
     const weeklyMission = season
       ? {
@@ -399,13 +390,6 @@ export async function GET(req: NextRequest) {
         count: stats?.streakCount || (todayCats.has("daily_checkin") ? 1 : 0),
         lastAt: stats?.lastCheckinAt?.toISOString() ?? null,
       },
-      energy: season
-        ? {
-            current: energyCurrent,
-            max: ENERGY_MAX,
-            nextRechargeAt: tomorrowUtcStart.toISOString(),
-          }
-        : null,
       weeklyMission,
       allTime: {
         totalPoints: allTimePoints,

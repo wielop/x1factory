@@ -183,9 +183,9 @@ function renderPassport() {
 
   const meta = q('#scn-meta');
   if (S.stats?.rank) {
-    if(meta) meta.innerHTML = `<strong class="cyan">#${S.stats.rank}</strong> Rank · ${S.stats.eventsCount} Verified Events`;
+    if(meta) meta.innerHTML = `<span class="scn-rank-hero">#${S.stats.rank}</span><span class="scn-rank-label">Rank</span>`;
   } else {
-    setText('scn-meta', S.season ? 'Earn points to get ranked' : 'Season not started');
+    if(meta) meta.innerHTML = `<span class="scn-rank-unranked">${S.season ? 'Unranked' : 'Season not started'}</span>`;
   }
 
   // Goal bar

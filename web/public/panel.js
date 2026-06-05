@@ -600,11 +600,14 @@ function renderMissionsTab() {
   const wStatus = q('#ms-weekly-status');
   if (wStatus) {
     if (wm.completed) {
-      wStatus.textContent = `✅ Misja ukończona! +${wm.bonus} pts przyznane.`;
+      const streakTxt = wm.weekStreak > 1 ? ` · seria ${wm.weekStreak} tyg. 🔥` : '';
+      wStatus.textContent = `✅ Ukończono! +${wm.bonus} pts przyznane${streakTxt}`;
       wStatus.className = 'ms-weekly-status done';
     } else {
       const left = goal - prog;
-      wStatus.textContent = `Postęp: ${prog}/${goal}`;
+      const nextBonus = wm.bonus;
+      const streakInfo = wm.weekStreak > 1 ? ` · seria ${wm.weekStreak} tyg. 🔥` : '';
+      wStatus.textContent = `Zostało ${left} ${left === 1 ? 'dzień' : 'dni'} · nagroda +${nextBonus} pts${streakInfo}`;
       wStatus.className = 'ms-weekly-status';
     }
   }

@@ -177,9 +177,20 @@ const WEEKLY_MISSION = {
   icon: '⚡',
   label: '7 Kompletnych Dni',
   description: 'Wykonaj check-in + odbierz MIND każdego dnia tygodnia (pon–niedz)',
-  bonus: 500,
+  baseBonus: 500,
+  bonusPerStreak: 100,
   goal: 7,
 } as const;
+
+function weekBonusForStreak(streak: number): number {
+  return WEEKLY_MISSION.baseBonus + (streak - 1) * WEEKLY_MISSION.bonusPerStreak;
+}
+
+function weekStartForDate(date: Date): Date {
+  const day = date.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - diff));
+}
 
 async function computeWeekMissionProgress(
   userId: number,
@@ -194,6 +205,23 @@ async function computeWeekMissionProgress(
   const checkinDays = new Set(checkins.map(e => e.createdAt.toISOString().slice(0, 10)));
   const claimDays   = new Set(claims.map(e => e.createdAt.toISOString().slice(0, 10)));
   return [...checkinDays].filter(d => claimDays.has(d)).length;
+}
+
+async function computeWeeklyStreak(userId: number, seasonId: number, currentWeekStart: Date): Promise<number> {
+  const past = await prisma.seasonPoint.findMany({
+    where: { userId, seasonId, category: 'weekly_mission' },
+    orderBy: { createdAt: 'desc' },
+    take: 52,
+    select: { createdAt: true },
+  });
+  const awardedWeeks = new Set(past.map(a => weekStartForDate(a.createdAt).getTime()));
+  let streak = 1;
+  let check = currentWeekStart.getTime() - 7 * 86400000;
+  while (awardedWeeks.has(check)) {
+    streak++;
+    check -= 7 * 86400000;
+  }
+  return streak;
 }
 
 export async function GET(req: NextRequest) {
@@ -396,30 +424,28 @@ export async function GET(req: NextRequest) {
     let weeklyMission = null;
     if (season) {
       const mission = WEEKLY_MISSION;
-      const [progress, alreadyAwarded] = await Promise.all([
+      const [progress, alreadyAwarded, weekStreak] = await Promise.all([
         computeWeekMissionProgress(user.id, season.id, weekStart),
         prisma.seasonPoint.findFirst({
-          where: {
-            userId: user.id, seasonId: season.id,
-            category: 'weekly_mission',
-            createdAt: { gte: weekStart },
-          },
+          where: { userId: user.id, seasonId: season.id, category: 'weekly_mission', createdAt: { gte: weekStart } },
         }),
+        computeWeeklyStreak(user.id, season.id, weekStart),
       ]);
       const completed = progress >= mission.goal;
+      const bonus = weekBonusForStreak(weekStreak);
       if (completed && !alreadyAwarded) {
         await prisma.seasonPoint.create({
           data: {
             userId: user.id, seasonId: season.id,
-            points: mission.bonus,
+            points: bonus,
             category: 'weekly_mission',
             source: 'BONUS',
-            reason: `Weekly mission: ${mission.key}`,
+            reason: `Weekly mission: ${mission.key} (streak ${weekStreak})`,
           },
         });
         await prisma.userSeasonStats.update({
           where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-          data: { totalPoints: { increment: mission.bonus }, eventsCount: { increment: 1 }, lastEventAt: new Date() },
+          data: { totalPoints: { increment: bonus }, eventsCount: { increment: 1 }, lastEventAt: new Date() },
         });
       }
       weeklyMission = {
@@ -429,7 +455,8 @@ export async function GET(req: NextRequest) {
         description: mission.description,
         progress,
         goal: mission.goal,
-        bonus: mission.bonus,
+        bonus,
+        weekStreak,
         completed: completed && (!!alreadyAwarded || completed),
         nextResetAt: new Date(weekStart.getTime() + 7 * 86400000).toISOString(),
       };

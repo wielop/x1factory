@@ -1258,3 +1258,34 @@ button{font-family:inherit;}
 .lb-pts{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text-2);flex-shrink:0;}
 .lb-pts.is-me{color:var(--cyan);}
 .lb-sep{height:1px;background:var(--border);margin:4px 0;}
+
+/* ── Swap Tab ─────────────────────────────────────────────────────────────── */
+.swap-card{padding:20px;display:flex;flex-direction:column;gap:14px;}
+.swap-card-header{display:flex;justify-content:space-between;align-items:center;}
+.swap-title{font-size:18px;font-weight:700;color:var(--text-1);}
+.swap-pool-price{font-size:12px;color:var(--text-2);font-family:'JetBrains Mono',monospace;}
+.swap-direction-row{display:flex;gap:8px;}
+.swap-dir-btn{flex:1;padding:8px 0;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+.swap-dir-btn.active{background:var(--cyan);color:#000;border-color:var(--cyan);}
+.swap-input-label,.swap-output-label{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;}
+.swap-input-row,.swap-output-row{display:flex;align-items:center;gap:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-top:4px;}
+.swap-amount-input{flex:1;background:transparent;border:none;outline:none;color:var(--text-1);font-size:20px;font-weight:600;width:0;min-width:0;}
+.swap-token-badge{font-size:12px;font-weight:700;color:var(--cyan);background:rgba(0,255,209,.12);padding:3px 8px;border-radius:6px;white-space:nowrap;}
+.swap-arrow{text-align:center;font-size:20px;color:var(--text-3);margin:-4px 0;}
+.swap-output-amount{flex:1;font-size:20px;font-weight:600;color:var(--text-1);font-family:'JetBrains Mono',monospace;}
+.swap-fee-row{display:flex;justify-content:space-between;font-size:12px;padding:0 2px;}
+.swap-fee-label{color:var(--text-3);}
+.swap-fee-value{color:var(--text-2);font-weight:600;}
+.swap-giga-banner{background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:8px 12px;font-size:13px;color:#ffd600;text-align:center;}
+.swap-btn{width:100%;padding:14px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;background:var(--cyan);color:#000;transition:opacity .15s;}
+.swap-btn:disabled{opacity:.45;cursor:not-allowed;}
+.swap-status{min-height:18px;font-size:13px;text-align:center;color:var(--text-2);}
+.swap-status.error{color:#ff6b6b;}
+.swap-status.success{color:var(--cyan);}
+.swap-wallet-hint{padding:16px;display:flex;align-items:center;gap:12px;}
+.swap-hint-icon{font-size:24px;}
+.swap-hint-text{font-size:13px;color:var(--text-2);line-height:1.5;}
+.swap-stats-card{padding:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.swap-stat{display:flex;flex-direction:column;gap:4px;}
+.swap-stat-label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;}
+.swap-stat-value{font-size:13px;font-weight:600;color:var(--text-1);font-family:'JetBrains Mono',monospace;}

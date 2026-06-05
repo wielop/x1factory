@@ -11,7 +11,8 @@ export type ScannerEventType =
   | "stake_snapshot"
   | "daily_active_starter"
   | "daily_active_pro"
-  | "daily_active_industrial";
+  | "daily_active_industrial"
+  | "swap_mind_xnt";
 
 export type UserFactoryPosition = {
   index: number;

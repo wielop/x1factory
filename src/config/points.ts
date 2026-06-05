@@ -12,6 +12,7 @@ export const POINT_VALUES = {
   daily_checkin: 10,
   energy_tap: 2,
   weekly_checkin_5: 200,
+  swap_mind_xnt: 5,
 } as const;
 
 export const CLAIM_MIND_DAILY_THRESHOLDS = [

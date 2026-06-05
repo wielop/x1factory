@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+
 import type { Wallet } from "@prisma/client";
+import { Connection, PublicKey } from "@solana/web3.js";
 
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
@@ -369,6 +372,115 @@ async function applyWalletEvents(params: {
   };
 }
 
+// ── Swap Router scanner ───────────────────────────────────────────────────────
+
+const SWAP_ROUTER_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
+const SWAP_ROUTER_DISC = createHash("sha256").update("event:SwapRouterEvent").digest().subarray(0, 8).toString("hex");
+const swapConn = new Connection(env.x1RpcUrl ?? "https://rpc.mainnet.x1.xyz", "confirmed");
+
+type SwapRouterEventData = {
+  txHash: string;
+  slot: number;
+  blockTime: Date | null;
+  amountIn: bigint;
+  swapAmount: bigint;
+  feeTotalLamports: bigint;
+  swapCounter: bigint;
+  usdCents: bigint;
+};
+
+function parseSwapRouterEventFromLogs(logs: string[]): Pick<SwapRouterEventData, "amountIn" | "swapAmount" | "feeTotalLamports" | "swapCounter" | "usdCents"> | null {
+  for (const log of logs) {
+    if (!log.startsWith("Program data: ")) continue;
+    const raw = Buffer.from(log.slice("Program data: ".length), "base64");
+    if (raw.length < 8) continue;
+    if (raw.subarray(0, 8).toString("hex") !== SWAP_ROUTER_DISC) continue;
+    // SwapRouterEvent layout after discriminator (8 bytes):
+    // user: Pubkey (32), amount_in: u64 (8), swap_amount: u64 (8),
+    // fee_total: u64 (8), swap_counter: u64 (8), usd_cents: u64 (8)
+    if (raw.length < 8 + 32 + 40) continue;
+    let o = 8 + 32; // skip discriminator + user pubkey
+    return {
+      amountIn: raw.readBigUInt64LE(o),
+      swapAmount: raw.readBigUInt64LE((o += 8)),
+      feeTotalLamports: raw.readBigUInt64LE((o += 8)),
+      swapCounter: raw.readBigUInt64LE((o += 8)),
+      usdCents: raw.readBigUInt64LE((o += 8)),
+    };
+  }
+  return null;
+}
+
+async function scanSwapEventsForWallet(params: {
+  userId: number;
+  seasonId: number;
+  wallet: Wallet;
+  seasonStartsAt: Date;
+  seasonEndsAt: Date;
+  sinceSlot?: number;
+}): Promise<{ pointsAwarded: number; eventsDetected: number }> {
+  let pointsAwarded = 0;
+  let eventsDetected = 0;
+
+  try {
+    const walletPk = new PublicKey(params.wallet.address);
+    const sigs = await swapConn.getSignaturesForAddress(walletPk, {
+      limit: 30,
+      minContextSlot: params.sinceSlot,
+    });
+
+    const filtered = sigs.filter(s => !s.err && (params.sinceSlot == null || s.slot > params.sinceSlot));
+    if (filtered.length === 0) return { pointsAwarded: 0, eventsDetected: 0 };
+
+    const txs = await swapConn.getParsedTransactions(
+      filtered.map(s => s.signature),
+      { maxSupportedTransactionVersion: 0, commitment: "confirmed" }
+    );
+
+    for (let i = 0; i < filtered.length; i++) {
+      const sig = filtered[i];
+      const tx = txs[i];
+      if (!tx?.meta?.logMessages) continue;
+
+      // Only process txs that touched swap_router
+      const involvedPrograms = tx.transaction.message.instructions.map((ix: { programId?: { toBase58?: () => string } }) =>
+        typeof ix.programId?.toBase58 === "function" ? ix.programId.toBase58() : ""
+      );
+      if (!involvedPrograms.includes(SWAP_ROUTER_ID.toBase58()) &&
+          !tx.meta.logMessages.some(l => l.includes(SWAP_ROUTER_ID.toBase58()))) {
+        continue;
+      }
+
+      const parsed = parseSwapRouterEventFromLogs(tx.meta.logMessages);
+      if (!parsed) continue;
+
+      const blockTime = sig.blockTime ? new Date(sig.blockTime * 1000) : null;
+      if (!blockTime || !isWithinSeasonWindow(blockTime, params.seasonStartsAt, params.seasonEndsAt)) continue;
+
+      const txKey = `swap:${sig.signature}`;
+      const result = await processEvent(params.userId, params.seasonId, "swap_mind_xnt", {
+        txHash: txKey,
+        originalTxHash: sig.signature,
+        blockTime: blockTime.toISOString(),
+        slot: sig.slot,
+        amountIn: parsed.amountIn.toString(),
+        swapAmount: parsed.swapAmount.toString(),
+        usdCents: parsed.usdCents.toString(),
+        swapCounter: parsed.swapCounter.toString(),
+      });
+
+      if (result.created) {
+        pointsAwarded += result.points;
+        eventsDetected += 1;
+      }
+    }
+  } catch (err) {
+    logger.warn({ wallet: params.wallet.address, err }, "Swap router scan failed for wallet");
+  }
+
+  return { pointsAwarded, eventsDetected };
+}
+
 async function scanRegisteredWallet(params: {
   seasonId: number;
   seasonStartsAt: Date;
@@ -429,9 +541,18 @@ async function scanRegisteredWallet(params: {
     scannedAt: new Date()
   });
 
+  const swapResult = await scanSwapEventsForWallet({
+    userId: params.userId,
+    seasonId: params.seasonId,
+    wallet: params.wallet,
+    seasonStartsAt: params.seasonStartsAt,
+    seasonEndsAt: params.seasonEndsAt,
+    sinceSlot: sinceSlot,
+  });
+
   return {
-    pointsAwarded: applied.pointsAwarded,
-    eventsDetected: applied.eventsDetected,
+    pointsAwarded: applied.pointsAwarded + swapResult.pointsAwarded,
+    eventsDetected: applied.eventsDetected + swapResult.eventsDetected,
     scan: {
       ...scan,
       diagnostics: [...scan.diagnostics, ...applied.ignoredDiagnostics]

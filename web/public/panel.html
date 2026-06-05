@@ -59,6 +59,10 @@
         <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
         <span class="tab-label">Rankings</span>
       </button>
+      <button class="tab-btn" data-tab="swap" onclick="switchTab('swap')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M3.293 7.293a1 1 0 011.414 0L7 9.586V3a1 1 0 112 0v6.586l2.293-2.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414zM17 10a1 1 0 00-1 1v.586l-2.293-2.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4a1 1 0 00-1.414-1.414L17 11.586V11a1 1 0 00-1-1z"/></svg>
+        <span class="tab-label">Swap</span>
+      </button>
     </nav>
 
     <main class="content">
@@ -450,9 +454,86 @@
         </div>
       </section>
 
+      <!-- ═══ SWAP TAB ═══ -->
+      <section id="tab-swap" class="tab-panel hidden">
+
+        <div class="swap-card card">
+          <div class="swap-card-header">
+            <span class="swap-title">Swap</span>
+            <div class="swap-pool-price" id="swap-pool-price">Loading...</div>
+          </div>
+
+          <!-- Direction toggle -->
+          <div class="swap-direction-row">
+            <button class="swap-dir-btn active" id="swap-dir-mind" onclick="setSwapDirection('mind_to_xnt')">MIND → XNT</button>
+            <button class="swap-dir-btn" id="swap-dir-xnt" onclick="setSwapDirection('xnt_to_mind')">XNT → MIND</button>
+          </div>
+
+          <!-- Input -->
+          <div class="swap-input-wrap">
+            <label class="swap-input-label" id="swap-input-label">You send (MIND)</label>
+            <div class="swap-input-row">
+              <input class="swap-amount-input" id="swap-amount-input" type="number" placeholder="0.00" min="0" oninput="onSwapAmountInput()" />
+              <span class="swap-token-badge" id="swap-token-in">MIND</span>
+            </div>
+          </div>
+
+          <!-- Arrow -->
+          <div class="swap-arrow">↓</div>
+
+          <!-- Output estimate -->
+          <div class="swap-output-wrap">
+            <label class="swap-output-label" id="swap-output-label">You receive (estimated)</label>
+            <div class="swap-output-row">
+              <span class="swap-output-amount" id="swap-output-amount">—</span>
+              <span class="swap-token-badge swap-token-out" id="swap-token-out">XNT</span>
+            </div>
+          </div>
+
+          <!-- Fee info -->
+          <div class="swap-fee-row">
+            <span class="swap-fee-label">Protocol fee</span>
+            <span class="swap-fee-value">0.4%</span>
+          </div>
+
+          <!-- Giga swap indicator -->
+          <div class="swap-giga-banner hidden" id="swap-giga-banner">
+            ⚡ Eligible for <strong>Giga Swap</strong> lottery!
+          </div>
+
+          <!-- Swap button -->
+          <button class="swap-btn" id="swap-btn" onclick="doSwap()">Connect Wallet to Swap</button>
+          <div class="swap-status" id="swap-status"></div>
+        </div>
+
+        <!-- Wallet connect hint -->
+        <div class="swap-wallet-hint card" id="swap-wallet-hint">
+          <div class="swap-hint-icon">🔗</div>
+          <div class="swap-hint-text">Open in <strong>Phantom</strong> or <strong>Backpack</strong> to swap on-chain</div>
+        </div>
+
+        <!-- Stats -->
+        <div class="swap-stats-card card" id="swap-stats-card">
+          <div class="swap-stat">
+            <span class="swap-stat-label">MIND/XNT Pool</span>
+            <span class="swap-stat-value" id="swap-pool-mind">—</span>
+          </div>
+          <div class="swap-stat">
+            <span class="swap-stat-label">XNT in Pool</span>
+            <span class="swap-stat-value" id="swap-pool-xnt">—</span>
+          </div>
+          <div class="swap-stat">
+            <span class="swap-stat-label">Points per swap</span>
+            <span class="swap-stat-value">+5 pts</span>
+          </div>
+        </div>
+
+      </section>
+
     </main>
   </div>
 
+  <script src="https://unpkg.com/@solana/web3.js@1.95.4/lib/index.iife.min.js" async id="web3js-cdn"></script>
   <script src="/panel.js"></script>
 </body>
 </html>

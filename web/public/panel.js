@@ -128,6 +128,7 @@ function switchTab(tab) {
   const panel = q('#tab-'+tab); if (panel) panel.classList.remove('hidden');
   if (tab === 'missions') renderMissionsTab();
   if (tab === 'leaderboard' && !S.lbLoaded) loadLeaderboard();
+  if (tab === 'swap') initSwapTab();
 }
 
 /* ── Header ────────────────────────────────────────────── */
@@ -728,3 +729,213 @@ function catClass(c){
 }
 
 window.addEventListener('DOMContentLoaded',init);
+
+/* ── Swap Tab ────────────────────────────────────────────── */
+const SWAP = {
+  direction: 'mind_to_xnt',
+  quoteTimer: null,
+  initialized: false,
+  DECIMALS: 9, // both MIND and XNT have 9 decimals
+  GIGA_MIN_USD_CENTS: 500, // $5.00
+};
+
+function initSwapTab() {
+  if (!SWAP.initialized) {
+    SWAP.initialized = true;
+    detectWallet();
+  }
+  loadSwapQuote();
+}
+
+function detectWallet() {
+  const hasWallet = !!(window.solana || window.backpack || window.phantom?.solana);
+  const hint = q('#swap-wallet-hint');
+  if (hasWallet) {
+    if (hint) hint.classList.add('hidden');
+    updateSwapBtn(true);
+  } else {
+    if (hint) hint.classList.remove('hidden');
+    updateSwapBtn(false);
+  }
+}
+
+function getWalletProvider() {
+  return window.backpack || window.phantom?.solana || window.solana || null;
+}
+
+function updateSwapBtn(hasWallet) {
+  const btn = q('#swap-btn');
+  if (!btn) return;
+  if (!S.wallet) {
+    btn.textContent = 'Register wallet first';
+    btn.disabled = true;
+  } else if (!hasWallet) {
+    btn.textContent = 'Open in Phantom / Backpack';
+    btn.disabled = false;
+  } else {
+    btn.textContent = 'Swap';
+    btn.disabled = false;
+  }
+}
+
+function setSwapDirection(dir) {
+  SWAP.direction = dir;
+  q('#swap-dir-mind')?.classList.toggle('active', dir === 'mind_to_xnt');
+  q('#swap-dir-xnt')?.classList.toggle('active', dir === 'xnt_to_mind');
+  q('#swap-token-in') && (q('#swap-token-in').textContent = dir === 'mind_to_xnt' ? 'MIND' : 'XNT');
+  q('#swap-token-out') && (q('#swap-token-out').textContent = dir === 'mind_to_xnt' ? 'XNT' : 'MIND');
+  q('#swap-input-label') && (q('#swap-input-label').textContent = `You send (${dir === 'mind_to_xnt' ? 'MIND' : 'XNT'})`);
+  loadSwapQuote();
+}
+
+function onSwapAmountInput() {
+  clearTimeout(SWAP.quoteTimer);
+  SWAP.quoteTimer = setTimeout(loadSwapQuote, 400);
+}
+
+async function loadSwapQuote() {
+  const input = q('#swap-amount-input');
+  const val = parseFloat(input?.value || '0');
+  if (!val || val <= 0) {
+    setText('swap-output-amount', '—');
+    setText('swap-pool-price', '');
+    q('#swap-giga-banner')?.classList.add('hidden');
+    return;
+  }
+
+  const decimals = SWAP.DECIMALS;
+  const amountInRaw = BigInt(Math.floor(val * 10 ** decimals));
+
+  try {
+    const res = await fetch(`/api/panel/swap/quote?amountIn=${amountInRaw}&direction=${SWAP.direction}`);
+    const data = await res.json();
+    if (!data.ok) { setText('swap-output-amount', 'Error'); return; }
+
+    const outRaw = BigInt(data.estimatedOut);
+    const outHuman = Number(outRaw) / 10 ** decimals;
+    setText('swap-output-amount', outHuman.toFixed(4));
+
+    // Pool stats
+    const poolXnt = Number(BigInt(data.poolXnt)) / 10 ** decimals;
+    const poolMind = Number(BigInt(data.poolMind)) / 10 ** decimals;
+    setText('swap-pool-xnt', poolXnt.toFixed(0) + ' XNT');
+    setText('swap-pool-mind', poolMind.toFixed(0) + ' MIND');
+
+    // Price display: X MIND per XNT
+    if (SWAP.direction === 'mind_to_xnt') {
+      const mindPerXnt = poolMind / poolXnt;
+      setText('swap-pool-price', `1 XNT ≈ ${mindPerXnt.toFixed(2)} MIND`);
+    } else {
+      const xntPerMind = poolXnt / poolMind;
+      setText('swap-pool-price', `1 MIND ≈ ${xntPerMind.toFixed(4)} XNT`);
+    }
+
+    // Giga swap: need USD value. approx: XNT amt * XNT price
+    // We don't have USD price directly in quote, estimate from pool ratio
+    // For now show banner if >500 MIND or >100 XNT (rough $5+ equivalent)
+    const gigaEligible = SWAP.direction === 'mind_to_xnt' ? val >= 500 : val >= 20;
+    q('#swap-giga-banner')?.classList.toggle('hidden', !gigaEligible);
+
+  } catch (e) {
+    setText('swap-output-amount', 'Error');
+  }
+}
+
+async function doSwap() {
+  if (!S.wallet) { setSwapStatus('Register your wallet first', 'error'); return; }
+
+  const provider = getWalletProvider();
+  if (!provider) {
+    setSwapStatus('Open in Phantom or Backpack to swap', 'error');
+    return;
+  }
+
+  const input = q('#swap-amount-input');
+  const val = parseFloat(input?.value || '0');
+  if (!val || val <= 0) { setSwapStatus('Enter an amount', 'error'); return; }
+
+  const decimals = SWAP.DECIMALS;
+  const amountIn = BigInt(Math.floor(val * 10 ** decimals)).toString();
+
+  setSwapStatus('Building transaction...', '');
+  q('#swap-btn').disabled = true;
+
+  try {
+    // Connect wallet
+    if (!provider.isConnected) await provider.connect();
+    const walletAddress = provider.publicKey?.toBase58?.() || provider.publicKey?.toString?.();
+    if (!walletAddress || walletAddress !== S.wallet) {
+      setSwapStatus('Wrong wallet. Expected: ' + S.wallet.slice(0,8) + '...', 'error');
+      q('#swap-btn').disabled = false;
+      return;
+    }
+
+    const prepRes = await post('/api/panel/swap/prepare',
+      { walletAddress, amountIn, direction: SWAP.direction, slippageBps: 100 }
+    );
+
+    if (!prepRes.ok) { setSwapStatus(prepRes.error || 'Prepare failed', 'error'); q('#swap-btn').disabled = false; return; }
+
+    setSwapStatus('Waiting for signature...', '');
+
+    // Deserialize using @solana/web3.js (loaded from CDN)
+    const web3 = window.solanaWeb3;
+    if (!web3) { setSwapStatus('Wallet library loading, try again', 'error'); q('#swap-btn').disabled = false; return; }
+
+    const txBytes = Buffer.from(prepRes.transaction, 'base64');
+    const tx = web3.Transaction.from(txBytes);
+    const signed = await provider.signTransaction(tx);
+
+    setSwapStatus('Sending...', '');
+
+    const rpcConn = new X1RpcClient('https://rpc.mainnet.x1.xyz');
+    const sig = await rpcConn.sendRawTransaction(signed.serialize());
+    await rpcConn.confirmTransaction(sig, prepRes.lastValidBlockHeight);
+
+    setSwapStatus('✅ Swap confirmed! +5 pts will be awarded shortly.', 'success');
+    input.value = '';
+    setText('swap-output-amount', '—');
+  } catch (e) {
+    setSwapStatus(e.message || 'Swap failed', 'error');
+  }
+
+  q('#swap-btn').disabled = false;
+}
+
+function setSwapStatus(msg, cls) {
+  const el = q('#swap-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'swap-status' + (cls ? ' ' + cls : '');
+}
+
+// Minimal RPC client for swap (uses fetch to X1 RPC)
+class X1RpcClient {
+  constructor(rpc) { this.rpc = rpc; }
+  async sendRawTransaction(tx) {
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(tx)));
+    const res = await fetch(this.rpc, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sendTransaction',
+        params: [b64, { encoding: 'base64', preflightCommitment: 'confirmed' }] }),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error.message || 'RPC error');
+    return d.result;
+  }
+  async confirmTransaction(signature) {
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const res = await fetch(this.rpc, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getSignatureStatuses',
+          params: [[signature], { searchTransactionHistory: true }] }),
+      });
+      const d = await res.json();
+      const s = d.result?.value?.[0];
+      if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized') return;
+      if (s?.err) throw new Error('Transaction failed: ' + JSON.stringify(s.err));
+    }
+    throw new Error('Confirmation timeout');
+  }
+}

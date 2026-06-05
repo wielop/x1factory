@@ -506,49 +506,31 @@ button{font-family:inherit;}
 .battle-gap.above{background:rgba(251,113,133,.12);color:var(--rose);border:1px solid rgba(251,113,133,.2);}
 .battle-gap.below{background:rgba(16,185,129,.1);color:var(--emerald);border:1px solid var(--border-e);}
 
-/* ── Stats row ───────────────────────────────────────── */
-.stats-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-.stat-card{display:flex;flex-direction:column;gap:3px;padding:11px 12px;}
-.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-2);}
-.stat-value{font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-.02em;}
-.stat-sub{font-size:10px;color:var(--text-3);margin-top:1px;}
-
-/* ── All-time card ───────────────────────────────────── */
-.alltime-card{padding:14px 16px;}
-.alltime-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-bottom:12px;}
-.alltime-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.alltime-item{display:flex;flex-direction:column;gap:2px;}
-.alltime-val{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-.02em;color:var(--text);}
-.alltime-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;}
-
-/* ── Season stamps ───────────────────────────────────── */
-.stamps-card{padding:12px 16px;}
-.stamps-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;}
-.stamps-row{display:flex;flex-wrap:wrap;gap:8px;}
-.stamp{
-  display:flex;flex-direction:column;align-items:center;gap:3px;
-  width:52px;
+/* ── Season history ──────────────────────────────────── */
+.seasons-history{padding:12px 16px;}
+.sh-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sh-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);}
+.sh-meta{font-size:11px;color:var(--text-3);}
+.sh-list{display:flex;flex-direction:column;gap:0;}
+.sh-row{
+  display:flex;align-items:center;gap:12px;
+  padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.04);
 }
-.stamp-circle{
-  width:44px;height:44px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;
-  border:2px solid var(--border);color:var(--text-3);
-  background:rgba(255,255,255,.02);
-  transition:all .2s;
+.sh-row:last-child{border-bottom:none;padding-bottom:0;}
+.sh-row:first-child{padding-top:0;}
+.sh-dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
 }
-.stamp.done .stamp-circle{
-  border-color:var(--border-c);color:var(--cyan);
-  background:var(--cyan-dim);box-shadow:var(--glow-c);
-}
-.stamp.active .stamp-circle{
-  border-color:var(--emerald);color:var(--emerald);
-  background:var(--em-dim);box-shadow:var(--glow-e);
-  animation:pulse 2s infinite;
-}
-.stamp-name{font-size:9px;color:var(--text-3);text-align:center;line-height:1.2;}
-.stamp.done .stamp-name{color:var(--text-2);}
-.stamp.active .stamp-name{color:var(--emerald);}
+.sh-dot.active{background:var(--emerald);box-shadow:0 0 6px var(--emerald);}
+.sh-dot.done{background:var(--cyan);opacity:.7;}
+.sh-dot.skip{background:var(--border);opacity:.5;}
+.sh-info{display:flex;align-items:center;justify-content:space-between;flex:1;gap:8px;}
+.sh-name{font-size:13px;font-weight:600;color:var(--text);}
+.sh-status{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.sh-status.active{color:var(--emerald);}
+.sh-status.done{color:var(--cyan);opacity:.7;}
+.sh-status.skip{color:var(--text-3);}
+.sh-empty{font-size:12px;color:var(--text-3);}
 
 /* ── Badges ──────────────────────────────────────────── */
 .badges-card{padding:12px 16px;}

@@ -211,14 +211,9 @@ function renderPassport() {
   // Battle card
   renderBattleCard();
 
-  // Stats row
-  setText('stat-rank', S.stats?.rank ? '#'+S.stats.rank : '—');
-  setText('stat-events', String(S.stats?.eventsCount ?? 0));
-  setText('stat-best-rank', at?.bestRank ? '#'+at.bestRank : '—');
-
-  // All-time
-  setText('at-pts', fmtNum(at?.totalPoints ?? 0));
-  setText('at-seasons', String(at?.seasonsCount ?? 0));
+  // Season history meta
+  const seasonsCount = at?.seasonsCount ?? 0;
+  setText('sh-meta', seasonsCount ? `${seasonsCount} season${seasonsCount > 1 ? 's' : ''}` : '');
 
   // Stamps
   renderStamps();
@@ -277,21 +272,26 @@ function renderBattleCard() {
   } else { hide('battle-below'); }
 }
 
-/* ── Stamps ────────────────────────────────────────────── */
+/* ── Season History ─────────────────────────────────────── */
 function renderStamps() {
-  const row = q('#stamps-row');
-  if (!row) return;
+  const list = q('#stamps-row');
+  if (!list) return;
   if (!S.seasonStamps.length) {
-    row.innerHTML = '<span class="no-badges muted">No seasons yet.</span>';
+    list.innerHTML = '<span class="sh-empty">No seasons yet.</span>';
     return;
   }
-  row.innerHTML = S.seasonStamps.map(s => {
-    const cls = s.status==='active' ? 'active' : s.participated ? 'done' : '';
-    const short = s.name.replace(/season\s*/i,'S');
+  list.innerHTML = S.seasonStamps.slice().reverse().map(s => {
+    const isActive = s.status === 'active';
+    const isDone   = s.participated && !isActive;
+    const statusLabel = isActive ? 'Active' : isDone ? 'Participated' : 'Not joined';
+    const statusCls   = isActive ? 'active' : isDone ? 'done' : 'skip';
     return `
-      <div class="stamp ${cls}">
-        <div class="stamp-circle">${short}</div>
-        <div class="stamp-name">${esc(s.name)}</div>
+      <div class="sh-row">
+        <div class="sh-dot ${statusCls}"></div>
+        <div class="sh-info">
+          <span class="sh-name">${esc(s.name)}</span>
+          <span class="sh-status ${statusCls}">${statusLabel}</span>
+        </div>
       </div>`;
   }).join('');
 }

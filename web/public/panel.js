@@ -381,7 +381,7 @@ function renderMissionsSnap() {
   show('missions-snap');
   const row = q('#missions-snap-row');
   if (!row) return;
-  const items = ms.map(m => ({ icon: m.icon, label: m.label, done: m.done }));
+  const items = ms.filter(m => m.key !== 'active_rig').map(m => ({ icon: m.icon, label: m.label, done: m.done }));
   row.innerHTML = items.map(it => `
     <div class="snap-item${it.done?' done':''}">
       <span class="snap-icon">${it.icon}</span>
@@ -420,12 +420,21 @@ function renderMissionsTab() {
   const claimBadge = q('#ms-claim-badge');
   if (claimBadge) { claimBadge.textContent = claimDone ? '✓ Done' : '+5–150'; claimBadge.className = 'ms-card-badge' + (claimDone ? ' ms-badge-done' : ''); }
 
-  // ── Active Rig status ──
+  // ── Passive: Active Rig ──
   const rigDone = S.dailyMissions.find(m => m.key === 'active_rig')?.done;
-  const rigCard = q('#ms-rig-card');
-  if (rigCard) rigCard.classList.toggle('ms-card-done', !!rigDone);
-  const rigBadge = q('#ms-rig-badge');
-  if (rigBadge) { rigBadge.textContent = rigDone ? '✓ Done' : '+2–20'; rigBadge.className = 'ms-card-badge' + (rigDone ? ' ms-badge-done' : ''); }
+  const rigStatus = q('#ms-rig-status');
+  if (rigStatus) {
+    rigStatus.textContent = rigDone ? '✓ przyznane' : '—';
+    rigStatus.className = 'ms-passive-status' + (rigDone ? ' done' : '');
+  }
+
+  // ── Passive: Staking ──
+  const stakeStatus = q('#ms-stake-status');
+  if (stakeStatus) {
+    const stakeDone = S.dailyMissions?.find(m => m.key === 'stake')?.done;
+    stakeStatus.textContent = stakeDone ? '✓ przyznane' : '—';
+    stakeStatus.className = 'ms-passive-status' + (stakeDone ? ' done' : '');
+  }
 
   // ── Streak ──
   const streakCount = S.streak?.count || 0;

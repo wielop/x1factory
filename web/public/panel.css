@@ -869,6 +869,21 @@ button{font-family:inherit;}
 .ms-weekly-status{padding:0 14px 12px;font-size:12px;color:var(--text-2);}
 .ms-weekly-status.done{color:var(--emerald);}
 .ms-reset-tag{font-size:10px;color:var(--text-3);}
+.ms-auto-tag{font-size:10px;color:var(--text-3);font-style:italic;}
+
+/* passive rewards card */
+.ms-passive-card{padding:0;overflow:hidden;}
+.ms-passive-row{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 14px;
+}
+.ms-passive-icon{font-size:20px;flex-shrink:0;}
+.ms-passive-body{flex:1;min-width:0;}
+.ms-passive-name{font-size:13px;font-weight:700;color:var(--text-1);}
+.ms-passive-tiers{font-size:11px;color:var(--text-3);margin-top:2px;line-height:1.4;}
+.ms-passive-status{font-size:12px;font-weight:600;color:var(--text-3);white-space:nowrap;flex-shrink:0;}
+.ms-passive-status.done{color:var(--emerald);}
+.ms-passive-divider{height:1px;background:var(--border);margin:0 14px;}
 
 /* ── New event flash ─────────────────────────────────── */
 @keyframes flashIn {

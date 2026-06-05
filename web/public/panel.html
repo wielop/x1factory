@@ -289,23 +289,6 @@
           </div>
         </div>
 
-        <!-- 3. Active Rig -->
-        <div class="ms-card card" id="ms-rig-card">
-          <div class="ms-card-top">
-            <span class="ms-icon">🏭</span>
-            <div class="ms-card-body">
-              <div class="ms-card-name">Active Rig</div>
-              <div class="ms-card-desc">Miej aktywny rig online — punkty przyznawane automatycznie każdego dnia</div>
-            </div>
-            <div class="ms-card-badge" id="ms-rig-badge">+2–20</div>
-          </div>
-          <div class="ms-reward-list">
-            <div class="ms-reward-row"><span>Starter rig online</span><b>+2 pts</b></div>
-            <div class="ms-reward-row"><span>Pro rig online</span><b>+8 pts</b></div>
-            <div class="ms-reward-row"><span>Industrial rig online</span><b class="cyan">+20 pts</b></div>
-          </div>
-        </div>
-
         <!-- ── Streak header ── -->
         <div class="ms-section-head" style="margin-top:4px">
           <span class="ms-section-title">🔥 Seria (Streak)</span>
@@ -371,6 +354,32 @@
           <div class="ms-weekly-status" id="ms-weekly-status"></div>
         </div>
 
+        <!-- ── Passive rewards header ── -->
+        <div class="ms-section-head" style="margin-top:4px">
+          <span class="ms-section-title">🤖 Nagrody automatyczne</span>
+          <span class="ms-auto-tag">co dobę · bez akcji</span>
+        </div>
+
+        <div class="ms-passive-card card">
+          <div class="ms-passive-row" id="ms-passive-rig">
+            <span class="ms-passive-icon">🏭</span>
+            <div class="ms-passive-body">
+              <div class="ms-passive-name">Active Rig</div>
+              <div class="ms-passive-tiers">Starter +2 · Pro +8 · Industrial +20 pts/dzień</div>
+            </div>
+            <div class="ms-passive-status" id="ms-rig-status">—</div>
+          </div>
+          <div class="ms-passive-divider"></div>
+          <div class="ms-passive-row" id="ms-passive-stake">
+            <span class="ms-passive-icon">🔒</span>
+            <div class="ms-passive-body">
+              <div class="ms-passive-name">Staking MIND</div>
+              <div class="ms-passive-tiers">≥ 100 → +25 · ≥ 500 → +100 · ≥ 5 000 → +1 200 pts</div>
+            </div>
+            <div class="ms-passive-status" id="ms-stake-status">—</div>
+          </div>
+        </div>
+
       </section>
 
       <!-- ═══ SEASON TAB ═══ -->
@@ -395,11 +404,9 @@
         <div class="earn-list">
 
           <div class="earn-group">
-            <div class="earn-group-head">⚡ Daily Energy <span class="earn-tag">do 5×/dzień</span></div>
-            <div class="earn-note">Kliknij "Check In" w zakładce Missions każdego dnia</div>
-            <div class="earn-row"><span>Pierwsze tapnięcie dnia</span><b class="emerald">+10</b></div>
-            <div class="earn-row"><span>Każde kolejne tapnięcie (×4)</span><b class="emerald">+2</b></div>
-            <div class="earn-row earn-row-total"><span>Maksimum dziennie</span><b class="cyan">+18</b></div>
+            <div class="earn-group-head">⚡ Daily Check-in <span class="earn-tag">raz/dzień</span></div>
+            <div class="earn-note">Kliknij "Check In" w zakładce Missions każdego dnia — reset o północy UTC</div>
+            <div class="earn-row"><span>Check-in dziennie</span><b class="emerald">+10</b></div>
           </div>
 
           <div class="earn-group">

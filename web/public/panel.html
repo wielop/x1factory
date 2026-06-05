@@ -256,26 +256,17 @@
           <span class="ms-section-date" id="ms-today"></span>
         </div>
 
-        <!-- 1. Daily Energy / Check-in -->
-        <div class="ms-card card">
+        <!-- 1. Daily Check-in -->
+        <div class="ms-card card" id="ms-checkin-card">
           <div class="ms-card-top">
             <span class="ms-icon ms-icon-energy">⚡</span>
             <div class="ms-card-body">
-              <div class="ms-card-name">Daily Energy</div>
-              <div class="ms-card-desc">5 tapnięć dziennie — energia ładuje się o północy UTC</div>
+              <div class="ms-card-name">Daily Check-in</div>
+              <div class="ms-card-desc">Raz dziennie — resetuje się o północy UTC</div>
             </div>
-            <div class="ms-card-badge cyan" id="ms-energy-badge">+10</div>
+            <div class="ms-card-badge cyan" id="ms-checkin-badge">+10</div>
           </div>
-          <div class="ms-reward-list">
-            <div class="ms-reward-row"><span>Pierwsze tapnięcie (check-in)</span><b class="cyan">+10 pts</b></div>
-            <div class="ms-reward-row"><span>Każde kolejne tapnięcie (×4)</span><b>+2 pts</b></div>
-            <div class="ms-reward-row ms-reward-total"><span>Łącznie maksimum dziennie</span><b class="cyan">+18 pts</b></div>
-          </div>
-          <div class="ms-energy-bar-row">
-            <div class="ms-energy-dots" id="ms-energy-dots"></div>
-            <span class="ms-energy-label-cnt"><span id="ms-energy-cur">5</span>/<span id="ms-energy-max">5</span></span>
-          </div>
-          <button class="ms-btn" id="ms-checkin-btn" onclick="doCheckin()">⚡ Check In +10 pts</button>
+          <button class="ms-btn ms-checkin-main" id="ms-checkin-btn" onclick="doCheckin()">⚡ Check In  +10 pts</button>
           <div class="ms-btn-msg hidden" id="ms-checkin-msg"></div>
         </div>
 
@@ -290,7 +281,7 @@
             <div class="ms-card-badge" id="ms-claim-badge">+5–150</div>
           </div>
           <div class="ms-reward-list">
-            <div class="ms-reward-row"><span>Dowolna kwota</span><b>+5 pts</b></div>
+            <div class="ms-reward-row"><span>≥ 1 MIND</span><b>+5 pts</b></div>
             <div class="ms-reward-row"><span>≥ 50 MIND</span><b>+15 pts</b></div>
             <div class="ms-reward-row"><span>≥ 100 MIND</span><b>+30 pts</b></div>
             <div class="ms-reward-row"><span>≥ 250 MIND</span><b>+80 pts</b></div>
@@ -429,7 +420,7 @@
           <div class="earn-group">
             <div class="earn-group-head">💎 Claim MIND <span class="earn-tag">dziennie</span></div>
             <div class="earn-note">Odbieraj tokeny MIND na X1Factory — wykrywane automatycznie</div>
-            <div class="earn-row"><span>Dowolna kwota</span><b class="cyan">+5</b></div>
+            <div class="earn-row"><span>≥ 1 MIND</span><b class="cyan">+5</b></div>
             <div class="earn-row"><span>≥ 50 MIND</span><b class="cyan">+15</b></div>
             <div class="earn-row"><span>≥ 100 MIND</span><b class="cyan">+30</b></div>
             <div class="earn-row"><span>≥ 250 MIND</span><b class="cyan">+80</b></div>

@@ -19,7 +19,7 @@ export const CLAIM_MIND_DAILY_THRESHOLDS = [
   { minAmount: 250, points: 80 },
   { minAmount: 100, points: 30 },
   { minAmount: 50, points: 15 },
-  { minAmount: 0.000000001, points: 5 }
+  { minAmount: 1, points: 5 }
 ] as const;
 
 export const CLAIM_MIND_DAILY_CAP = 150;

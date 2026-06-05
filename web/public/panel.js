@@ -149,9 +149,13 @@ function renderPassport() {
   const av = q('#passport-avatar');
   if (av) {
     if (S.photoUrl) {
-      av.innerHTML = `<img src="${S.photoUrl}" class="avatar-photo" alt="avatar" onerror="this.parentElement.textContent='${(u?.firstName?.[0]||u?.username?.[0]||'?').toUpperCase()}'">`;
+      av.className = 'passport-avatar';
+      const initial = (u?.firstName?.[0]||u?.username?.[0]||'?').toUpperCase();
+      av.innerHTML = `<img src="${S.photoUrl}" class="avatar-photo" alt="avatar" onerror="this.className='passport-avatar avatar-emblem';this.outerHTML='<span class=\\'avatar-glyph\\'>${initial}</span>'">`;
     } else {
-      av.textContent = (u?.firstName?.[0] || u?.username?.[0] || '?').toUpperCase();
+      av.className = 'passport-avatar avatar-emblem';
+      const initial = (u?.firstName?.[0] || u?.username?.[0] || '?').toUpperCase();
+      av.innerHTML = `<span class="avatar-glyph">${initial}</span>`;
     }
   }
   const opId = u?.operatorId || 'OP-0000';
@@ -160,8 +164,10 @@ function renderPassport() {
   setText('passport-rank', `${rank.icon} ${rank.label}`);
   setText('passport-id', opId);
   setText('passport-since', u?.createdAt ? fmtDate(u.createdAt) : '—');
-  const seasonName = S.season?.name || 'X1FACTORY NETWORK';
-  setText('passport-validity-text', `VALID FOR ${seasonName.toUpperCase()} · X1FACTORY NETWORK · OPERATOR ACCESS`);
+  const genesisTag = isGenesis(opId) ? '/GENESIS' : '';
+  const seasonTag  = S.season ? '/' + S.season.name.toUpperCase().replace(/\s+/g, '-') : '';
+  setText('passport-validity-text', `X1F/${opId}${genesisTag}${seasonTag}/X1-NETWORK`);
+  setText('passport-status', 'SYNCHRONIZED');
 
   // Current season card
   const pill = q('#scn-status-pill');

@@ -750,13 +750,28 @@ function initSwapTab() {
 function detectWallet() {
   const hasWallet = !!(window.solana || window.backpack || window.phantom?.solana);
   const hint = q('#swap-wallet-hint');
+  const openSection = q('#swap-open-in-wallet');
   if (hasWallet) {
     if (hint) hint.classList.add('hidden');
+    if (openSection) openSection.classList.add('hidden');
     updateSwapBtn(true);
   } else {
-    if (hint) hint.classList.remove('hidden');
+    if (hint) hint.classList.add('hidden'); // hide generic hint
+    if (openSection) openSection.classList.remove('hidden');
     updateSwapBtn(false);
   }
+}
+
+function openInPhantom() {
+  const url = encodeURIComponent(window.location.href);
+  const deeplink = `https://phantom.app/ul/browse/${url}?ref=${url}`;
+  window.open(deeplink, '_blank');
+}
+
+function openInBackpack() {
+  const url = encodeURIComponent(window.location.href);
+  const deeplink = `https://backpack.exchange/apps/browser?url=${url}`;
+  window.open(deeplink, '_blank');
 }
 
 function getWalletProvider() {
@@ -770,8 +785,8 @@ function updateSwapBtn(hasWallet) {
     btn.textContent = 'Register wallet first';
     btn.disabled = true;
   } else if (!hasWallet) {
-    btn.textContent = 'Open in Phantom / Backpack';
-    btn.disabled = false;
+    btn.textContent = 'Swap';
+    btn.disabled = true; // hidden by open-in-wallet section
   } else {
     btn.textContent = 'Swap';
     btn.disabled = false;

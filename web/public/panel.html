@@ -506,10 +506,24 @@
           <div class="swap-status" id="swap-status"></div>
         </div>
 
-        <!-- Wallet connect hint -->
-        <div class="swap-wallet-hint card" id="swap-wallet-hint">
+        <!-- Wallet connect hint (fallback if no injected wallet) -->
+        <div class="swap-wallet-hint card hidden" id="swap-wallet-hint">
           <div class="swap-hint-icon">🔗</div>
           <div class="swap-hint-text">Open in <strong>Phantom</strong> or <strong>Backpack</strong> to swap on-chain</div>
+        </div>
+
+        <!-- Open in wallet (shown when no window.solana detected) -->
+        <div class="swap-open-wallet card hidden" id="swap-open-in-wallet">
+          <div class="swap-open-header">Swap requires a wallet browser</div>
+          <div class="swap-open-sub">Otwórz panel w swojej aplikacji portfela — przeglądarka portfela injectuje window.solana i swap zadziała.</div>
+          <div class="swap-open-btns">
+            <button class="swap-open-btn phantom-btn" onclick="openInPhantom()">
+              <span>👻</span> Otwórz w Phantom
+            </button>
+            <button class="swap-open-btn backpack-btn" onclick="openInBackpack()">
+              <span>🎒</span> Otwórz w Backpack
+            </button>
+          </div>
         </div>
 
         <!-- Stats -->

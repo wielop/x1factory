@@ -4,6 +4,7 @@ import { registerAdminBroadcastCommand } from "./adminBroadcast.js";
 import { registerAdminSeasonCommands } from "./adminSeason.js";
 import { registerAdminSetWalletCommand } from "./adminSetWallet.js";
 import { registerAllTimeCommand } from "./alltime.js";
+import { registerCheckinCommand } from "./checkin.js";
 import { registerHelpCommand } from "./help.js";
 import { registerLeaderboardCommand } from "./leaderboard.js";
 import { registerMenuActions } from "./menu.js";
@@ -16,6 +17,7 @@ import { registerStartCommand } from "./start.js";
 export function registerCommands(bot: BotInstance): void {
   registerStartCommand(bot);
   registerHelpCommand(bot);
+  registerCheckinCommand(bot);
   registerRegisterCommand(bot);
   registerProfileCommand(bot);
   registerSeasonCommand(bot);

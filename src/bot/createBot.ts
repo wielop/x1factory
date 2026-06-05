@@ -25,12 +25,13 @@ export function createBot(): Telegraf {
 
   void bot.telegram.setMyCommands([
     { command: "start", description: "Open MIND FACTORY" },
-    { command: "help", description: "How It Works" },
+    { command: "checkin", description: "Daily check-in (+10 pts)" },
     { command: "register", description: "Connect wallet" },
     { command: "profile", description: "My profile" },
     { command: "season", description: "Current season" },
     { command: "leaderboard", description: "Season leaderboard" },
-    { command: "alltime", description: "All-time rankings" }
+    { command: "alltime", description: "All-time rankings" },
+    { command: "help", description: "How It Works" }
   ]);
 
   return bot;

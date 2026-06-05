@@ -6,7 +6,6 @@ import { createDetectedEvent, findDetectedEvent } from "../db/eventRepository.js
 import { getWalletScannerCursor, upsertWalletScannerCursor } from "../db/scannerRepository.js";
 import { getActiveSeason, getActiveSeasonRegistrationsWithWallets } from "../db/seasonRepository.js";
 import { checkSeasonEndNotifications, processDailyClaim, processEvent, processStakeSnapshot } from "../services/pointsService.js";
-import { scanAndSettlePendingClickerClaims } from "../services/clickerSettlementService.js";
 
 import { RealX1FactoryAdapter } from "./realAdapter.js";
 import type {
@@ -488,18 +487,6 @@ async function runSeasonScan(): Promise<ScannerRunSummary> {
     }
   }
 
-  const clickerSettlement = await scanAndSettlePendingClickerClaims().catch((error) => {
-    errors += 1;
-    logger.error({ error, seasonId: season.id }, "Clicker settlement scan failed");
-    return {
-      walletsScanned: 0,
-      topUpsDetected: 0,
-      claimsSettled: 0,
-      errors: 1,
-      message: error instanceof Error ? error.message : "Clicker settlement scan failed"
-    };
-  });
-
   return {
     startedAt,
     finishedAt: new Date(),
@@ -507,12 +494,10 @@ async function runSeasonScan(): Promise<ScannerRunSummary> {
     walletsScanned,
     eventsDetected,
     pointsAwarded,
-    clickerTopUpsDetected: clickerSettlement.topUpsDetected,
-    clickerClaimsSettled: clickerSettlement.claimsSettled,
+    clickerTopUpsDetected: 0,
+    clickerClaimsSettled: 0,
     errors,
-    message: clickerSettlement.claimsSettled > 0
-      ? `Scanner run completed; clicker claims settled: ${clickerSettlement.claimsSettled}`
-      : "Scanner run completed"
+    message: "Scanner run completed"
   };
 }
 

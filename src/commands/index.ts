@@ -1,10 +1,8 @@
 import type { BotInstance } from "../bot/types.js";
 
 import { registerAdminBroadcastCommand } from "./adminBroadcast.js";
-import { registerAdminClickerCommands } from "./adminClicker.js";
 import { registerAdminSeasonCommands } from "./adminSeason.js";
 import { registerAdminSetWalletCommand } from "./adminSetWallet.js";
-import { registerClickerCommand } from "./clicker.js";
 import { registerAllTimeCommand } from "./alltime.js";
 import { registerHelpCommand } from "./help.js";
 import { registerLeaderboardCommand } from "./leaderboard.js";
@@ -23,11 +21,9 @@ export function registerCommands(bot: BotInstance): void {
   registerSeasonCommand(bot);
   registerLeaderboardCommand(bot);
   registerAllTimeCommand(bot);
-  registerClickerCommand(bot);
   registerMenuActions(bot);
   registerAdminSeasonCommands(bot);
   registerAdminBroadcastCommand(bot);
-  registerAdminClickerCommands(bot);
   registerAdminSetWalletCommand(bot);
   registerWalletTextHandler(bot);
 }

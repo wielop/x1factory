@@ -25,14 +25,12 @@ export function createBot(): Telegraf {
 
   void bot.telegram.setMyCommands([
     { command: "start", description: "Open MIND FACTORY" },
-    { command: "help", description: "How the factory works" },
+    { command: "help", description: "How It Works" },
     { command: "register", description: "Connect wallet" },
-    { command: "play", description: "Play Reactor Rush" },
-    { command: "clicker", description: "Factory Clicker legacy" },
-    { command: "profile", description: "My Factory" },
-    { command: "season", description: "Season line" },
-    { command: "leaderboard", description: "Operator leaderboard" },
-    { command: "alltime", description: "All-time operators" }
+    { command: "profile", description: "My profile" },
+    { command: "season", description: "Current season" },
+    { command: "leaderboard", description: "Season leaderboard" },
+    { command: "alltime", description: "All-time rankings" }
   ]);
 
   return bot;

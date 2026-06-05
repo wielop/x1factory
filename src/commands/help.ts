@@ -7,22 +7,17 @@ export async function showHowItWorks(ctx: BotContext): Promise<void> {
     factoryHeader("HOW IT WORKS"),
     "",
     "1. Connect your wallet.",
-    "2. Open the Mini App or use the buttons in chat.",
-    "3. Daily activity turns into Factory XP and claimable MIND.",
+    "2. Open the Season Panel to see your Miner's Passport.",
+    "3. Earn Season Points from real X1Factory on-chain activity.",
     "",
-    "Factory Clicker:",
-    "- tap the reactor core to build claimable MIND",
-    "- top up the clicker wallet with XNT",
-    "- claim MIND to your season wallet",
-    "",
-    "You earn Factory XP for:",
+    "You earn Season Points for:",
     "- buying rigs",
     "- renewing rigs",
     "- keeping rigs active",
     "- claiming MIND",
     "- growing your MIND stake",
     "",
-    "Use the buttons below. No commands needed."
+    "Use the Season Panel to track your rank, badges and missions."
   ];
 
   const adminLines = [
@@ -39,8 +34,7 @@ export async function showHowItWorks(ctx: BotContext): Promise<void> {
     "/admin_scanner_once - run scanner now",
     "/admin_scan_wallet - scan one wallet",
     "/admin_set_wallet - update a user's wallet",
-    "/admin_broadcast - broadcast a message",
-    "/admin_clicker_settle - settle a pending clicker claim"
+    "/admin_broadcast - broadcast a message"
   ];
 
   await ctx.reply(
@@ -48,7 +42,7 @@ export async function showHowItWorks(ctx: BotContext): Promise<void> {
       ...publicLines,
       ...(ctx.from && isAdminTelegramUser(ctx.from.id) ? adminLines : []),
       "",
-      `${FACTORY_XP} is game score, not a token balance.`
+      `${FACTORY_XP} tracks your on-chain activity score.`
     ].join("\n"),
     mainMenuKeyboard()
   );

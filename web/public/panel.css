@@ -32,19 +32,23 @@
 }
 
 /* ── Rank palette ────────────────────────────────────── */
-.rank-offline   { --rc: var(--text-3);  --rg: none; }
-.rank-apprentice{ --rc: #64748b;        --rg: none; }
-.rank-miner     { --rc: var(--cyan);    --rg: var(--glow-c); }
-.rank-operator  { --rc: var(--emerald); --rg: var(--glow-e); }
-.rank-engineer  { --rc: var(--purple);  --rg: var(--glow-p); }
-.rank-director  { --rc: var(--amber);   --rg: var(--glow-a); }
+.rank-offline   { --rc: var(--text-3);  --rg: none;          --rc-bg: rgba(100,116,139,0.1);  --rc-bd: rgba(100,116,139,0.22); }
+.rank-apprentice{ --rc: #64748b;        --rg: none;          --rc-bg: rgba(100,116,139,0.1);  --rc-bd: rgba(100,116,139,0.22); }
+.rank-miner     { --rc: var(--cyan);    --rg: var(--glow-c); --rc-bg: rgba(34,211,238,0.12);  --rc-bd: rgba(34,211,238,0.3);   }
+.rank-operator  { --rc: var(--emerald); --rg: var(--glow-e); --rc-bg: rgba(16,185,129,0.12);  --rc-bd: rgba(16,185,129,0.3);   }
+.rank-engineer  { --rc: var(--purple);  --rg: var(--glow-p); --rc-bg: rgba(167,139,250,0.12); --rc-bd: rgba(167,139,250,0.3);  }
+.rank-director  { --rc: var(--amber);   --rg: var(--glow-a); --rc-bg: rgba(252,211,77,0.12);  --rc-bd: rgba(252,211,77,0.3);   }
 
 /* ── Reset ───────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{height:100%;}
 body{
   height:100%;overflow:hidden;
-  background:var(--bg);color:var(--text);
+  background:var(--bg);
+  background-image:
+    radial-gradient(ellipse 100% 55% at 50% -5%, rgba(34,211,238,0.09) 0%, transparent 58%),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(16,185,129,0.05) 0%, transparent 50%);
+  color:var(--text);
   font-family:'Space Grotesk',system-ui,sans-serif;
   font-size:14px;line-height:1.4;
   -webkit-font-smoothing:antialiased;
@@ -108,15 +112,17 @@ button{font-family:inherit;}
 .header{
   position:fixed;top:0;left:0;right:0;z-index:60;height:var(--hh);
   display:flex;align-items:center;justify-content:space-between;padding:0 16px;
-  background:rgba(3,13,18,.96);backdrop-filter:blur(14px);
-  border-bottom:1px solid var(--border);
+  background:rgba(3,10,16,.97);backdrop-filter:blur(18px);
+  border-bottom:1px solid rgba(34,211,238,0.1);
+  box-shadow:0 1px 30px rgba(0,0,0,0.5);
 }
 .header-brand{display:flex;align-items:center;gap:8px;}
-.brand-logo{font-size:20px;}
+.brand-logo{font-size:20px;filter:drop-shadow(0 0 8px rgba(34,211,238,0.5));}
 .brand-name{
-  font-size:15px;font-weight:700;letter-spacing:.08em;
-  background:linear-gradient(135deg,var(--cyan),var(--emerald));
+  font-size:15px;font-weight:800;letter-spacing:.1em;
+  background:linear-gradient(135deg,var(--cyan) 0%,var(--emerald) 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(0 0 12px rgba(34,211,238,0.35));
 }
 .season-badge{
   font-size:11px;font-weight:600;letter-spacing:.04em;
@@ -137,11 +143,14 @@ button{font-family:inherit;}
 }
 .tab-btn::after{
   content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);
-  width:0;height:2px;background:var(--cyan);border-radius:2px 2px 0 0;
-  transition:width .2s ease;
+  width:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  border-radius:2px 2px 0 0;
+  transition:width .25s ease;
+  box-shadow:0 0 10px rgba(34,211,238,0.6),0 0 20px rgba(34,211,238,0.25);
 }
-.tab-btn.active{color:var(--cyan);}
-.tab-btn.active::after{width:28px;}
+.tab-btn.active{color:var(--cyan);text-shadow:0 0 14px rgba(34,211,238,0.5);}
+.tab-btn.active::after{width:36px;}
 .tab-icon{width:18px;height:18px;}
 .tab-label{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
 
@@ -153,33 +162,67 @@ button{font-family:inherit;}
 .tab-panel{display:flex;flex-direction:column;gap:10px;padding:12px 12px 32px;min-height:100%;}
 
 /* ── Card base ───────────────────────────────────────── */
-.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;}
+.card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:var(--r);padding:14px 16px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.04);
+}
 
 /* ═══════════════════════════════════════════════════════
    PASSPORT CARD
 ═══════════════════════════════════════════════════════ */
 .passport-card{
   position:relative;overflow:hidden;
-  background:linear-gradient(145deg,#071e28 0%,#041520 50%,#071e28 100%);
+  background:linear-gradient(150deg,#0c2234 0%,#041018 48%,#091c2e 100%);
   border:1px solid var(--rc,var(--border-c));
-  box-shadow:var(--rg,var(--glow-c));
+  box-shadow:
+    var(--rg, 0 0 32px rgba(34,211,238,0.12)),
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 24px 64px rgba(0,0,0,0.55);
   border-radius:var(--r);padding:0;
 }
 
-/* Subtle grid texture */
+/* Grid texture */
 .passport-card::before{
-  content:'';position:absolute;inset:0;
+  content:'';position:absolute;inset:0;z-index:0;
   background-image:
-    linear-gradient(rgba(34,211,238,.03) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(34,211,238,.03) 1px,transparent 1px);
-  background-size:24px 24px;
+    linear-gradient(rgba(34,211,238,.07) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(34,211,238,.07) 1px,transparent 1px);
+  background-size:28px 28px;
   pointer-events:none;
+}
+
+/* Holographic shimmer sweep */
+.passport-card::after{
+  content:'';position:absolute;inset:0;z-index:0;
+  background:linear-gradient(
+    112deg,
+    transparent 0%,
+    transparent 33%,
+    rgba(255,255,255,0.02) 43%,
+    rgba(34,211,238,0.08) 49%,
+    rgba(255,255,255,0.03) 51%,
+    rgba(34,211,238,0.05) 55%,
+    transparent 63%,
+    transparent 100%
+  );
+  background-size:280% 100%;
+  animation:passport-shimmer 7s ease-in-out infinite;
+  pointer-events:none;
+}
+
+@keyframes passport-shimmer{
+  0%{background-position:200% 0;}
+  65%,100%{background-position:-80% 0;}
 }
 
 .passport-header{
   display:flex;align-items:center;justify-content:space-between;
   padding:10px 16px 8px;
-  border-bottom:1px solid rgba(255,255,255,.05);
+  border-bottom:1px solid rgba(255,255,255,.07);
+  background:linear-gradient(90deg,rgba(34,211,238,0.06) 0%,transparent 70%);
+  position:relative;z-index:1;
 }
 .passport-brand{
   font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
@@ -193,26 +236,38 @@ button{font-family:inherit;}
 .passport-body{display:flex;align-items:center;gap:14px;padding:14px 16px;}
 
 .passport-avatar{
-  width:56px;height:56px;border-radius:50%;flex-shrink:0;
+  width:68px;height:68px;border-radius:50%;flex-shrink:0;
   background:linear-gradient(135deg,var(--cyan-mid),var(--em-dim));
   border:2px solid var(--rc,var(--border-c));
-  box-shadow:var(--rg,none);
+  box-shadow:
+    0 0 0 4px var(--rc-bg, rgba(34,211,238,0.1)),
+    0 0 24px var(--rc-bg, rgba(34,211,238,0.2));
   display:flex;align-items:center;justify-content:center;
-  font-size:24px;font-weight:700;
+  font-size:28px;font-weight:700;
   color:var(--rc,var(--cyan));
   position:relative;z-index:1;
   overflow:hidden;
+  animation:avatar-breathe 3.5s ease-in-out infinite;
+}
+
+@keyframes avatar-breathe{
+  0%,100%{box-shadow:0 0 0 4px var(--rc-bg,rgba(34,211,238,0.1)), 0 0 20px var(--rc-bg,rgba(34,211,238,0.18));}
+  50%{box-shadow:0 0 0 6px var(--rc-bg,rgba(34,211,238,0.06)), 0 0 34px var(--rc-bg,rgba(34,211,238,0.32));}
 }
 .avatar-photo{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;}
 
 .passport-info{flex:1;overflow:hidden;position:relative;z-index:1;}
 .passport-name{
-  font-size:18px;font-weight:700;
+  font-size:19px;font-weight:700;letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .passport-rank{
-  font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--rc,var(--cyan));margin-top:2px;
+  display:inline-flex;align-items:center;
+  font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--rc,var(--cyan));
+  background:var(--rc-bg,rgba(34,211,238,0.1));
+  border:1px solid var(--rc-bd,rgba(34,211,238,0.28));
+  border-radius:5px;padding:3px 8px;margin-top:5px;
 }
 .passport-status{display:flex;align-items:center;gap:6px;margin-top:4px;}
 .status-dot{
@@ -226,26 +281,31 @@ button{font-family:inherit;}
 .passport-id-row{
   display:flex;align-items:center;justify-content:space-between;
   padding:8px 16px 12px;position:relative;z-index:1;
+  border-top:1px solid rgba(255,255,255,0.04);
+  background:linear-gradient(90deg,rgba(34,211,238,0.03) 0%,transparent 60%);
 }
 .passport-id{
   font-family:'JetBrains Mono',monospace;
-  font-size:11px;font-weight:600;letter-spacing:.1em;
-  color:var(--rc,var(--cyan));opacity:.8;
+  font-size:11px;font-weight:700;letter-spacing:.14em;
+  color:var(--rc,var(--cyan));
+  text-shadow:0 0 12px var(--rc-bg,rgba(34,211,238,0.4));
 }
-.passport-since{font-size:11px;color:var(--text-3);}
+.passport-since{font-size:11px;color:var(--text-3);letter-spacing:.04em;}
 
 /* ── Season card (current) ───────────────────────────── */
 .season-current-card{
-  background:linear-gradient(135deg,var(--bg-card) 0%,#051e26 100%);
+  background:linear-gradient(150deg,#081d27 0%,#04141e 55%,#081d27 100%);
   border-color:var(--border-c);
+  box-shadow:inset 0 1px 0 rgba(34,211,238,0.06),0 12px 40px rgba(0,0,0,0.4);
 }
 .scn-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .scn-title{font-size:13px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;}
 .scn-pts-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
 .scn-pts{
-  font-size:36px;font-weight:700;
+  font-size:42px;font-weight:800;
   font-family:'JetBrains Mono',monospace;
-  letter-spacing:-.03em;color:var(--cyan);line-height:1;
+  letter-spacing:-.04em;color:var(--cyan);line-height:1;
+  text-shadow:0 0 28px rgba(34,211,238,0.5),0 0 56px rgba(34,211,238,0.18);
 }
 .scn-refresh-btn{
   background:none;border:1.5px solid var(--cyan);color:var(--cyan);
@@ -261,8 +321,13 @@ button{font-family:inherit;}
 .goal-bar{margin-top:2px;}
 .goal-bar-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--text-2);margin-bottom:5px;}
 .goal-bar-labels strong{color:var(--cyan);}
-.goal-track{height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;}
-.goal-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--emerald));border-radius:2px;transition:width .6s ease;}
+.goal-track{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;}
+.goal-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--cyan),var(--emerald));
+  border-radius:3px;transition:width .8s ease;
+  box-shadow:0 0 8px rgba(34,211,238,0.45);
+}
 
 /* ── Battle card ─────────────────────────────────────── */
 .battle-card{
@@ -808,8 +873,9 @@ button{font-family:inherit;}
 .ms-streak-hero{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
 .ms-streak-big{
   font-family:'JetBrains Mono',monospace;
-  font-size:48px;font-weight:700;color:var(--amber);
-  line-height:1;text-shadow:0 0 20px rgba(252,211,77,.3);
+  font-size:56px;font-weight:800;color:var(--amber);
+  line-height:1;
+  text-shadow:0 0 24px rgba(252,211,77,0.55),0 0 48px rgba(252,211,77,0.2);
 }
 .ms-streak-label-big{font-size:14px;font-weight:700;color:var(--amber);}
 .ms-streak-hint{font-size:12px;color:var(--text-2);margin-top:2px;}

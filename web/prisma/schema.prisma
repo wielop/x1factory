@@ -188,18 +188,20 @@ model DetectedEvent {
 }
 
 model UserSeasonStats {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  seasonId    Int
-  totalPoints Int       @default(0)
-  rank        Int?
-  eventsCount Int       @default(0)
-  badgesCount Int       @default(0)
-  lastEventAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  season      Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  seasonId      Int
+  totalPoints   Int       @default(0)
+  rank          Int?
+  eventsCount   Int       @default(0)
+  badgesCount   Int       @default(0)
+  lastEventAt   DateTime?
+  streakCount   Int       @default(0)
+  lastCheckinAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season        Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
 
   @@unique([userId, seasonId])
   @@index([seasonId, rank])

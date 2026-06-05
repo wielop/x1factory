@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "programs/mining_v2",
+    "programs/swap_router",
 ]
 resolver = "2"
 

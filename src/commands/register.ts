@@ -1,8 +1,8 @@
 import type { BotContext, BotInstance } from "../bot/types.js";
 import { startWalletRegistration } from "../bot/registrationState.js";
-import { FACTORY_XP, factoryHeader, formatTestingNotice, mainMenuKeyboard, shortWallet, walletInputKeyboard } from "../bot/ui.js";
+import { factoryHeader, formatTestingNotice, shortWallet, walletInputKeyboard } from "../bot/ui.js";
 import { getActiveWalletForUser } from "../db/walletRepository.js";
-import { registerActiveWalletForCurrentSeason, registerProfile } from "../services/profileService.js";
+import { registerProfile } from "../services/profileService.js";
 import { getCurrentSeason, getSeasonTestingNotice } from "../services/seasonService.js";
 
 export async function showConnectWallet(ctx: BotContext): Promise<void> {
@@ -18,41 +18,19 @@ export async function showConnectWallet(ctx: BotContext): Promise<void> {
   const season = await getCurrentSeason();
   const testingNotice = getSeasonTestingNotice(season?.name);
 
-  if (activeWallet) {
-    const seasonRegistration = await registerActiveWalletForCurrentSeason({
-      userId: profile.id,
-      walletId: activeWallet.id,
-      walletAddress: activeWallet.address
-    });
-
-    await ctx.reply(
-      [
-        factoryHeader("WALLET CONNECTED"),
-        "",
-        `Your factory is already linked to ${shortWallet(activeWallet.address)}.`,
-        `Season line: ${seasonRegistration.season?.name ?? "not open yet"}`,
-        seasonRegistration.registration ? "Status: ready to earn Factory XP" : "Status: waiting for the next season",
-        "",
-        "Need to change wallets? Ask an admin to move your factory safely.",
-        ...formatTestingNotice(testingNotice)
-      ].join("\n"),
-      mainMenuKeyboard()
-    );
-    return;
-  }
-
   startWalletRegistration(from.id);
+
+  const currentLine = activeWallet
+    ? `Current wallet: ${shortWallet(activeWallet.address)}`
+    : "No wallet connected yet.";
 
   await ctx.reply(
     [
       factoryHeader("CONNECT WALLET"),
       "",
-      "Paste your X1/Solana wallet address in the next message.",
+      currentLine,
       "",
-      "Once connected, this wallet becomes your factory ID for the season.",
-      `Season registration grants 50 ${FACTORY_XP}.`,
-      "",
-      "Wallet changes are admin-only, so check the address before sending.",
+      "Paste your Solana wallet address to connect or update it.",
       ...formatTestingNotice(testingNotice)
     ].join("\n"),
     walletInputKeyboard()

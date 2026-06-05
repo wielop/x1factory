@@ -24,7 +24,8 @@ const S = {
   seasonStamps:[], badges:[], nearbyRanks:null,
   dailyMissions:[], prizePool:null, syncedAt:null,
   recentEvents:[], leaderboard:null, myRank:null,
-  lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0
+  lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0,
+  photoUrl:null
 };
 let myTelegramId = null;
 
@@ -38,6 +39,7 @@ async function init() {
   tg.setBackgroundColor('#030d12');
   tg.setHeaderColor('#030d12');
   myTelegramId = String(tg.initDataUnsafe?.user?.id ?? '');
+  S.photoUrl = tg.initDataUnsafe?.user?.photo_url || null;
 
   try {
     const data = await get('/api/panel/me');
@@ -121,8 +123,14 @@ function renderPassport() {
   // Passport card
   const card = q('#passport-card');
   if(card) card.className = `passport-card rank-${rank.key}`;
-  const letter = (u?.firstName?.[0] || u?.username?.[0] || '?').toUpperCase();
-  setText('passport-avatar', letter);
+  const av = q('#passport-avatar');
+  if (av) {
+    if (S.photoUrl) {
+      av.innerHTML = `<img src="${S.photoUrl}" class="avatar-photo" alt="avatar" onerror="this.parentElement.textContent='${(u?.firstName?.[0]||u?.username?.[0]||'?').toUpperCase()}'">`;
+    } else {
+      av.textContent = (u?.firstName?.[0] || u?.username?.[0] || '?').toUpperCase();
+    }
+  }
   setText('passport-name', u?.username ? '@'+u.username : (u?.firstName || 'Operator'));
   setText('passport-rank', `${rank.icon} ${rank.label}`);
   setText('passport-id', u?.operatorId || 'OP-0000');

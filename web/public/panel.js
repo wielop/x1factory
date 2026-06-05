@@ -2,23 +2,21 @@
 
 /* ── Rank system ───────────────────────────────────────── */
 const RANKS = [
-  { min:4000, key:'director',    label:'DIRECTOR',    icon:'👑' },
-  { min:1500, key:'engineer',    label:'ENGINEER',    icon:'🔧' },
-  { min:500,  key:'operator',    label:'OPERATOR',    icon:'⚙️'  },
-  { min:100,  key:'miner',       label:'MINER',       icon:'⛏️'  },
-  { min:1,    key:'apprentice',  label:'APPRENTICE',  icon:'🔩'  },
-  { min:0,    key:'offline',     label:'OFFLINE',     icon:'○'  },
+  { min:7000, key:'director',  label:'DIRECTOR',  icon:'👑' },
+  { min:3500, key:'engineer',  label:'ENGINEER',  icon:'🔧' },
+  { min:1000, key:'operator',  label:'OPERATOR',  icon:'⚙️'  },
+  { min:100,  key:'miner',     label:'MINER',     icon:'⛏️'  },
+  { min:0,    key:'offline',   label:'OFFLINE',   icon:'○'  },
 ];
 function getRank(pts)     { return RANKS.find(r => pts >= r.min) || RANKS[RANKS.length-1]; }
 function getNextRank(pts) { const i = RANKS.findIndex(r => pts >= r.min); return i > 0 ? RANKS[i-1] : null; }
 
 const RANK_CLASSES = {
-  offline:    'Unregistered',
-  apprentice: 'Rookie Operator',
-  miner:      'Signal Runner',
-  operator:   'Core Builder',
-  engineer:   'Validator',
-  director:   'Architect',
+  offline:  'Unregistered',
+  miner:    'Signal Runner',
+  operator: 'Core Builder',
+  engineer: 'Validator',
+  director: 'Architect',
 };
 function isGenesis(opId) {
   const n = parseInt((opId||'').replace('OP-',''), 10);
@@ -163,7 +161,8 @@ function renderPassport() {
   const opId = u?.operatorId || 'OP-0000';
   setText('passport-name', u?.username ? '@'+u.username : (u?.firstName || 'Operator'));
   setText('passport-class', operatorClass(rank.key, opId).toUpperCase());
-  setText('passport-rank', `${rank.icon} ${rank.label}`);
+  setText('passport-rank-icon', rank.icon);
+  setText('passport-rank', rank.label);
   setText('passport-id', opId);
   setText('passport-since', u?.createdAt ? fmtDate(u.createdAt) : '—');
   const genesisTag = isGenesis(opId) ? '/GENESIS' : '';

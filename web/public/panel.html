@@ -457,90 +457,53 @@
       <!-- ═══ SWAP TAB ═══ -->
       <section id="tab-swap" class="tab-panel hidden">
 
-        <div class="swap-card card">
-          <div class="swap-card-header">
-            <span class="swap-title">Swap</span>
-            <div class="swap-pool-price" id="swap-pool-price">Loading...</div>
-          </div>
+        <!-- Hero -->
+        <div class="swap-landing-hero card">
+          <div class="swap-landing-icon">⚡</div>
+          <h2 class="swap-landing-title">MIND / XNT Swap</h2>
+          <p class="swap-landing-sub">Swap on X1 Network directly from your browser. Earn Season Points for every swap.</p>
+          <button class="swap-landing-btn" onclick="openSwapPage()">
+            Go to Swap →
+          </button>
+        </div>
 
-          <!-- Direction toggle -->
-          <div class="swap-direction-row">
-            <button class="swap-dir-btn active" id="swap-dir-mind" onclick="setSwapDirection('mind_to_xnt')">MIND → XNT</button>
-            <button class="swap-dir-btn" id="swap-dir-xnt" onclick="setSwapDirection('xnt_to_mind')">XNT → MIND</button>
-          </div>
-
-          <!-- Input -->
-          <div class="swap-input-wrap">
-            <label class="swap-input-label" id="swap-input-label">You send (MIND)</label>
-            <div class="swap-input-row">
-              <input class="swap-amount-input" id="swap-amount-input" type="number" placeholder="0.00" min="0" oninput="onSwapAmountInput()" />
-              <span class="swap-token-badge" id="swap-token-in">MIND</span>
+        <!-- Benefits -->
+        <div class="swap-benefits card">
+          <div class="swap-benefit-row">
+            <span class="swap-benefit-icon">🏆</span>
+            <div>
+              <div class="swap-benefit-title">Earn Season Points</div>
+              <div class="swap-benefit-desc">Every MIND → XNT swap awards <strong>+5 Season Points</strong> tracked on-chain automatically.</div>
             </div>
           </div>
-
-          <!-- Arrow -->
-          <div class="swap-arrow">↓</div>
-
-          <!-- Output estimate -->
-          <div class="swap-output-wrap">
-            <label class="swap-output-label" id="swap-output-label">You receive (estimated)</label>
-            <div class="swap-output-row">
-              <span class="swap-output-amount" id="swap-output-amount">—</span>
-              <span class="swap-token-badge swap-token-out" id="swap-token-out">XNT</span>
+          <div class="swap-benefit-row">
+            <span class="swap-benefit-icon">⚡</span>
+            <div>
+              <div class="swap-benefit-title">On-Chain xDEX</div>
+              <div class="swap-benefit-desc">Powered by xDEX liquidity pool on X1 Network — fast, non-custodial, permissionless.</div>
             </div>
           </div>
-
-          <!-- Fee info -->
-          <div class="swap-fee-row">
-            <span class="swap-fee-label">Protocol fee</span>
-            <span class="swap-fee-value">0.4%</span>
-          </div>
-
-          <!-- Giga swap indicator -->
-          <div class="swap-giga-banner hidden" id="swap-giga-banner">
-            ⚡ Eligible for <strong>Giga Swap</strong> lottery!
-          </div>
-
-          <!-- Swap button -->
-          <button class="swap-btn" id="swap-btn" onclick="doSwap()">Connect Wallet to Swap</button>
-          <div class="swap-status" id="swap-status"></div>
-        </div>
-
-        <!-- Wallet connect hint (fallback if no injected wallet) -->
-        <div class="swap-wallet-hint card hidden" id="swap-wallet-hint">
-          <div class="swap-hint-icon">🔗</div>
-          <div class="swap-hint-text">Open in <strong>Phantom</strong> or <strong>Backpack</strong> to swap on-chain</div>
-        </div>
-
-        <!-- Open in wallet (shown when no wallet detected) -->
-        <div class="swap-open-wallet card hidden" id="swap-open-in-wallet">
-          <div class="swap-open-header">Wallet required to swap</div>
-          <div class="swap-open-sub" id="swap-open-sub-desktop">Install the X1 Wallet browser extension to swap directly.</div>
-          <div class="swap-open-sub hidden" id="swap-open-sub-mobile">Open the panel in your wallet's browser to sign transactions.</div>
-          <div class="swap-open-btns" id="swap-open-btns-desktop">
-            <a class="swap-open-btn x1wallet-btn" href="https://chromewebstore.google.com/detail/x1-wallet/kcfmcpdmlchhbikbogddmgopmjbflnae" target="_blank">
-              <span>🔷</span> Install X1 Wallet
-            </a>
-          </div>
-          <div class="swap-open-btns hidden" id="swap-open-btns-mobile">
-            <button class="swap-open-btn backpack-btn" onclick="openInBackpack()">
-              <span>🎒</span> Open in Backpack
-            </button>
+          <div class="swap-benefit-row">
+            <span class="swap-benefit-icon">🔷</span>
+            <div>
+              <div class="swap-benefit-title">X1 Native</div>
+              <div class="swap-benefit-desc">Use X1 Wallet extension or Backpack — both natively support X1 Network.</div>
+            </div>
           </div>
         </div>
 
-        <!-- Stats -->
+        <!-- Pool stats -->
         <div class="swap-stats-card card" id="swap-stats-card">
           <div class="swap-stat">
-            <span class="swap-stat-label">MIND/XNT Pool</span>
+            <span class="swap-stat-label">Pool MIND</span>
             <span class="swap-stat-value" id="swap-pool-mind">—</span>
           </div>
           <div class="swap-stat">
-            <span class="swap-stat-label">XNT in Pool</span>
+            <span class="swap-stat-label">Pool XNT</span>
             <span class="swap-stat-value" id="swap-pool-xnt">—</span>
           </div>
           <div class="swap-stat">
-            <span class="swap-stat-label">Points per swap</span>
+            <span class="swap-stat-label">Points/swap</span>
             <span class="swap-stat-value">+5 pts</span>
           </div>
         </div>
@@ -550,7 +513,6 @@
     </main>
   </div>
 
-  <script src="https://unpkg.com/@solana/web3.js@1.95.4/lib/index.iife.min.js" async id="web3js-cdn"></script>
   <script src="/panel.js"></script>
 </body>
 </html>

@@ -129,8 +129,8 @@ export async function POST(req: NextRequest) {
     const [userInput, userOutput, treasuryInput, rewardPoolInput] = await Promise.all([
       ensureAta(conn, createAtaIxs, user, user, inputMint),
       ensureAta(conn, createAtaIxs, user, user, outputMint),
-      getAssociatedTokenAddress(inputMint, TREASURY, true),
-      getAssociatedTokenAddress(inputMint, REWARD_POOL_PDA, true),
+      ensureAta(conn, createAtaIxs, user, TREASURY, inputMint),
+      ensureAta(conn, createAtaIxs, user, REWARD_POOL_PDA, inputMint),
     ]);
 
     const TOKEN_AMOUNT_OFFSET = 64;

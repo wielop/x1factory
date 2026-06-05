@@ -101,7 +101,7 @@ interface TrophyBadge { key: string; icon: string; label: string; }
 function computeBadges(params: {
   cats: Set<string>;
   allTimeStats: { seasonId: number; totalPoints: number; rank: number | null; streakCount: number }[];
-  allSeasons: { id: number; name: string }[];
+  allSeasons: { id: number; name: string; status: string }[];
   claimCount: number;
   maxStakePts: number;
   seasonsCount: number;
@@ -162,7 +162,7 @@ function computeBadges(params: {
   for (const s of allTimeStats) {
     if (s.rank === null) continue;
     const season = allSeasons.find(a => a.id === s.seasonId);
-    if (!season) continue;
+    if (!season || season.status !== 'COMPLETED') continue;
     if (s.rank === 1)      trophies.push({ key: `winner_${s.seasonId}`, icon: '👑', label: `Winner · ${season.name}` });
     else if (s.rank <= 3)  trophies.push({ key: `top3_${s.seasonId}`,   icon: '🥇', label: `Top 3 · ${season.name}` });
     else if (s.rank <= 10) trophies.push({ key: `top10_${s.seasonId}`,  icon: '🏆', label: `Top 10 · ${season.name}` });
@@ -213,7 +213,7 @@ export async function GET(req: NextRequest) {
         orderBy: { startsAt: "asc" },
       }),
       prisma.wallet.findFirst({ where: { userId: user.id, isActive: true } }),
-      prisma.season.findMany({ orderBy: { startsAt: "asc" } }),
+      prisma.season.findMany({ orderBy: { startsAt: "asc" }, select: { id: true, name: true, status: true } }),
       prisma.userSeasonStats.findMany({
         where: { userId: user.id },
         select: { seasonId: true, totalPoints: true, rank: true, streakCount: true },

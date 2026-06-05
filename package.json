@@ -1,35 +1,35 @@
 {
-  "name": "mining-v2",
+  "name": "x1factory-seasons-bot",
   "version": "0.1.0",
-  "license": "MIT",
+  "private": true,
+  "description": "Telegram bot for X1Factory seasons, profiles, and rankings.",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "yarn run ts-mocha -p ./tsconfig.json -t 200000 tests/**/*.ts",
-    "build:program": "anchor build",
-    "mainnet:deploy": "bash scripts/mainnet-v2-deploy.sh",
-    "mainnet:smoke": "ts-node scripts/mainnet-v2-smoke.ts",
-    "claim-mind-bot": "ts-node scripts/claim-mind-bot.ts",
-    "withdraw-staking-rewards": "ts-node scripts/withdraw-staking-rewards.ts"
+    "dev": "tsx watch src/index.ts",
+    "web:dev": "node dist/web/server.js",
+    "build": "next build",
+    "bot:build": "prisma generate && tsc -p tsconfig.bot.json",
+    "start": "node dist/index.js",
+    "web:start": "node dist/web/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.30.1",
-    "@metaplex-foundation/mpl-token-metadata": "2.13.0",
-    "@solana/spl-token": "^0.4.7",
-    "@solana/web3.js": "^1.89.0",
-    "bn.js": "^5.2.1",
-    "dotenv": "^16.4.5"
+    "@prisma/client": "6.19.3",
+    "@solana/web3.js": "^1.98.4",
+    "dotenv": "^16.4.5",
+    "next": "^16.2.6",
+    "pino": "^9.3.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "@types/bn.js": "^5.1.1",
-    "@types/chai": "^4.3.11",
-    "@types/mocha": "^10.0.6",
-    "@types/node": "^20.11.30",
-    "chai": "^4.4.1",
-    "mocha": "^10.4.0",
-    "ts-mocha": "^10.0.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
-  },
-  "main": "index.js",
-  "repository": "git@github.com:wielop/mining.git",
-  "author": "wielop <wielop@users.noreply.github.com>"
+    "@types/node": "^22.10.2",
+    "@types/react": "19.2.14",
+    "prisma": "6.19.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
 }

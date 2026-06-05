@@ -9,15 +9,6 @@ function shortWallet(address: string) {
   return address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
 }
 
-const WEEKLY_CHECKIN_GOAL = 5;
-
-function weekStartUTC(): Date {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const diffDays = day === 0 ? 6 : day - 1;
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffDays));
-}
-
 function formatEventCategory(category: string): string {
   switch (category) {
     case "claim_mind_daily":        return "Daily MIND claim";
@@ -35,7 +26,6 @@ function formatEventCategory(category: string): string {
     case "daily_checkin":           return "Daily check-in";
     case "energy_tap":              return "Energy tap";
     case "streak_bonus":            return "Streak bonus";
-    case "weekly_mission_checkin":  return "Weekly mission reward";
     default:                        return category.replaceAll("_", " ");
   }
 }
@@ -171,58 +161,6 @@ function computeBadges(params: {
   return { leveled, trophies };
 }
 
-// ── Weekly mission ────────────────────────────────────────
-const WEEKLY_MISSION = {
-  key: 'seven_full_days',
-  icon: '⚡',
-  label: '7 Kompletnych Dni',
-  description: 'Wykonaj check-in + odbierz MIND każdego dnia tygodnia (pon–niedz)',
-  baseBonus: 500,
-  bonusPerStreak: 100,
-  goal: 7,
-} as const;
-
-function weekBonusForStreak(streak: number): number {
-  return WEEKLY_MISSION.baseBonus + (streak - 1) * WEEKLY_MISSION.bonusPerStreak;
-}
-
-function weekStartForDate(date: Date): Date {
-  const day = date.getUTCDay();
-  const diff = day === 0 ? 6 : day - 1;
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - diff));
-}
-
-async function computeWeekMissionProgress(
-  userId: number,
-  seasonId: number,
-  weekStart: Date,
-): Promise<number> {
-  const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
-  const [checkins, claims] = await Promise.all([
-    prisma.seasonPoint.findMany({ where: { userId, seasonId, category: 'daily_checkin', createdAt: { gte: weekStart, lt: weekEnd } }, select: { createdAt: true } }),
-    prisma.seasonPoint.findMany({ where: { userId, seasonId, category: 'claim_mind_daily', createdAt: { gte: weekStart, lt: weekEnd } }, select: { createdAt: true } }),
-  ]);
-  const checkinDays = new Set(checkins.map(e => e.createdAt.toISOString().slice(0, 10)));
-  const claimDays   = new Set(claims.map(e => e.createdAt.toISOString().slice(0, 10)));
-  return [...checkinDays].filter(d => claimDays.has(d)).length;
-}
-
-async function computeWeeklyStreak(userId: number, seasonId: number, currentWeekStart: Date): Promise<number> {
-  const past = await prisma.seasonPoint.findMany({
-    where: { userId, seasonId, category: 'weekly_mission' },
-    orderBy: { createdAt: 'desc' },
-    take: 52,
-    select: { createdAt: true },
-  });
-  const awardedWeeks = new Set(past.map(a => weekStartForDate(a.createdAt).getTime()));
-  let streak = 1;
-  let check = currentWeekStart.getTime() - 7 * 86400000;
-  while (awardedWeeks.has(check)) {
-    streak++;
-    check -= 7 * 86400000;
-  }
-  return streak;
-}
 
 export async function GET(req: NextRequest) {
   const initData = req.headers.get("x-telegram-init-data") ?? "";
@@ -286,7 +224,6 @@ export async function GET(req: NextRequest) {
     ]);
 
     const todayUtcEnd = new Date(todayUtcStart.getTime() + 86400000);
-    const weekStart = weekStartUTC();
 
     // Current season data
     const [stats, recentPoints, todayPoints] = await Promise.all([
@@ -420,48 +357,6 @@ export async function GET(req: NextRequest) {
       },
     ];
 
-    // Weekly mission
-    let weeklyMission = null;
-    if (season) {
-      const mission = WEEKLY_MISSION;
-      const [progress, alreadyAwarded, weekStreak] = await Promise.all([
-        computeWeekMissionProgress(user.id, season.id, weekStart),
-        prisma.seasonPoint.findFirst({
-          where: { userId: user.id, seasonId: season.id, category: 'weekly_mission', createdAt: { gte: weekStart } },
-        }),
-        computeWeeklyStreak(user.id, season.id, weekStart),
-      ]);
-      const completed = progress >= mission.goal;
-      const bonus = weekBonusForStreak(weekStreak);
-      if (completed && !alreadyAwarded) {
-        await prisma.seasonPoint.create({
-          data: {
-            userId: user.id, seasonId: season.id,
-            points: bonus,
-            category: 'weekly_mission',
-            source: 'BONUS',
-            reason: `Weekly mission: ${mission.key} (streak ${weekStreak})`,
-          },
-        });
-        await prisma.userSeasonStats.update({
-          where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-          data: { totalPoints: { increment: bonus }, eventsCount: { increment: 1 }, lastEventAt: new Date() },
-        });
-      }
-      weeklyMission = {
-        key: mission.key,
-        icon: mission.icon,
-        label: mission.label,
-        description: mission.description,
-        progress,
-        goal: mission.goal,
-        bonus,
-        weekStreak,
-        completed: completed && (!!alreadyAwarded || completed),
-        nextResetAt: new Date(weekStart.getTime() + 7 * 86400000).toISOString(),
-      };
-    }
-
     // Prize pool
     const prizeTotal = getPrizePool();
     const myPrize = getPrizeForRank(stats?.rank, prizeTotal);
@@ -518,7 +413,6 @@ export async function GET(req: NextRequest) {
         count: stats?.streakCount || (todayCats.has("daily_checkin") ? 1 : 0),
         lastAt: stats?.lastCheckinAt?.toISOString() ?? null,
       },
-      weeklyMission,
       allTime: {
         totalPoints: allTimePoints,
         seasonsCount,

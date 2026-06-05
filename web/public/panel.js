@@ -45,7 +45,6 @@ const S = {
   lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0,
   photoUrl:null,
   streak:{ count:0, lastAt:null },
-  weeklyMission:null,
   claimTodayPts:0, rigTodayPts:0, stakeTodayPts:0,
 };
 let myTelegramId = null;
@@ -80,7 +79,6 @@ async function init() {
     S.prevEventCount = S.recentEvents.length;
     S.recentEvents  = data.recentEvents || [];
     S.streak        = data.streak || { count:0, lastAt:null };
-    S.weeklyMission = data.weeklyMission || null;
     S.claimTodayPts = data.claimTodayPts || 0;
     S.rigTodayPts   = data.rigTodayPts   || 0;
     S.stakeTodayPts = data.stakeTodayPts || 0;
@@ -558,69 +556,6 @@ function renderMissionsTab() {
     node.classList.toggle('ms-ms-next', streakCount < days && (!node.previousElementSibling || streakCount >= parseInt(node.previousElementSibling.dataset.days||'0',10)));
   });
 
-  // ── Weekly mission ──
-  const wm = S.weeklyMission;
-  const weeklyCard = q('#ms-weekly-card');
-  if (!wm) { if (weeklyCard) weeklyCard.classList.add('hidden'); return; }
-  if (weeklyCard) weeklyCard.classList.remove('hidden');
-
-  // Dynamic label / description / icon
-  const wIcon = q('#ms-weekly-icon');
-  if (wIcon) wIcon.textContent = wm.icon || '📅';
-  const wName = q('#ms-weekly-name');
-  if (wName) wName.textContent = wm.label || '';
-  const wDesc = q('#ms-weekly-desc');
-  if (wDesc) wDesc.textContent = wm.description || '';
-
-  const prog = wm.progress || 0;
-  const goal = wm.goal || 1;
-  const pct  = Math.min(100, (prog / goal) * 100);
-
-  setText('ms-weekly-frac', `${prog}/${goal}`);
-  const bar = q('#ms-weekly-bar'); if (bar) bar.style.width = pct.toFixed(1) + '%';
-
-  // Show dots only for count-based missions (goal > 1)
-  const wdots = q('#ms-weekly-dots');
-  if (wdots) {
-    if (goal > 1) {
-      let h = '';
-      for (let i = 0; i < goal; i++) h += `<span class="ms-wdot${i < prog ? ' filled' : ''}"></span>`;
-      wdots.innerHTML = h;
-    } else {
-      wdots.innerHTML = '';
-    }
-  }
-
-  const wBadge = q('#ms-weekly-badge');
-  if (wBadge) {
-    wBadge.textContent = wm.completed ? '✅ Done' : `+${wm.bonus}`;
-    wBadge.className = 'ms-card-badge ms-badge-purple' + (wm.completed ? ' ms-badge-done' : '');
-  }
-
-  const wStatus = q('#ms-weekly-status');
-  if (wStatus) {
-    if (wm.completed) {
-      const streakTxt = wm.weekStreak > 1 ? ` · seria ${wm.weekStreak} tyg. 🔥` : '';
-      wStatus.textContent = `✅ Ukończono! +${wm.bonus} pts przyznane${streakTxt}`;
-      wStatus.className = 'ms-weekly-status done';
-    } else {
-      const left = goal - prog;
-      const nextBonus = wm.bonus;
-      const streakInfo = wm.weekStreak > 1 ? ` · seria ${wm.weekStreak} tyg. 🔥` : '';
-      wStatus.textContent = `Zostało ${left} ${left === 1 ? 'dzień' : 'dni'} · nagroda +${nextBonus} pts${streakInfo}`;
-      wStatus.className = 'ms-weekly-status';
-    }
-  }
-
-  const resetEl = q('#ms-week-reset');
-  if (resetEl && wm.nextResetAt) {
-    const msLeft = new Date(wm.nextResetAt).getTime() - Date.now();
-    if (msLeft > 0) {
-      const d = Math.floor(msLeft / 86400000);
-      const h2 = Math.floor((msLeft % 86400000) / 3600000);
-      resetEl.textContent = `reset za ${d}d ${pad(h2)}h`;
-    }
-  }
 }
 
 /* ── Refresh ───────────────────────────────────────────── */
@@ -653,7 +588,6 @@ async function doRefresh() {
     S.prevEventCount = hadEvents;
     S.recentEvents  = data.recentEvents || [];
     S.streak        = data.streak || { count:0, lastAt:null };
-    S.weeklyMission = data.weeklyMission || null;
     S.claimTodayPts = data.claimTodayPts || 0;
     S.rigTodayPts   = data.rigTodayPts   || 0;
     S.stakeTodayPts = data.stakeTodayPts || 0;

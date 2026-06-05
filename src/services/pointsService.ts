@@ -353,6 +353,36 @@ export async function processDailyClaim(
     suppressDefaultNotification: true
   });
 
+  // ── Streak: qualify if check-in also done today ────────────
+  const checkinToday = await prisma.seasonPoint.findFirst({
+    where: { userId, seasonId, category: "daily_checkin", createdAt: { gte: dayStart, lt: dayEnd } },
+  });
+  if (checkinToday) {
+    const existingStats = await prisma.userSeasonStats.findUnique({
+      where: { userId_seasonId: { userId, seasonId } },
+    });
+    const todayStr = dayStart.toISOString().slice(0, 10);
+    const lastDate = existingStats?.lastCheckinAt?.toISOString().slice(0, 10);
+    if (lastDate !== todayStr) {
+      const yesterdayStr = new Date(dayStart.getTime() - 86400000).toISOString().slice(0, 10);
+      const newStreak = lastDate === yesterdayStr ? (existingStats?.streakCount || 0) + 1 : 1;
+      await prisma.userSeasonStats.update({
+        where: { userId_seasonId: { userId, seasonId } },
+        data: { streakCount: newStreak, lastCheckinAt: dayStart },
+      });
+      const milestone = STREAK_BONUSES.find(b => b.days === newStreak);
+      if (milestone) {
+        await prisma.seasonPoint.create({
+          data: { userId, seasonId, points: milestone.points, category: "streak_bonus", source: "BONUS", reason: `${newStreak}-day streak bonus` },
+        });
+        await prisma.userSeasonStats.update({
+          where: { userId_seasonId: { userId, seasonId } },
+          data: { totalPoints: { increment: milestone.points } },
+        });
+      }
+    }
+  }
+
   const user = await findUserById(userId);
 
   if (user) {

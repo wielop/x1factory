@@ -39,13 +39,14 @@ const ICONS = {
 /* ── State ─────────────────────────────────────────────── */
 const S = {
   user:null, wallet:null, season:null, stats:null, allTime:null,
-  seasonStamps:[], badges:[], nearbyRanks:null,
+  seasonStamps:[], badges:{ leveled:[], trophies:[] }, nearbyRanks:null,
   dailyMissions:[], prizePool:null, syncedAt:null,
   recentEvents:[], leaderboard:null, myRank:null,
   lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0,
   photoUrl:null,
   streak:{ count:0, lastAt:null },
   weeklyMission:null,
+  claimTodayPts:0, rigTodayPts:0, stakeTodayPts:0,
 };
 let myTelegramId = null;
 
@@ -71,7 +72,7 @@ async function init() {
     S.stats         = data.stats;
     S.allTime       = data.allTime;
     S.seasonStamps  = data.seasonStamps || [];
-    S.badges        = data.badges || [];
+    S.badges        = data.badges || { leveled:[], trophies:[] };
     S.nearbyRanks   = data.nearbyRanks || null;
     S.dailyMissions = data.dailyMissions || [];
     S.prizePool     = data.prizePool || null;
@@ -80,6 +81,9 @@ async function init() {
     S.recentEvents  = data.recentEvents || [];
     S.streak        = data.streak || { count:0, lastAt:null };
     S.weeklyMission = data.weeklyMission || null;
+    S.claimTodayPts = data.claimTodayPts || 0;
+    S.rigTodayPts   = data.rigTodayPts   || 0;
+    S.stakeTodayPts = data.stakeTodayPts || 0;
 
     renderHeader();
     renderPassport();
@@ -315,13 +319,42 @@ function renderStamps() {
 function renderBadges() {
   const grid = q('#badges-grid');
   if (!grid) return;
-  if (!S.badges.length) {
+  const bd = S.badges || {};
+  const leveled = bd.leveled || [];
+  const trophies = bd.trophies || [];
+  if (!leveled.length && !trophies.length) {
     grid.innerHTML = '<span class="no-badges muted">Complete actions to earn badges.</span>';
     return;
   }
-  grid.innerHTML = S.badges.map(b =>
-    `<div class="badge"><span class="badge-icon">${b.icon}</span><span>${esc(b.label)}</span></div>`
-  ).join('');
+  const LC = ['','bronze','silver','gold','platinum'];
+  let html = '';
+
+  if (leveled.length) {
+    html += '<div class="badge-section"><div class="badge-section-title">Odznaki</div><div class="badge-leveled-grid">';
+    for (const b of leveled) {
+      const colorClass = b.key === 'genesis' ? 'badge-lvl-genesis' : (b.level > 0 ? 'badge-lvl-' + LC[b.level] : '');
+      const earned = b.level > 0;
+      html += `<div class="badge-lvl ${colorClass} ${earned ? 'earned' : 'unearned'}">
+        <div class="badge-lvl-icon">${b.icon}</div>
+        <div class="badge-lvl-body">
+          <div class="badge-lvl-name">${esc(b.label)}</div>
+          ${earned ? `<div class="badge-lvl-tier">${esc(b.levelLabel)}</div>` : ''}
+          ${b.nextAt ? `<div class="badge-lvl-next">${esc(b.nextAt)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    html += '</div></div>';
+  }
+
+  if (trophies.length) {
+    html += '<div class="badge-section"><div class="badge-section-title">Trofea sezonowe</div><div class="badge-trophy-grid">';
+    for (const t of trophies) {
+      html += `<div class="badge-trophy"><span class="badge-trophy-icon">${t.icon}</span><span class="badge-trophy-label">${esc(t.label)}</span></div>`;
+    }
+    html += '</div></div>';
+  }
+
+  grid.innerHTML = html;
 }
 
 /* ── Prize pool ────────────────────────────────────────── */
@@ -470,20 +503,27 @@ function renderMissionsTab() {
   const claimBadge = q('#ms-claim-badge');
   if (claimBadge) { claimBadge.textContent = claimDone ? '✓ Done' : '+5–150'; claimBadge.className = 'ms-card-badge' + (claimDone ? ' ms-badge-done' : ''); }
 
+  // ── Mark which claim tiers are reached today ──
+  const CLAIM_TIER_PTS = [5, 15, 30, 80, 150];
+  const claimPts = S.claimTodayPts || 0;
+  document.querySelectorAll('#ms-claim-card .ms-reward-row').forEach((row, i) => {
+    row.classList.toggle('done', claimPts >= CLAIM_TIER_PTS[i]);
+  });
+
   // ── Passive: Active Rig ──
-  const rigDone = S.dailyMissions.find(m => m.key === 'active_rig')?.done;
   const rigStatus = q('#ms-rig-status');
   if (rigStatus) {
-    rigStatus.textContent = rigDone ? '✓ przyznane' : '—';
-    rigStatus.className = 'ms-passive-status' + (rigDone ? ' done' : '');
+    const pts = S.rigTodayPts || 0;
+    rigStatus.textContent = pts > 0 ? `+${pts} pts` : '—';
+    rigStatus.className = 'ms-passive-status' + (pts > 0 ? ' done' : '');
   }
 
   // ── Passive: Staking ──
   const stakeStatus = q('#ms-stake-status');
   if (stakeStatus) {
-    const stakeDone = S.dailyMissions?.find(m => m.key === 'stake')?.done;
-    stakeStatus.textContent = stakeDone ? '✓ przyznane' : '—';
-    stakeStatus.className = 'ms-passive-status' + (stakeDone ? ' done' : '');
+    const pts = S.stakeTodayPts || 0;
+    stakeStatus.textContent = pts > 0 ? `+${pts} pts` : '—';
+    stakeStatus.className = 'ms-passive-status' + (pts > 0 ? ' done' : '');
   }
 
   // ── Streak ──
@@ -498,13 +538,21 @@ function renderMissionsTab() {
 
   const hintEl = q('#ms-streak-hint');
   if (hintEl) {
+    const checkinDoneToday = S.dailyMissions.find(m => m.key === 'checkin')?.done;
+    const claimDoneToday   = S.dailyMissions.find(m => m.key === 'claim')?.done;
     const MILESTONES = [3,7,14,21];
     const next = MILESTONES.find(m => m > streakCount);
-    hintEl.textContent = streakCount === 0
-      ? 'Zacznij check-in już dziś'
-      : next
-        ? `Jeszcze ${next - streakCount} ${next - streakCount === 1 ? 'dzień' : 'dni'} do bonusu +${[50,150,350,700][[3,7,14,21].indexOf(next)]} pts`
-        : '🏆 Osiągnąłeś maksymalny milestone!';
+    if (checkinDoneToday && !claimDoneToday) {
+      hintEl.textContent = '💎 Odbierz MIND aby ukończyć serię!';
+    } else if (claimDoneToday && !checkinDoneToday) {
+      hintEl.textContent = '⚡ Zrób check-in aby ukończyć serię!';
+    } else if (streakCount === 0) {
+      hintEl.textContent = 'Zrób check-in + odbierz MIND aby zacząć serię';
+    } else if (next) {
+      hintEl.textContent = `Jeszcze ${next - streakCount} ${next - streakCount === 1 ? 'dzień' : 'dni'} do bonusu +${[50,150,350,700][[3,7,14,21].indexOf(next)]} pts`;
+    } else {
+      hintEl.textContent = '🏆 Osiągnąłeś maksymalny milestone!';
+    }
   }
 
   const msNodes = document.querySelectorAll('#ms-milestones .ms-milestone');
@@ -585,7 +633,7 @@ async function doRefresh() {
     S.stats         = data.stats;
     S.allTime       = data.allTime;
     S.seasonStamps  = data.seasonStamps || [];
-    S.badges        = data.badges || [];
+    S.badges        = data.badges || { leveled:[], trophies:[] };
     S.nearbyRanks   = data.nearbyRanks || null;
     S.dailyMissions = data.dailyMissions || [];
     S.prizePool     = data.prizePool || null;
@@ -594,6 +642,9 @@ async function doRefresh() {
     S.recentEvents  = data.recentEvents || [];
     S.streak        = data.streak || { count:0, lastAt:null };
     S.weeklyMission = data.weeklyMission || null;
+    S.claimTodayPts = data.claimTodayPts || 0;
+    S.rigTodayPts   = data.rigTodayPts   || 0;
+    S.stakeTodayPts = data.stakeTodayPts || 0;
     renderHeader();
     renderPassport();
     renderSeasonTab();

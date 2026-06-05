@@ -6,8 +6,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const CHECKIN_POINTS = 10;
-const ENERGY_TAP_POINTS = 2;
-const ENERGY_MAX = 5;
 const WEEKLY_CHECKIN_GOAL = 5;
 const WEEKLY_CHECKIN_BONUS = 200;
 
@@ -73,180 +71,154 @@ export async function POST(req: NextRequest) {
 
     const { start: todayStart, end: todayEnd } = todayUTC();
 
-    // Count energy already used today (first tap = daily_checkin, subsequent = energy_tap)
-    const todayTaps = await prisma.seasonPoint.count({
+    // Check if already done today
+    const existing = await prisma.seasonPoint.findFirst({
       where: {
         userId: user.id,
         seasonId: season.id,
-        category: { in: ["daily_checkin", "energy_tap"] },
+        category: "daily_checkin",
         createdAt: { gte: todayStart, lt: todayEnd },
       },
     });
 
-    if (todayTaps >= ENERGY_MAX) {
+    if (existing) {
       const stats = await prisma.userSeasonStats.findUnique({
         where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
       });
       return NextResponse.json({
         ok: true,
         alreadyDone: true,
-        energyCurrent: 0,
-        energyMax: ENERGY_MAX,
         totalPoints: stats?.totalPoints ?? 0,
         rank: stats?.rank ?? null,
         streak: stats?.streakCount ?? 0,
       });
     }
 
-    const isFirstTap = todayTaps === 0;
-    const pts = isFirstTap ? CHECKIN_POINTS : ENERGY_TAP_POINTS;
-    const category = isFirstTap ? "daily_checkin" : "energy_tap";
-
+    // Award check-in points
     await prisma.seasonPoint.create({
       data: {
         userId: user.id,
         seasonId: season.id,
-        points: pts,
-        category,
+        points: CHECKIN_POINTS,
+        category: "daily_checkin",
         source: "EVENT",
-        reason: isFirstTap ? "Daily check-in" : "Energy tap",
+        reason: "Daily check-in",
       },
     });
 
-    // ── Streak logic ──────────────────────────────────────
-    const existingStats = await prisma.userSeasonStats.findUnique({
-      where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
+    // ── Streak logic (requires both check-in + MIND claim today) ──────────────
+    const claimToday = await prisma.seasonPoint.findFirst({
+      where: {
+        userId: user.id,
+        seasonId: season.id,
+        category: "claim_mind_daily",
+        createdAt: { gte: todayStart, lt: todayEnd },
+      },
     });
-
-    let newStreak = 1;
-    if (existingStats?.lastCheckinAt) {
-      const lastDate = existingStats.lastCheckinAt.toISOString().slice(0, 10);
-      const today = todayUTCStr();
-      const yesterday = yesterdayUTCStr();
-      if (lastDate === yesterday) newStreak = (existingStats.streakCount || 0) + 1;
-      else if (lastDate === today) newStreak = existingStats.streakCount || 1;
-      else newStreak = 1;
-    } else if (!isFirstTap) {
-      // Legacy: user has daily_checkin today but streak was never initialized
-      const hasTodayCheckin = await prisma.seasonPoint.findFirst({
-        where: { userId: user.id, seasonId: season.id, category: "daily_checkin", createdAt: { gte: todayStart } },
-      });
-      if (hasTodayCheckin) {
-        newStreak = 1;
-        await prisma.userSeasonStats.update({
-          where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-          data: { streakCount: 1, lastCheckinAt: new Date() },
-        });
-      }
-    }
-
-    const statsUpdateData = isFirstTap
-      ? {
-          totalPoints: { increment: pts },
-          eventsCount: { increment: 1 },
-          lastEventAt: new Date(),
-          streakCount: newStreak,
-          lastCheckinAt: new Date(),
-        }
-      : {
-          totalPoints: { increment: pts },
-          eventsCount: { increment: 1 },
-          lastEventAt: new Date(),
-        };
 
     let updatedStats = await prisma.userSeasonStats.upsert({
       where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
       create: {
         userId: user.id,
         seasonId: season.id,
-        totalPoints: pts,
+        totalPoints: CHECKIN_POINTS,
         eventsCount: 1,
         lastEventAt: new Date(),
-        streakCount: isFirstTap ? 1 : 0,
-        lastCheckinAt: isFirstTap ? new Date() : null,
+        streakCount: 0,
       },
-      update: statsUpdateData,
+      update: {
+        totalPoints: { increment: CHECKIN_POINTS },
+        eventsCount: { increment: 1 },
+        lastEventAt: new Date(),
+      },
     });
 
-    // ── Streak bonus ──────────────────────────────────────
+    // ── Streak bonus (only when both check-in + claim done today) ──────────────
     let streakBonus = 0;
-    if (isFirstTap) {
-      const milestone = STREAK_BONUSES.find(b => b.days === newStreak);
-      if (milestone) {
-        streakBonus = milestone.points;
-        await prisma.seasonPoint.create({
-          data: {
-            userId: user.id,
-            seasonId: season.id,
-            points: streakBonus,
-            category: "streak_bonus",
-            source: "BONUS",
-            reason: `${newStreak}-day streak bonus`,
-          },
-        });
+    let newStreak = updatedStats.streakCount;
+
+    if (claimToday) {
+      const lastDate = updatedStats.lastCheckinAt?.toISOString().slice(0, 10);
+      const today = todayUTCStr();
+      const yesterday = yesterdayUTCStr();
+
+      if (lastDate !== today) {
+        if (lastDate === yesterday) newStreak = (updatedStats.streakCount || 0) + 1;
+        else newStreak = 1;
+
         updatedStats = await prisma.userSeasonStats.update({
           where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-          data: { totalPoints: { increment: streakBonus } },
+          data: { streakCount: newStreak, lastCheckinAt: new Date() },
         });
-      }
-    }
 
-    // ── Weekly mission: 5 check-ins this week ────────────
-    let weeklyBonus = 0;
-    let weeklyCheckins = 0;
-    if (isFirstTap) {
-      const weekStart = weekStartUTC();
-      weeklyCheckins = await prisma.seasonPoint.count({
-        where: {
-          userId: user.id,
-          seasonId: season.id,
-          category: "daily_checkin",
-          createdAt: { gte: weekStart },
-        },
-      });
-
-      if (weeklyCheckins === WEEKLY_CHECKIN_GOAL) {
-        const alreadyAwarded = await prisma.seasonPoint.findFirst({
-          where: {
-            userId: user.id,
-            seasonId: season.id,
-            category: "weekly_mission_checkin",
-            createdAt: { gte: weekStart },
-          },
-        });
-        if (!alreadyAwarded) {
-          weeklyBonus = WEEKLY_CHECKIN_BONUS;
+        const milestone = STREAK_BONUSES.find(b => b.days === newStreak);
+        if (milestone) {
+          streakBonus = milestone.points;
           await prisma.seasonPoint.create({
             data: {
               userId: user.id,
               seasonId: season.id,
-              points: weeklyBonus,
-              category: "weekly_mission_checkin",
+              points: streakBonus,
+              category: "streak_bonus",
               source: "BONUS",
-              reason: `Weekly mission: ${WEEKLY_CHECKIN_GOAL} check-ins`,
+              reason: `${newStreak}-day streak bonus`,
             },
           });
           updatedStats = await prisma.userSeasonStats.update({
             where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-            data: { totalPoints: { increment: weeklyBonus } },
+            data: { totalPoints: { increment: streakBonus } },
           });
         }
       }
     }
 
-    const energyAfter = Math.max(0, ENERGY_MAX - (todayTaps + 1));
+    // ── Weekly mission ────────────────────────────────────
+    let weeklyBonus = 0;
+    const weekStart = weekStartUTC();
+    const weeklyCheckins = await prisma.seasonPoint.count({
+      where: {
+        userId: user.id,
+        seasonId: season.id,
+        category: "daily_checkin",
+        createdAt: { gte: weekStart },
+      },
+    });
+
+    if (weeklyCheckins === WEEKLY_CHECKIN_GOAL) {
+      const alreadyAwarded = await prisma.seasonPoint.findFirst({
+        where: {
+          userId: user.id,
+          seasonId: season.id,
+          category: "weekly_mission_checkin",
+          createdAt: { gte: weekStart },
+        },
+      });
+      if (!alreadyAwarded) {
+        weeklyBonus = WEEKLY_CHECKIN_BONUS;
+        await prisma.seasonPoint.create({
+          data: {
+            userId: user.id,
+            seasonId: season.id,
+            points: weeklyBonus,
+            category: "weekly_mission_checkin",
+            source: "BONUS",
+            reason: `Weekly mission: ${WEEKLY_CHECKIN_GOAL} check-ins`,
+          },
+        });
+        updatedStats = await prisma.userSeasonStats.update({
+          where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
+          data: { totalPoints: { increment: weeklyBonus } },
+        });
+      }
+    }
 
     return NextResponse.json({
       ok: true,
       alreadyDone: false,
-      isFirstTap,
-      pointsAwarded: pts,
+      pointsAwarded: CHECKIN_POINTS,
       streakBonus,
       weeklyBonus,
-      totalBonus: pts + streakBonus + weeklyBonus,
-      streak: isFirstTap ? newStreak : (existingStats?.streakCount ?? 0),
-      energyCurrent: energyAfter,
-      energyMax: ENERGY_MAX,
+      streak: newStreak,
       weeklyCheckins,
       weeklyGoal: WEEKLY_CHECKIN_GOAL,
       totalPoints: updatedStats.totalPoints,

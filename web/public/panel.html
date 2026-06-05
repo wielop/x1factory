@@ -73,9 +73,13 @@
             <span class="passport-type">Operator Passport</span>
           </div>
           <div class="passport-body">
-            <div class="passport-avatar" id="passport-avatar">?</div>
+            <div class="passport-avatar-wrap">
+              <div class="passport-avatar" id="passport-avatar">?</div>
+              <div class="passport-avatar-ring"></div>
+            </div>
             <div class="passport-info">
               <div class="passport-name" id="passport-name">—</div>
+              <div class="passport-class" id="passport-class">OPERATOR CLASS</div>
               <div class="passport-rank" id="passport-rank">OFFLINE</div>
               <div class="passport-status">
                 <span class="status-dot"></span>
@@ -83,9 +87,21 @@
               </div>
             </div>
           </div>
-          <div class="passport-id-row">
-            <span class="passport-id mono" id="passport-id">OP-0000</span>
-            <span class="passport-since" id="passport-since"></span>
+          <div class="passport-data-strip">
+            <div class="passport-data-block">
+              <span class="passport-data-label">Passport ID</span>
+              <span class="passport-id mono" id="passport-id">OP-0000</span>
+            </div>
+            <div class="passport-data-block">
+              <span class="passport-data-label">Issued</span>
+              <span class="passport-since mono" id="passport-since">—</span>
+            </div>
+            <div class="passport-chip">
+              <div class="passport-chip-inner"></div>
+            </div>
+          </div>
+          <div class="passport-validity">
+            <span id="passport-validity-text">OPERATOR ACCESS · X1FACTORY NETWORK</span>
           </div>
         </div>
 

@@ -233,7 +233,21 @@ button{font-family:inherit;}
   color:var(--text-3);
 }
 
-.passport-body{display:flex;align-items:center;gap:14px;padding:14px 16px;}
+.passport-body{display:flex;align-items:center;gap:16px;padding:16px 16px 14px;}
+
+.passport-avatar-wrap{position:relative;flex-shrink:0;}
+
+.passport-avatar-ring{
+  position:absolute;inset:-7px;border-radius:50%;
+  border:1.5px solid var(--rc,var(--cyan));
+  opacity:.32;pointer-events:none;
+  animation:avatar-ring 3s ease-in-out infinite;
+}
+
+@keyframes avatar-ring{
+  0%,100%{transform:scale(1);opacity:.32;}
+  50%{transform:scale(1.08);opacity:.1;}
+}
 
 .passport-avatar{
   width:68px;height:68px;border-radius:50%;flex-shrink:0;
@@ -261,13 +275,18 @@ button{font-family:inherit;}
   font-size:19px;font-weight:700;letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+.passport-class{
+  font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--amber);margin-top:3px;
+  text-shadow:0 0 10px rgba(252,211,77,0.45);
+}
 .passport-rank{
   display:inline-flex;align-items:center;
   font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
   color:var(--rc,var(--cyan));
   background:var(--rc-bg,rgba(34,211,238,0.1));
   border:1px solid var(--rc-bd,rgba(34,211,238,0.28));
-  border-radius:5px;padding:3px 8px;margin-top:5px;
+  border-radius:5px;padding:3px 8px;margin-top:4px;
 }
 .passport-status{display:flex;align-items:center;gap:6px;margin-top:4px;}
 .status-dot{
@@ -278,19 +297,52 @@ button{font-family:inherit;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
 .status-text{font-size:11px;color:var(--text-2);}
 
-.passport-id-row{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:8px 16px 12px;position:relative;z-index:1;
-  border-top:1px solid rgba(255,255,255,0.04);
-  background:linear-gradient(90deg,rgba(34,211,238,0.03) 0%,transparent 60%);
+/* passport data strip */
+.passport-data-strip{
+  display:flex;align-items:center;gap:20px;
+  padding:10px 16px 12px;position:relative;z-index:1;
+  border-top:1px solid rgba(255,255,255,0.07);
+  background:linear-gradient(90deg,rgba(34,211,238,0.05) 0%,transparent 65%);
+}
+.passport-data-block{display:flex;flex-direction:column;gap:2px;}
+.passport-data-label{
+  font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--text-3);
 }
 .passport-id{
   font-family:'JetBrains Mono',monospace;
-  font-size:11px;font-weight:700;letter-spacing:.14em;
+  font-size:15px;font-weight:700;letter-spacing:.06em;
   color:var(--rc,var(--cyan));
-  text-shadow:0 0 12px var(--rc-bg,rgba(34,211,238,0.4));
+  text-shadow:0 0 14px var(--rc-bg,rgba(34,211,238,0.5));
 }
-.passport-since{font-size:11px;color:var(--text-3);letter-spacing:.04em;}
+.passport-since{
+  font-size:13px;font-weight:600;color:var(--text-2);letter-spacing:.04em;
+}
+.passport-chip{
+  margin-left:auto;width:34px;height:24px;flex-shrink:0;
+  border:1.5px solid rgba(34,211,238,0.22);border-radius:4px;
+  background:linear-gradient(135deg,rgba(34,211,238,0.07),rgba(16,185,129,0.07));
+  position:relative;overflow:hidden;
+}
+.passport-chip-inner{
+  position:absolute;inset:4px;
+  border:1px solid rgba(34,211,238,0.18);border-radius:2px;
+  background:
+    linear-gradient(rgba(34,211,238,0.13) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(34,211,238,0.13) 1px,transparent 1px);
+  background-size:5px 5px;
+}
+.passport-validity{
+  padding:5px 16px;position:relative;z-index:1;
+  background:rgba(34,211,238,0.025);
+  border-top:1px solid rgba(34,211,238,0.06);
+  text-align:center;
+}
+.passport-validity span{
+  font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(34,211,238,0.3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;
+}
 
 /* ── Season card (current) ───────────────────────────── */
 .season-current-card{

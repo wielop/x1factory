@@ -12,6 +12,24 @@ const RANKS = [
 function getRank(pts)     { return RANKS.find(r => pts >= r.min) || RANKS[RANKS.length-1]; }
 function getNextRank(pts) { const i = RANKS.findIndex(r => pts >= r.min); return i > 0 ? RANKS[i-1] : null; }
 
+const RANK_CLASSES = {
+  offline:    'Unregistered',
+  apprentice: 'Rookie Operator',
+  miner:      'Signal Runner',
+  operator:   'Core Builder',
+  engineer:   'Validator',
+  director:   'Architect',
+};
+function isGenesis(opId) {
+  const n = parseInt((opId||'').replace('OP-',''), 10);
+  return !isNaN(n) && n <= 200;
+}
+function operatorClass(rankKey, opId) {
+  if (rankKey === 'offline') return 'Unregistered';
+  if (isGenesis(opId)) return 'Genesis Operator';
+  return RANK_CLASSES[rankKey] || 'Operator';
+}
+
 /* ── Category icons ────────────────────────────────────── */
 const ICONS = {
   purchase:'🏭', renewal:'🔄', checkin:'📅',
@@ -136,10 +154,14 @@ function renderPassport() {
       av.textContent = (u?.firstName?.[0] || u?.username?.[0] || '?').toUpperCase();
     }
   }
+  const opId = u?.operatorId || 'OP-0000';
   setText('passport-name', u?.username ? '@'+u.username : (u?.firstName || 'Operator'));
+  setText('passport-class', operatorClass(rank.key, opId).toUpperCase());
   setText('passport-rank', `${rank.icon} ${rank.label}`);
-  setText('passport-id', u?.operatorId || 'OP-0000');
-  setText('passport-since', u?.createdAt ? 'Since '+fmtDate(u.createdAt) : '');
+  setText('passport-id', opId);
+  setText('passport-since', u?.createdAt ? fmtDate(u.createdAt) : '—');
+  const seasonName = S.season?.name || 'X1FACTORY NETWORK';
+  setText('passport-validity-text', `VALID FOR ${seasonName.toUpperCase()} · X1FACTORY NETWORK · OPERATOR ACCESS`);
 
   // Current season card
   const pill = q('#scn-status-pill');

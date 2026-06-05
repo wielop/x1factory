@@ -512,16 +512,19 @@
           <div class="swap-hint-text">Open in <strong>Phantom</strong> or <strong>Backpack</strong> to swap on-chain</div>
         </div>
 
-        <!-- Open in wallet (shown when no window.solana detected) -->
+        <!-- Open in wallet (shown when no wallet detected) -->
         <div class="swap-open-wallet card hidden" id="swap-open-in-wallet">
-          <div class="swap-open-header">Swap requires a wallet browser</div>
-          <div class="swap-open-sub">Otwórz panel w swojej aplikacji portfela — przeglądarka portfela injectuje window.solana i swap zadziała.</div>
-          <div class="swap-open-btns">
-            <button class="swap-open-btn phantom-btn" onclick="openInPhantom()">
-              <span>👻</span> Otwórz w Phantom
-            </button>
+          <div class="swap-open-header">Wallet required to swap</div>
+          <div class="swap-open-sub" id="swap-open-sub-desktop">Install the X1 Wallet browser extension to swap directly.</div>
+          <div class="swap-open-sub hidden" id="swap-open-sub-mobile">Open the panel in your wallet's browser to sign transactions.</div>
+          <div class="swap-open-btns" id="swap-open-btns-desktop">
+            <a class="swap-open-btn x1wallet-btn" href="https://chromewebstore.google.com/detail/x1-wallet/kcfmcpdmlchhbikbogddmgopmjbflnae" target="_blank">
+              <span>🔷</span> Install X1 Wallet
+            </a>
+          </div>
+          <div class="swap-open-btns hidden" id="swap-open-btns-mobile">
             <button class="swap-open-btn backpack-btn" onclick="openInBackpack()">
-              <span>🎒</span> Otwórz w Backpack
+              <span>🎒</span> Open in Backpack
             </button>
           </div>
         </div>

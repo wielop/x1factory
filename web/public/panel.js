@@ -748,7 +748,7 @@ function initSwapTab() {
 }
 
 function detectWallet() {
-  const hasWallet = !!(window.solana || window.backpack || window.phantom?.solana);
+  const hasWallet = !!(window.x1Wallet || window.x1 || window.solana || window.backpack || window.phantom?.solana);
   const hint = q('#swap-wallet-hint');
   const openSection = q('#swap-open-in-wallet');
   if (hasWallet) {
@@ -756,16 +756,28 @@ function detectWallet() {
     if (openSection) openSection.classList.add('hidden');
     updateSwapBtn(true);
   } else {
-    if (hint) hint.classList.add('hidden'); // hide generic hint
+    if (hint) hint.classList.add('hidden');
     if (openSection) openSection.classList.remove('hidden');
+    // Detect if mobile (Telegram or touch device) → show Backpack deeplink
+    // On desktop → show X1 Wallet install link
+    const isMobile = /Android|iPhone|iPad|Telegram/.test(navigator.userAgent) || window.Telegram?.WebApp?.platform !== 'unknown';
+    const desktopSub = q('#swap-open-sub-desktop');
+    const mobileSub = q('#swap-open-sub-mobile');
+    const desktopBtns = q('#swap-open-btns-desktop');
+    const mobileBtns = q('#swap-open-btns-mobile');
+    if (isMobile) {
+      if (desktopSub) desktopSub.classList.add('hidden');
+      if (mobileSub) mobileSub.classList.remove('hidden');
+      if (desktopBtns) desktopBtns.classList.add('hidden');
+      if (mobileBtns) mobileBtns.classList.remove('hidden');
+    } else {
+      if (desktopSub) desktopSub.classList.remove('hidden');
+      if (mobileSub) mobileSub.classList.add('hidden');
+      if (desktopBtns) desktopBtns.classList.remove('hidden');
+      if (mobileBtns) mobileBtns.classList.add('hidden');
+    }
     updateSwapBtn(false);
   }
-}
-
-function openInPhantom() {
-  const url = encodeURIComponent(window.location.href);
-  const deeplink = `https://phantom.app/ul/browse/${url}?ref=${url}`;
-  window.open(deeplink, '_blank');
 }
 
 function openInBackpack() {
@@ -775,7 +787,8 @@ function openInBackpack() {
 }
 
 function getWalletProvider() {
-  return window.backpack || window.phantom?.solana || window.solana || null;
+  // Priority: X1 Wallet (native X1) > Backpack > Phantom > generic window.solana
+  return window.x1Wallet || window.x1 || window.backpack || window.phantom?.solana || window.solana || null;
 }
 
 function updateSwapBtn(hasWallet) {

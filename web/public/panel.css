@@ -1294,6 +1294,6 @@ button{font-family:inherit;}
 .swap-open-sub{font-size:12px;color:var(--text-3);line-height:1.5;}
 .swap-open-btns{display:flex;gap:10px;}
 .swap-open-btn{flex:1;padding:12px 8px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s;}
-.phantom-btn{background:linear-gradient(135deg,#ab9ff2,#8070d4);color:#fff;}
+.x1wallet-btn{background:linear-gradient(135deg,#1a9fff,#0066cc);color:#fff;text-decoration:none;}
 .backpack-btn{background:linear-gradient(135deg,#e8632a,#c84b16);color:#fff;}
 .swap-open-btn:active{opacity:.8;}

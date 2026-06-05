@@ -24,6 +24,10 @@ export async function showConnectWallet(ctx: BotContext): Promise<void> {
     ? `Current wallet: ${shortWallet(activeWallet.address)}`
     : "No wallet connected yet.";
 
+  const note = activeWallet
+    ? "Note: wallet changes are locked once you earn points in an active season."
+    : "Once connected, this wallet is your season identity.";
+
   await ctx.reply(
     [
       factoryHeader("CONNECT WALLET"),
@@ -31,6 +35,7 @@ export async function showConnectWallet(ctx: BotContext): Promise<void> {
       currentLine,
       "",
       "Paste your Solana wallet address to connect or update it.",
+      note,
       ...formatTestingNotice(testingNotice)
     ].join("\n"),
     walletInputKeyboard()

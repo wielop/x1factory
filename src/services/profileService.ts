@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma.js";
-import { getActiveOrUpcomingSeason, registerUserForSeason } from "../db/seasonRepository.js";
+import { getActiveSeason, getActiveOrUpcomingSeason, registerUserForSeason } from "../db/seasonRepository.js";
 import { upsertTelegramUser } from "../db/userRepository.js";
 import { assignActiveWalletToUser, getActiveWalletForUser } from "../db/walletRepository.js";
 import { formatEventCategory } from "./eventLabels.js";
@@ -78,6 +78,19 @@ export async function registerWalletForTelegramUser(params: {
   walletAddress: string;
 }) {
   const user = await registerProfile(params.telegramUser);
+  const activeWallet = await getActiveWalletForUser(user.id);
+
+  if (activeWallet && activeWallet.address !== params.walletAddress) {
+    const activeSeason = await getActiveSeason();
+    if (activeSeason) {
+      const existingReg = await prisma.seasonRegistration.findUnique({
+        where: { userId_seasonId: { userId: user.id, seasonId: activeSeason.id } }
+      });
+      if (existingReg) {
+        throw new Error(`Wallet changes are locked during an active season (${activeSeason.name}). You can change your wallet between seasons.`);
+      }
+    }
+  }
 
   const wallet = await assignActiveWalletToUser({
     userId: user.id,

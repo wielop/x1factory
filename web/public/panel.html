@@ -108,21 +108,33 @@
         <!-- Current season performance -->
         <div class="season-current-card card" id="season-current-card">
           <div class="scn-top">
-            <span class="scn-title" id="scn-season-name">This Season</span>
-            <span class="status-pill" id="scn-status-pill"></span>
+            <div class="scn-top-left">
+              <span class="scn-label">Season Status</span>
+              <span class="scn-season-name" id="scn-season-name">—</span>
+            </div>
+            <div class="scn-top-right">
+              <span class="status-pill" id="scn-status-pill"></span>
+              <button class="scn-sync-btn" id="scn-refresh-btn" onclick="doRefresh()" title="Sync">⟳</button>
+            </div>
           </div>
           <div class="scn-pts-row">
             <div class="scn-pts" id="scn-pts">0</div>
-            <button class="scn-refresh-btn" id="scn-refresh-btn" onclick="doRefresh()">↻</button>
+            <span class="scn-pts-unit">SP</span>
           </div>
+          <div class="scn-pts-label">Season Points</div>
           <div class="scn-meta" id="scn-meta"></div>
           <div class="goal-bar" id="goal-bar">
-            <div class="goal-bar-labels">
-              <span id="goal-label">—</span>
-              <strong id="goal-pct">—</strong>
+            <div class="scn-next-rank" id="goal-label">—</div>
+            <div class="scn-rank-bar-row">
+              <span class="scn-rank-from" id="scn-rank-from">—</span>
+              <div class="goal-track">
+                <div class="goal-fill" id="goal-fill" style="width:0%"></div>
+              </div>
+              <span class="scn-rank-to" id="scn-rank-to">—</span>
             </div>
-            <div class="goal-track">
-              <div class="goal-fill" id="goal-fill" style="width:0%"></div>
+            <div class="scn-rank-progress-row">
+              <span class="scn-pts-remaining" id="scn-pts-remaining"></span>
+              <strong class="scn-pct" id="goal-pct">—</strong>
             </div>
           </div>
         </div>

@@ -183,22 +183,29 @@ function renderPassport() {
 
   const meta = q('#scn-meta');
   if (S.stats?.rank) {
-    if(meta) meta.innerHTML = `Rank <strong class="cyan">#${S.stats.rank}</strong> · ${S.stats.eventsCount} events`;
+    if(meta) meta.innerHTML = `<strong class="cyan">#${S.stats.rank}</strong> Rank · ${S.stats.eventsCount} Verified Events`;
   } else {
     setText('scn-meta', S.season ? 'Earn points to get ranked' : 'Season not started');
   }
 
   // Goal bar
   if (next) {
-    const ptsToNext  = next.min - pts;
-    const rangeSize  = next.min - rank.min;
-    const progress   = rangeSize > 0 ? Math.min(100, ((pts - rank.min) / rangeSize) * 100) : 100;
-    const gl=q('#goal-label'); if(gl) gl.innerHTML = `${fmtNum(ptsToNext)} pts to <strong>${next.icon} ${next.label}</strong>`;
+    const ptsToNext = next.min - pts;
+    const rangeSize = next.min - rank.min;
+    const progress  = rangeSize > 0 ? Math.min(100, ((pts - rank.min) / rangeSize) * 100) : 100;
+    setText('goal-label', `Next Rank: ${next.icon} ${next.label}`);
+    setText('scn-rank-from', rank.label);
+    setText('scn-rank-to',   next.label);
+    setText('scn-pts-remaining', `${fmtNum(ptsToNext)} SP remaining`);
     setText('goal-pct', Math.round(progress)+'%');
     const gf=q('#goal-fill'); if(gf) gf.style.width = progress.toFixed(1)+'%';
     show('goal-bar');
   } else {
-    hide('goal-bar');
+    const glEl = q('#goal-label');
+    if (glEl) glEl.textContent = rank.key !== 'offline' ? `Max Rank: ${rank.icon} ${rank.label}` : '';
+    setText('scn-rank-from', ''); setText('scn-rank-to', ''); setText('scn-pts-remaining', '');
+    setText('goal-pct', '');
+    const gf=q('#goal-fill'); if(gf) gf.style.width='100%';
   }
 
   // Battle card

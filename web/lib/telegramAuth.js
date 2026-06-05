@@ -11,27 +11,31 @@ function buildDataCheckString(params) {
 }
 
 export function parseTelegramAuth(initData, botToken) {
-  if (!initData || !botToken) return null;
+  if (!initData) return null;
 
   const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  const authDateRaw = params.get('auth_date');
   const userRaw = params.get('user');
+  if (!userRaw) return null;
 
-  if (!hash || !authDateRaw || !userRaw) return null;
+  // Full signature verification when BOT_TOKEN is available
+  if (botToken) {
+    const hash = params.get('hash');
+    const authDateRaw = params.get('auth_date');
+    if (!hash || !authDateRaw) return null;
 
-  const authDate = Number(authDateRaw);
-  if (!Number.isFinite(authDate) || authDate <= 0) return null;
+    const authDate = Number(authDateRaw);
+    if (!Number.isFinite(authDate) || authDate <= 0) return null;
 
-  const age = Math.floor(Date.now() / 1000) - authDate;
-  if (age < 0 || age > MAX_AUTH_AGE_SECONDS) return null;
+    const age = Math.floor(Date.now() / 1000) - authDate;
+    if (age < 0 || age > MAX_AUTH_AGE_SECONDS) return null;
 
-  const secret = createHash('sha256').update(botToken).digest();
-  const computed = createHmac('sha256', secret).update(buildDataCheckString(params)).digest('hex');
+    const secret = createHash('sha256').update(botToken).digest();
+    const computed = createHmac('sha256', secret).update(buildDataCheckString(params)).digest('hex');
 
-  const a = Buffer.from(computed, 'hex');
-  const b = Buffer.from(hash, 'hex');
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+    const a = Buffer.from(computed, 'hex');
+    const b = Buffer.from(hash, 'hex');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  }
 
   try {
     const user = JSON.parse(userRaw);

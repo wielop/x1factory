@@ -171,96 +171,29 @@ function computeBadges(params: {
   return { leveled, trophies };
 }
 
-// ── Rotating weekly missions ──────────────────────────────
-const WEEKLY_MISSIONS = [
-  {
-    key: 'five_full_days',
-    icon: '⚡',
-    label: '5 Kompletnych Dni',
-    description: 'Wykonaj check-in + odbierz MIND przez 5 różnych dni w tygodniu',
-    bonus: 300,
-    goal: 5,
-  },
-  {
-    key: 'big_miner',
-    icon: '⛏️',
-    label: 'Górnik Tygodnia',
-    description: 'Odbierz MIND ≥ 250 przez 3 różne dni w tym tygodniu',
-    bonus: 250,
-    goal: 3,
-  },
-  {
-    key: 'big_staker',
-    icon: '🔒',
-    label: 'Wielki Staker',
-    description: 'Miej co najmniej 1000 MIND w stakingu w tym tygodniu',
-    bonus: 250,
-    goal: 1,
-  },
-  {
-    key: 'max_claim',
-    icon: '💎',
-    label: 'Maksymalny Claim',
-    description: 'Odbierz MIND ≥ 500 w jednym dniu (maksymalny próg)',
-    bonus: 300,
-    goal: 1,
-  },
-  {
-    key: 'factory_week',
-    icon: '🏭',
-    label: 'Tydzień Fabrykanta',
-    description: 'Osiągnij maksymalny claim (≥ 500 MIND) przez 3 różne dni',
-    bonus: 400,
-    goal: 3,
-  },
-] as const;
-
-function currentWeekMission() {
-  const idx = Math.floor(weekStartUTC().getTime() / (7 * 86400000)) % WEEKLY_MISSIONS.length;
-  return WEEKLY_MISSIONS[idx];
-}
+// ── Weekly mission ────────────────────────────────────────
+const WEEKLY_MISSION = {
+  key: 'seven_full_days',
+  icon: '⚡',
+  label: '7 Kompletnych Dni',
+  description: 'Wykonaj check-in + odbierz MIND każdego dnia tygodnia (pon–niedz)',
+  bonus: 500,
+  goal: 7,
+} as const;
 
 async function computeWeekMissionProgress(
   userId: number,
   seasonId: number,
-  key: string,
   weekStart: Date,
 ): Promise<number> {
   const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
-
-  if (key === 'five_full_days') {
-    const [checkins, claims] = await Promise.all([
-      prisma.seasonPoint.findMany({ where: { userId, seasonId, category: 'daily_checkin', createdAt: { gte: weekStart, lt: weekEnd } }, select: { createdAt: true } }),
-      prisma.seasonPoint.findMany({ where: { userId, seasonId, category: 'claim_mind_daily', createdAt: { gte: weekStart, lt: weekEnd } }, select: { createdAt: true } }),
-    ]);
-    const checkinDays = new Set(checkins.map(e => e.createdAt.toISOString().slice(0, 10)));
-    const claimDays   = new Set(claims.map(e => e.createdAt.toISOString().slice(0, 10)));
-    return [...checkinDays].filter(d => claimDays.has(d)).length;
-  }
-
-  if (key === 'big_miner' || key === 'max_claim' || key === 'factory_week') {
-    const events = await prisma.seasonPoint.findMany({
-      where: { userId, seasonId, category: 'claim_mind_daily', createdAt: { gte: weekStart, lt: weekEnd } },
-      select: { createdAt: true, points: true },
-    });
-    const byDay = new Map<string, number>();
-    for (const e of events) {
-      const day = e.createdAt.toISOString().slice(0, 10);
-      byDay.set(day, (byDay.get(day) ?? 0) + e.points);
-    }
-    if (key === 'big_miner')    return [...byDay.values()].filter(t => t >= 80).length;
-    if (key === 'max_claim')    return [...byDay.values()].some(t => t >= 150) ? 1 : 0;
-    if (key === 'factory_week') return [...byDay.values()].filter(t => t >= 150).length;
-  }
-
-  if (key === 'big_staker') {
-    const found = await prisma.seasonPoint.findFirst({
-      where: { userId, seasonId, category: 'stake_snapshot', points: { gte: 250 }, createdAt: { gte: weekStart, lt: weekEnd } },
-    });
-    return found ? 1 : 0;
-  }
-
-  return 0;
+  const [checkins, claims] = await Promise.all([
+    prisma.seasonPoint.findMany({ where: { userId, seasonId, category: 'daily_checkin', createdAt: { gte: weekStart, lt: weekEnd } }, select: { createdAt: true } }),
+    prisma.seasonPoint.findMany({ where: { userId, seasonId, category: 'claim_mind_daily', createdAt: { gte: weekStart, lt: weekEnd } }, select: { createdAt: true } }),
+  ]);
+  const checkinDays = new Set(checkins.map(e => e.createdAt.toISOString().slice(0, 10)));
+  const claimDays   = new Set(claims.map(e => e.createdAt.toISOString().slice(0, 10)));
+  return [...checkinDays].filter(d => claimDays.has(d)).length;
 }
 
 export async function GET(req: NextRequest) {
@@ -459,12 +392,12 @@ export async function GET(req: NextRequest) {
       },
     ];
 
-    // Weekly rotating mission
+    // Weekly mission
     let weeklyMission = null;
     if (season) {
-      const mission = currentWeekMission();
+      const mission = WEEKLY_MISSION;
       const [progress, alreadyAwarded] = await Promise.all([
-        computeWeekMissionProgress(user.id, season.id, mission.key, weekStart),
+        computeWeekMissionProgress(user.id, season.id, weekStart),
         prisma.seasonPoint.findFirst({
           where: {
             userId: user.id, seasonId: season.id,

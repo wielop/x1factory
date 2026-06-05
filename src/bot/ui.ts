@@ -5,18 +5,16 @@ export const FACTORY_XP = "Season Points";
 export const MENU_LABELS = {
   connectWallet: "Connect Wallet",
   howItWorks: "How It Works",
-  dailyCheckin: "Daily Check-in ✅",
 } as const;
 
 export function mainMenuKeyboard(miniAppUrl?: string) {
   const rows = miniAppUrl
     ? [
         [Markup.button.webApp("Season Panel", miniAppUrl), MENU_LABELS.connectWallet],
-        [MENU_LABELS.dailyCheckin, MENU_LABELS.howItWorks]
+        [MENU_LABELS.howItWorks]
       ]
     : [
-        [MENU_LABELS.connectWallet, MENU_LABELS.howItWorks],
-        [MENU_LABELS.dailyCheckin]
+        [MENU_LABELS.connectWallet, MENU_LABELS.howItWorks]
       ];
 
   return Markup.keyboard(rows).resize();

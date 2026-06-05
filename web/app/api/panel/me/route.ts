@@ -32,6 +32,22 @@ function operatorId(userId: number): string {
   return "OP-" + String(userId).padStart(4, "0");
 }
 
+async function getTelegramPhotoUrl(telegramId: bigint, botToken: string): Promise<string | null> {
+  try {
+    const r1 = await fetch(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${telegramId}&limit=1`);
+    const d1 = await r1.json() as { ok: boolean; result: { photos: { file_id: string }[][] } };
+    if (!d1.ok || !d1.result.photos.length) return null;
+    const photos = d1.result.photos[0];
+    const fileId = photos[photos.length - 1].file_id;
+    const r2 = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
+    const d2 = await r2.json() as { ok: boolean; result: { file_path: string } };
+    if (!d2.ok) return null;
+    return `https://api.telegram.org/file/bot${botToken}/${d2.result.file_path}`;
+  } catch {
+    return null;
+  }
+}
+
 // ── Prize pool ────────────────────────────────────────
 const PRIZE_TIERS = [
   { label: "1st place",  rankMin: 1,  rankMax: 1,  sharePct: 35 },
@@ -136,8 +152,10 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     const todayUtcStart = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
 
-    // Parallel: current season, wallet, all seasons, all-time stats, event categories
-    const [season, wallet, allSeasons, allTimeStatsList, eventCategoryRows] = await Promise.all([
+    const botToken = process.env.BOT_TOKEN ?? "";
+
+    // Parallel: current season, wallet, all seasons, all-time stats, event categories, photo
+    const [season, wallet, allSeasons, allTimeStatsList, eventCategoryRows, photoUrl] = await Promise.all([
       prisma.season.findFirst({
         where: { status: { in: ["ACTIVE", "UPCOMING"] } },
         orderBy: { startsAt: "asc" },
@@ -153,6 +171,7 @@ export async function GET(req: NextRequest) {
         select: { category: true },
         distinct: ["category"],
       }),
+      getTelegramPhotoUrl(telegramId, botToken),
     ]);
 
     // Current season data
@@ -291,6 +310,7 @@ export async function GET(req: NextRequest) {
         firstName: user.firstName,
         createdAt: user.createdAt.toISOString(),
         operatorId: operatorId(user.id),
+        photoUrl: photoUrl ?? null,
       },
       wallet: wallet ? { address: wallet.address, short: shortWallet(wallet.address) } : null,
       season: season

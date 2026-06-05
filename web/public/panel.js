@@ -39,13 +39,13 @@ async function init() {
   tg.setBackgroundColor('#030d12');
   tg.setHeaderColor('#030d12');
   myTelegramId = String(tg.initDataUnsafe?.user?.id ?? '');
-  S.photoUrl = tg.initDataUnsafe?.user?.photo_url || null;
 
   try {
     const data = await get('/api/panel/me');
     if (!data.ok) throw new Error(data.error || 'Failed to load.');
 
     S.user          = data.user;
+    S.photoUrl      = data.user?.photoUrl || null;
     S.wallet        = data.wallet;
     S.season        = data.season;
     S.stats         = data.stats;
@@ -298,6 +298,37 @@ function renderPrizePool() {
   }
 }
 
+/* ── Daily Check-in ────────────────────────────────────── */
+async function doCheckin() {
+  const btn = q('#checkin-btn');
+  const msg = q('#checkin-msg');
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  if (msg) { msg.classList.add('hidden'); msg.classList.remove('error'); }
+  try {
+    const r = await fetch('/api/panel/checkin', {
+      method: 'POST',
+      headers: { 'x-telegram-init-data': initData() }
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Failed.');
+    if (data.alreadyDone) {
+      if (btn) { btn.textContent = 'Already checked in today ✅'; }
+      if (msg) { msg.textContent = 'Come back tomorrow!'; msg.classList.remove('hidden'); }
+    } else {
+      if (btn) { btn.textContent = 'Checked in ✅'; }
+      if (msg) { msg.textContent = `+${data.pointsAwarded} pts earned! Total: ${data.totalPoints}`; msg.classList.remove('hidden'); }
+      S.stats = S.stats ? { ...S.stats, totalPoints: data.totalPoints, rank: data.rank } : null;
+      setText('scn-pts', fmtNum(data.totalPoints));
+      const cm = S.dailyMissions.find(m => m.key === 'checkin');
+      if (cm) cm.done = true;
+      renderMissions();
+    }
+  } catch(err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Daily Check-in ✅ +10 pts'; }
+    if (msg) { msg.textContent = err.message || 'Error'; msg.classList.remove('hidden'); msg.classList.add('error'); }
+  }
+}
+
 /* ── Daily missions ────────────────────────────────────── */
 function renderMissions() {
   const ms = S.dailyMissions;
@@ -312,6 +343,15 @@ function renderMissions() {
       <span class="mission-pts">${m.done ? 'done' : '+'+m.pts+' pts'}</span>
     </div>`
   ).join('');
+
+  const checkinDone = ms.find(m => m.key === 'checkin')?.done;
+  const btn = q('#checkin-btn');
+  if (btn) {
+    btn.disabled = !!checkinDone;
+    btn.textContent = checkinDone ? 'Checked in today ✅' : 'Daily Check-in ✅ +10 pts';
+  }
+  const msg = q('#checkin-msg');
+  if (msg && checkinDone) { msg.classList.add('hidden'); }
 }
 
 /* ── Refresh ───────────────────────────────────────────── */

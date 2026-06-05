@@ -482,6 +482,17 @@ button{font-family:inherit;}
   font-size:9px;color:#fff;font-weight:700;
 }
 .mission.done .mission-check{display:flex;}
+.checkin-btn{
+  margin-top:12px;width:100%;padding:10px;
+  background:var(--cyan-dim);border:1.5px solid var(--cyan);
+  color:var(--cyan);border-radius:var(--r);
+  font-size:13px;font-weight:700;cursor:pointer;
+  transition:opacity .15s;
+}
+.checkin-btn:active{opacity:.6;}
+.checkin-btn:disabled{opacity:.4;cursor:default;}
+.checkin-msg{margin-top:8px;font-size:12px;text-align:center;color:var(--emerald);}
+.checkin-msg.error{color:var(--text-3);}
 
 /* ── Refresh button ──────────────────────────────────── */
 .refresh-row{

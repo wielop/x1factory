@@ -1,7 +1,8 @@
 import type { BotInstance } from "../bot/types.js";
 import { findUserByTelegramId } from "../db/userRepository.js";
-import { registerWalletForTelegramUser } from "../services/profileService.js";
+import { registerActiveWalletForCurrentSeason } from "../services/profileService.js";
 import { isValidWalletAddress } from "../services/walletValidation.js";
+import { assignActiveWalletToUser } from "../db/walletRepository.js";
 
 import { isAdminTelegramUser } from "./adminAuth.js";
 
@@ -32,23 +33,23 @@ export function registerAdminSetWalletCommand(bot: BotInstance): void {
       return;
     }
 
-    const result = await registerWalletForTelegramUser({
-      telegramUser: {
-        id: telegramId,
-        username: user.username ?? undefined,
-        first_name: user.firstName ?? undefined,
-        last_name: user.lastName ?? undefined,
-        language_code: user.languageCode ?? undefined
-      },
-      walletAddress,
-      allowWalletChange: true
+    const wallet = await assignActiveWalletToUser({
+      userId: user.id,
+      address: walletAddress,
+      allowReassignment: true
+    });
+
+    await registerActiveWalletForCurrentSeason({
+      userId: user.id,
+      walletId: wallet.id,
+      walletAddress: wallet.address
     });
 
     await ctx.reply(
       [
         "Wallet updated by admin.",
-        `User: ${result.user.telegramId.toString()}`,
-        `Wallet: ${result.wallet.address}`
+        `User: ${user.telegramId.toString()}`,
+        `Wallet: ${wallet.address}`
       ].join("\n")
     );
   });

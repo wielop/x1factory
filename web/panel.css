@@ -140,6 +140,21 @@ button { font-family: inherit; }
 
 .header-brand { display: flex; align-items: center; gap: 8px; }
 
+.header-right { display: flex; align-items: center; gap: 8px; }
+
+.refresh-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  background: none; border: none;
+  color: var(--text-3); cursor: pointer;
+  border-radius: 50%;
+  transition: color .15s, background .15s;
+  padding: 0;
+}
+.refresh-btn:active { background: rgba(255,255,255,.06); color: var(--cyan); }
+.refresh-btn.spinning svg { animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .brand-logo { font-size: 20px; }
 
 .brand-name {

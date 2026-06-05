@@ -19,14 +19,11 @@ export const MENU_LABELS = {
 export function mainMenuKeyboard(miniAppUrl?: string) {
   const rows = miniAppUrl
     ? [
-        [Markup.button.webApp("Play Reactor Rush", addMiniAppCacheBust(miniAppUrl)), MENU_LABELS.connectWallet],
-        [MENU_LABELS.myFactory, MENU_LABELS.season],
-        [MENU_LABELS.leaderboard, MENU_LABELS.howItWorks]
+        [Markup.button.webApp("Season Panel", addMiniAppCacheBust(miniAppUrl)), MENU_LABELS.connectWallet],
+        [MENU_LABELS.howItWorks]
       ]
     : [
-        [MENU_LABELS.connectWallet, MENU_LABELS.factoryClicker],
-        [MENU_LABELS.myFactory, MENU_LABELS.season],
-        [MENU_LABELS.leaderboard, MENU_LABELS.howItWorks]
+        [MENU_LABELS.connectWallet, MENU_LABELS.howItWorks]
       ];
 
   return Markup.keyboard(rows).resize();

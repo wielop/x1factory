@@ -9,7 +9,8 @@ import {
 } from "../config/points.js";
 import type { Prisma } from "@prisma/client";
 import { notifyTelegramUser } from "../bot/notifier.js";
-import { FACTORY_XP, factoryHeader } from "../bot/ui.js";
+import { factoryHeader } from "../bot/ui.js";
+import { logger } from "../config/logger.js";
 import { prisma } from "../db/prisma.js";
 import { recalculateUserSeasonStatsTx } from "../db/seasonRepository.js";
 import { findUserById } from "../db/userRepository.js";
@@ -262,21 +263,23 @@ export async function addSeasonPoints(
         rankLines.push(`📈 Ranked for the first time: #${result.rank}`);
       }
     } else {
-      rankLines.push(`Operator rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
+      rankLines.push(`Rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
     }
 
     await notifyTelegramUser(
       user.telegramId,
       [
-        factoryHeader("PRODUCTION LOG"),
+        factoryHeader("SEASON POINTS"),
         "",
-        amount >= 0 ? `Factory output: +${amount} ${FACTORY_XP}` : `Factory correction: -${Math.abs(amount)} ${FACTORY_XP}`,
-        `Source: ${formatEventCategory(category)}`,
+        amount >= 0 ? `+${amount} Season Points` : `${amount} Season Points`,
+        `Event: ${formatEventCategory(category)}`,
         "",
-        `Season total: ${result.totalPoints} ${FACTORY_XP}`,
+        `Season total: ${result.totalPoints} SP`,
         ...rankLines
       ].join("\n")
-    );
+    ).catch((err) => {
+      logger.warn({ err, telegramUserId: user.telegramId.toString() }, "Failed to send points notification");
+    });
 
     // Notify the user who just got overtaken
     if (rankImproved && result.rank !== null && rankBefore !== null && result.rank < rankBefore) {
@@ -363,13 +366,13 @@ export async function processDailyClaim(
       "Your claim line updated.",
       ...(typeof claimIncrementAmount === "number" ? [`Last claim: ${formatMindAmount(claimIncrementAmount)} MIND`] : []),
       `Today produced: ${formatMindAmount(claimedMindAmount)} MIND`,
-      `Daily claim value: ${targetPoints} ${FACTORY_XP}`
+      `Claim value: ${targetPoints} SP`
     ];
 
     if (result.points > 0) {
-      progressLines.push(`Factory output: +${result.points} ${FACTORY_XP}`);
+      progressLines.push(`+${result.points} Season Points`);
     } else {
-      progressLines.push(`Factory output: +0 ${FACTORY_XP}`);
+      progressLines.push(`No new Season Points`);
     }
 
     if (nextThreshold) {
@@ -382,7 +385,7 @@ export async function processDailyClaim(
       progressLines.push("", "Highest daily MIND crate reached.");
     }
 
-    progressLines.push("", `Season total: ${result.totalPoints} ${FACTORY_XP}`, `Operator rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
+    progressLines.push("", `Season total: ${result.totalPoints} SP`, `Rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
 
     await notifyTelegramUser(user.telegramId, progressLines.join("\n"));
   }
@@ -446,13 +449,13 @@ export async function processStakeSnapshot(
       `Total staked: ${formatMindAmount(actualStakedMindAmount)} MIND`,
       `Season baseline: ${formatMindAmount(stakeBaselineAmount)} MIND`,
       `Season growth: ${formatMindAmount(stakedMindAmount)} MIND`,
-      `Milestone value: ${targetPoints} ${FACTORY_XP}`
+      `Milestone value: ${targetPoints} SP`
     ];
 
     if (result.points > 0) {
-      progressLines.push(`Factory output: +${result.points} ${FACTORY_XP}`);
+      progressLines.push(`+${result.points} Season Points`);
     } else {
-      progressLines.push(`Factory output: +0 ${FACTORY_XP}`);
+      progressLines.push(`No new Season Points`);
     }
 
     if (reachedThreshold) {
@@ -469,7 +472,7 @@ export async function processStakeSnapshot(
       progressLines.push("", "Highest stake crate reached.");
     }
 
-    progressLines.push("", `Season total: ${result.totalPoints} ${FACTORY_XP}`, `Operator rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
+    progressLines.push("", `Season total: ${result.totalPoints} SP`, `Rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
 
     await notifyTelegramUser(user.telegramId, progressLines.join("\n"));
   }
@@ -599,7 +602,7 @@ async function notifyOvertakenUser(seasonId: number, overtakenRank: number, scor
       `⚠️ ${scorerName} just overtook you!`,
       `You dropped to rank #${overtakenRank}.`,
       "",
-      `Season total: ${overtakenStats.totalPoints} ${FACTORY_XP}`,
+      `Season total: ${overtakenStats.totalPoints} SP`,
       "Counter-attack — keep your rigs running!"
     ].join("\n")
   ).catch(() => undefined);
@@ -652,7 +655,7 @@ export async function checkSeasonEndNotifications(): Promise<void> {
         `${urgency} — ${season.name} ends in ${label}!`,
         "",
         `Your rank: #${stats.rank ?? "unranked"}`,
-        `Season points: ${stats.totalPoints} ${FACTORY_XP}`,
+        `Season points: ${stats.totalPoints} SP`,
         ...prizeLines,
         "",
         "Final push — every point counts now!"

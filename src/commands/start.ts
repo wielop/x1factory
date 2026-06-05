@@ -4,10 +4,10 @@ import { env } from "../config/env.js";
 import { factoryHeader, formatTestingNotice, mainMenuKeyboard } from "../bot/ui.js";
 import { getCurrentSeason, getSeasonTestingNotice } from "../services/seasonService.js";
 
-const REACTOR_RUSH_URL = "https://x1factory.xyz/telegrambot";
+const PANEL_URL = "https://x1factory.xyz/panel";
 
 function getMiniAppUrl(): string {
-  return env.miniAppUrl ?? REACTOR_RUSH_URL;
+  return env.miniAppUrl ?? PANEL_URL;
 }
 
 export async function showPlay(ctx: BotContext): Promise<void> {
@@ -22,33 +22,26 @@ export async function showPlay(ctx: BotContext): Promise<void> {
 export async function showStart(ctx: BotContext): Promise<void> {
   const season = await getCurrentSeason();
   const testingNotice = getSeasonTestingNotice(season?.name);
+  const seasonLine = season ? `${season.name} is live.` : "No active season at the moment.";
 
   await ctx.reply(
     [
       factoryHeader(),
       "",
-      "Connect your wallet. Open the Mini App. Tap the reactor core.",
+      seasonLine,
       "",
-      "Your factory earns Factory XP from real X1Factory activity:",
-      "- rig purchases",
-      "- renewals",
-      "- active rigs",
-      "- MIND claims",
-      "- MIND staking",
+      "Earn Season Points from your X1Factory on-chain activity:",
+      "— rig purchases & renewals",
+      "— daily active rigs",
+      "— MIND claims & staking",
       "",
-      "Reactor Rush turns daily taps into Hash, upgrades, boosts and Season Points.",
-      "Use the button below to open the game inside Telegram.",
+      "Connect your Solana wallet to start tracking.",
+      "Check your rank on the leaderboard and follow your progress in the Season Panel.",
       ...formatTestingNotice(testingNotice)
     ].join("\n"),
     mainMenuKeyboard(getMiniAppUrl())
   );
 
-  await ctx.reply(
-    "Play the Mini App:",
-    Markup.inlineKeyboard([
-      Markup.button.webApp("Play Reactor Rush", getMiniAppUrl())
-    ])
-  );
 }
 
 export function registerStartCommand(bot: BotInstance): void {

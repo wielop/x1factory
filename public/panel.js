@@ -4,7 +4,7 @@
 const S = {
   user: null, wallet: null, season: null, stats: null,
   recentEvents: [], leaderboard: null, myRank: null,
-  lbLoaded: false, countdownTimer: null
+  lbLoaded: false, countdownTimer: null, refreshTimer: null
 };
 
 let myTelegramId = null;
@@ -45,6 +45,7 @@ async function init() {
 
     hide('loading');
     show('app');
+    startAutoRefresh();
   } catch (err) {
     q('#error-message').textContent = err.message || 'Could not load your profile.';
     hide('loading');
@@ -58,6 +59,44 @@ function retryInit() {
   S.lbLoaded = false;
   init();
 }
+
+async function refreshProfile() {
+  try {
+    const data = await get('/api/panel/me');
+    if (!data.ok) return;
+
+    S.user         = data.user;
+    S.wallet       = data.wallet;
+    S.season       = data.season;
+    S.stats        = data.stats;
+    S.recentEvents = data.recentEvents || [];
+
+    renderHeader();
+    renderHomeTab();
+    renderSeasonTab();
+
+    if (S.lbLoaded) {
+      S.lbLoaded = false;
+      loadLeaderboard();
+    }
+  } catch (_) {}
+}
+
+function startAutoRefresh() {
+  if (S.refreshTimer) clearInterval(S.refreshTimer);
+  S.refreshTimer = setInterval(refreshProfile, 15000);
+}
+
+async function manualRefresh() {
+  const btn = q('#refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  await refreshProfile();
+  if (btn) btn.classList.remove('spinning');
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshProfile();
+});
 
 /* ── API ───────────────────────────────────────────────── */
 function initData() {

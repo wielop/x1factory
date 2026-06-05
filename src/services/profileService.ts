@@ -76,19 +76,13 @@ export async function registerWalletForTelegramUser(params: {
     language_code?: string;
   };
   walletAddress: string;
-  allowWalletChange?: boolean;
 }) {
   const user = await registerProfile(params.telegramUser);
-  const activeWallet = await getActiveWalletForUser(user.id);
-
-  if (activeWallet && activeWallet.address !== params.walletAddress && !params.allowWalletChange) {
-    throw new Error("Wallet already registered. Wallet changes require an admin command.");
-  }
 
   const wallet = await assignActiveWalletToUser({
     userId: user.id,
     address: params.walletAddress,
-    allowReassignment: params.allowWalletChange
+    allowReassignment: false
   });
 
   const { season, registration } = await registerActiveWalletForCurrentSeason({

@@ -1,6 +1,6 @@
 import type { BotInstance } from "../bot/types.js";
 import { clearWalletRegistration, isWalletRegistrationPending } from "../bot/registrationState.js";
-import { FACTORY_XP, factoryHeader, mainMenuKeyboard, shortWallet } from "../bot/ui.js";
+import { factoryHeader, mainMenuKeyboard, shortWallet } from "../bot/ui.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { registerWalletForTelegramUser } from "../services/profileService.js";
@@ -50,13 +50,13 @@ export function registerWalletTextHandler(bot: BotInstance): void {
 
       await ctx.reply(
         [
-          factoryHeader("FACTORY ONLINE"),
+          factoryHeader("WALLET CONNECTED"),
           "",
-          `Wallet connected: ${shortWallet(result.wallet.address)}`,
-          `Season line: ${result.season?.name ?? "not open yet"}`,
-          result.registration ? `Registration bonus queued: +50 ${FACTORY_XP}` : "Season registration: waiting for the next season",
+          `Wallet: ${shortWallet(result.wallet.address)}`,
+          `Season: ${result.season?.name ?? "no active season"}`,
+          result.registration ? "Registration bonus: +50 Season Points" : "No active season — points will be awarded when one starts.",
           "",
-          "Your factory is ready. Keep your rigs running and watch the XP stack."
+          "Your wallet is set. Your on-chain activity will now earn Season Points."
         ].join("\n"),
         mainMenuKeyboard(env.miniAppUrl)
       );

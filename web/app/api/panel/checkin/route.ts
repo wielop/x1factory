@@ -6,8 +6,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const CHECKIN_POINTS = 10;
-const WEEKLY_CHECKIN_GOAL = 5;
-const WEEKLY_CHECKIN_BONUS = 200;
 
 const STREAK_BONUSES = [
   { days: 3,  points: 50 },
@@ -21,12 +19,6 @@ function todayUTC(): { start: Date; end: Date } {
   return { start, end: new Date(start.getTime() + 86400000) };
 }
 
-function weekStartUTC(): Date {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const diffDays = day === 0 ? 6 : day - 1;
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffDays));
-}
 
 function yesterdayUTCStr(): string {
   return new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -172,55 +164,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Weekly mission ────────────────────────────────────
-    let weeklyBonus = 0;
-    const weekStart = weekStartUTC();
-    const weeklyCheckins = await prisma.seasonPoint.count({
-      where: {
-        userId: user.id,
-        seasonId: season.id,
-        category: "daily_checkin",
-        createdAt: { gte: weekStart },
-      },
-    });
-
-    if (weeklyCheckins === WEEKLY_CHECKIN_GOAL) {
-      const alreadyAwarded = await prisma.seasonPoint.findFirst({
-        where: {
-          userId: user.id,
-          seasonId: season.id,
-          category: "weekly_mission_checkin",
-          createdAt: { gte: weekStart },
-        },
-      });
-      if (!alreadyAwarded) {
-        weeklyBonus = WEEKLY_CHECKIN_BONUS;
-        await prisma.seasonPoint.create({
-          data: {
-            userId: user.id,
-            seasonId: season.id,
-            points: weeklyBonus,
-            category: "weekly_mission_checkin",
-            source: "BONUS",
-            reason: `Weekly mission: ${WEEKLY_CHECKIN_GOAL} check-ins`,
-          },
-        });
-        updatedStats = await prisma.userSeasonStats.update({
-          where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
-          data: { totalPoints: { increment: weeklyBonus } },
-        });
-      }
-    }
-
     return NextResponse.json({
       ok: true,
       alreadyDone: false,
       pointsAwarded: CHECKIN_POINTS,
       streakBonus,
-      weeklyBonus,
       streak: newStreak,
-      weeklyCheckins,
-      weeklyGoal: WEEKLY_CHECKIN_GOAL,
       totalPoints: updatedStats.totalPoints,
       rank: updatedStats.rank ?? null,
     });

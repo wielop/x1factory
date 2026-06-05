@@ -411,9 +411,6 @@ async function doCheckin() {
     S.streak = { count: data.streak, lastAt: new Date().toISOString() };
     const cm = S.dailyMissions.find(m => m.key === 'checkin');
     if (cm) cm.done = true;
-    if (data.weeklyCheckins != null && S.weeklyMission) {
-      S.weeklyMission = { ...S.weeklyMission, progress: data.weeklyCheckins, completed: S.weeklyMission.completed || data.weeklyBonus > 0 };
-    }
     S.stats = S.stats ? { ...S.stats, totalPoints: data.totalPoints, rank: data.rank } : null;
     setText('scn-pts', fmtNum(data.totalPoints));
 
@@ -422,7 +419,6 @@ async function doCheckin() {
     const parts = [];
     if (data.pointsAwarded) parts.push(`+${data.pointsAwarded} pts`);
     if (data.streakBonus)   parts.push(`🔥 +${data.streakBonus} streak bonus`);
-    if (data.weeklyBonus)   parts.push(`📅 +${data.weeklyBonus} weekly bonus`);
     if (msg && parts.length) { msg.textContent = parts.join(' · '); msg.classList.remove('hidden'); }
 
     renderMissionsTab();
@@ -568,18 +564,31 @@ function renderMissionsTab() {
   if (!wm) { if (weeklyCard) weeklyCard.classList.add('hidden'); return; }
   if (weeklyCard) weeklyCard.classList.remove('hidden');
 
+  // Dynamic label / description / icon
+  const wIcon = q('#ms-weekly-icon');
+  if (wIcon) wIcon.textContent = wm.icon || '📅';
+  const wName = q('#ms-weekly-name');
+  if (wName) wName.textContent = wm.label || '';
+  const wDesc = q('#ms-weekly-desc');
+  if (wDesc) wDesc.textContent = wm.description || '';
+
   const prog = wm.progress || 0;
-  const goal = wm.goal || 5;
+  const goal = wm.goal || 1;
   const pct  = Math.min(100, (prog / goal) * 100);
 
   setText('ms-weekly-frac', `${prog}/${goal}`);
   const bar = q('#ms-weekly-bar'); if (bar) bar.style.width = pct.toFixed(1) + '%';
 
+  // Show dots only for count-based missions (goal > 1)
   const wdots = q('#ms-weekly-dots');
   if (wdots) {
-    let h = '';
-    for (let i = 0; i < goal; i++) h += `<span class="ms-wdot${i < prog ? ' filled' : ''}"></span>`;
-    wdots.innerHTML = h;
+    if (goal > 1) {
+      let h = '';
+      for (let i = 0; i < goal; i++) h += `<span class="ms-wdot${i < prog ? ' filled' : ''}"></span>`;
+      wdots.innerHTML = h;
+    } else {
+      wdots.innerHTML = '';
+    }
   }
 
   const wBadge = q('#ms-weekly-badge');
@@ -591,11 +600,11 @@ function renderMissionsTab() {
   const wStatus = q('#ms-weekly-status');
   if (wStatus) {
     if (wm.completed) {
-      wStatus.textContent = '✅ Misja tygodniowa ukończona! +200 pts zostało przyznane.';
+      wStatus.textContent = `✅ Misja ukończona! +${wm.bonus} pts przyznane.`;
       wStatus.className = 'ms-weekly-status done';
     } else {
       const left = goal - prog;
-      wStatus.textContent = `Zostało ${left} ${left === 1 ? 'check-in' : 'check-iny'} do nagrody`;
+      wStatus.textContent = `Postęp: ${prog}/${goal}`;
       wStatus.className = 'ms-weekly-status';
     }
   }

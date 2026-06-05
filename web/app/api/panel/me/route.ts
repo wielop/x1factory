@@ -396,7 +396,7 @@ export async function GET(req: NextRequest) {
           }
         : null,
       streak: {
-        count: stats?.streakCount ?? 0,
+        count: stats?.streakCount || (todayCats.has("daily_checkin") ? 1 : 0),
         lastAt: stats?.lastCheckinAt?.toISOString() ?? null,
       },
       energy: season

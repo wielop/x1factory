@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // ── Streak logic (only on first tap of the day) ───────
+    // ── Streak logic ──────────────────────────────────────
     const existingStats = await prisma.userSeasonStats.findUnique({
       where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
     });
@@ -126,6 +126,18 @@ export async function POST(req: NextRequest) {
       if (lastDate === yesterday) newStreak = (existingStats.streakCount || 0) + 1;
       else if (lastDate === today) newStreak = existingStats.streakCount || 1;
       else newStreak = 1;
+    } else if (!isFirstTap) {
+      // Legacy: user has daily_checkin today but streak was never initialized
+      const hasTodayCheckin = await prisma.seasonPoint.findFirst({
+        where: { userId: user.id, seasonId: season.id, category: "daily_checkin", createdAt: { gte: todayStart } },
+      });
+      if (hasTodayCheckin) {
+        newStreak = 1;
+        await prisma.userSeasonStats.update({
+          where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
+          data: { streakCount: 1, lastCheckinAt: new Date() },
+        });
+      }
     }
 
     const statsUpdateData = isFirstTap

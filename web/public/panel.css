@@ -937,6 +937,9 @@ button{font-family:inherit;}
 .earn-row{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;font-size:13px;color:var(--text);border-bottom:1px solid rgba(255,255,255,.03);}
 .earn-row:last-child{border-bottom:none;}
 .earn-row b{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;}
+.earn-note{padding:6px 14px 4px;font-size:11px;color:var(--text-3);line-height:1.4;border-bottom:1px solid rgba(255,255,255,.03);}
+.earn-row-total{background:rgba(34,211,238,.04);font-weight:600;}
+.earn-row-total span{color:var(--text);font-weight:600;}
 
 /* ── Leaderboard ─────────────────────────────────────── */
 .lb-header{display:flex;align-items:center;justify-content:space-between;padding:2px 2px 4px;}

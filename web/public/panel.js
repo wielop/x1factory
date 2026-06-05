@@ -272,25 +272,38 @@ function renderBattleCard() {
   } else { hide('battle-below'); }
 }
 
-/* ── Season History ─────────────────────────────────────── */
+/* ── Season Stamps ──────────────────────────────────────── */
+function seasonCode(name, idx) {
+  const m = name.match(/\d+/);
+  if (m) return 'S' + m[0];
+  return 'S' + (idx + 1);
+}
+
 function renderStamps() {
-  const list = q('#stamps-row');
-  if (!list) return;
+  const grid = q('#stamps-row');
+  if (!grid) return;
   if (!S.seasonStamps.length) {
-    list.innerHTML = '<span class="sh-empty">No seasons yet.</span>';
+    grid.innerHTML = '<span class="stamps-empty">No seasons yet.</span>';
     return;
   }
-  list.innerHTML = S.seasonStamps.slice().reverse().map(s => {
+  grid.innerHTML = S.seasonStamps.map((s, i) => {
     const isActive = s.status === 'active';
     const isDone   = s.participated && !isActive;
-    const statusLabel = isActive ? 'Active' : isDone ? 'Participated' : 'Not joined';
-    const statusCls   = isActive ? 'active' : isDone ? 'done' : 'skip';
+    const cls      = isActive ? 'active' : isDone ? 'done' : 'skip';
+    const code     = seasonCode(s.name, i);
+    const label    = s.name.replace(/season\s*/i, '').trim() || s.name;
+    const statusTxt = isActive ? 'ACTIVE' : isDone ? 'COMPLETE' : 'UPCOMING';
     return `
-      <div class="sh-row">
-        <div class="sh-dot ${statusCls}"></div>
-        <div class="sh-info">
-          <span class="sh-name">${esc(s.name)}</span>
-          <span class="sh-status ${statusCls}">${statusLabel}</span>
+      <div class="stamp-item ${cls}">
+        <div class="stamp-seal">
+          <div class="stamp-inner">
+            <span class="stamp-code">${esc(code)}</span>
+            <span class="stamp-word">${esc(label.toUpperCase())}</span>
+          </div>
+        </div>
+        <div class="stamp-foot">
+          <span class="stamp-full-name">${esc(s.name)}</span>
+          <span class="stamp-status-tag ${cls}">${statusTxt}</span>
         </div>
       </div>`;
   }).join('');

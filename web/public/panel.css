@@ -506,31 +506,91 @@ button{font-family:inherit;}
 .battle-gap.above{background:rgba(251,113,133,.12);color:var(--rose);border:1px solid rgba(251,113,133,.2);}
 .battle-gap.below{background:rgba(16,185,129,.1);color:var(--emerald);border:1px solid var(--border-e);}
 
-/* ── Season history ──────────────────────────────────── */
-.seasons-history{padding:12px 16px;}
-.sh-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
-.sh-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);}
-.sh-meta{font-size:11px;color:var(--text-3);}
-.sh-list{display:flex;flex-direction:column;gap:0;}
-.sh-row{
-  display:flex;align-items:center;gap:12px;
-  padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.04);
+/* ── Season Stamps ───────────────────────────────────── */
+.stamps-card{padding:14px 16px;}
+.stamps-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.stamps-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);}
+.stamps-meta{font-size:11px;color:var(--text-3);}
+.stamps-grid{display:flex;flex-wrap:wrap;gap:14px;}
+.stamps-empty{font-size:12px;color:var(--text-3);}
+
+.stamp-item{display:flex;flex-direction:column;align-items:center;gap:8px;width:80px;}
+
+/* The seal circle */
+.stamp-seal{
+  width:76px;height:76px;border-radius:50%;
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid var(--border);
+  background:rgba(255,255,255,0.02);
+  transition:box-shadow .3s;
 }
-.sh-row:last-child{border-bottom:none;padding-bottom:0;}
-.sh-row:first-child{padding-top:0;}
-.sh-dot{
-  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+/* Dashed inner ring */
+.stamp-seal::before{
+  content:'';position:absolute;inset:5px;border-radius:50%;
+  border:1.5px dashed rgba(255,255,255,0.08);
 }
-.sh-dot.active{background:var(--emerald);box-shadow:0 0 6px var(--emerald);}
-.sh-dot.done{background:var(--cyan);opacity:.7;}
-.sh-dot.skip{background:var(--border);opacity:.5;}
-.sh-info{display:flex;align-items:center;justify-content:space-between;flex:1;gap:8px;}
-.sh-name{font-size:13px;font-weight:600;color:var(--text);}
-.sh-status{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
-.sh-status.active{color:var(--emerald);}
-.sh-status.done{color:var(--cyan);opacity:.7;}
-.sh-status.skip{color:var(--text-3);}
-.sh-empty{font-size:12px;color:var(--text-3);}
+/* Outer decorative ring */
+.stamp-seal::after{
+  content:'';position:absolute;inset:-4px;border-radius:50%;
+  border:1px solid rgba(255,255,255,0.04);
+}
+
+.stamp-inner{
+  display:flex;flex-direction:column;align-items:center;
+  gap:1px;position:relative;z-index:1;
+}
+.stamp-code{
+  font-family:'JetBrains Mono',monospace;
+  font-size:18px;font-weight:800;letter-spacing:-.02em;line-height:1;
+  color:var(--text-3);
+}
+.stamp-word{
+  font-size:7px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--text-3);opacity:.7;
+}
+
+/* Footer */
+.stamp-foot{display:flex;flex-direction:column;align-items:center;gap:2px;}
+.stamp-full-name{font-size:10px;font-weight:600;color:var(--text-2);text-align:center;line-height:1.2;}
+.stamp-status-tag{
+  font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-3);
+}
+
+/* ── State: done (participated) */
+.stamp-item.done .stamp-seal{
+  border-color:var(--cyan);
+  background:var(--cyan-dim);
+  box-shadow:0 0 16px rgba(34,211,238,0.2),inset 0 0 12px rgba(34,211,238,0.08);
+}
+.stamp-item.done .stamp-seal::before{border-color:rgba(34,211,238,0.25);}
+.stamp-item.done .stamp-seal::after{border-color:rgba(34,211,238,0.1);}
+.stamp-item.done .stamp-code{color:var(--cyan);}
+.stamp-item.done .stamp-word{color:var(--cyan);opacity:.8;}
+.stamp-item.done .stamp-status-tag{color:var(--cyan);opacity:.7;}
+
+/* ── State: active */
+.stamp-item.active .stamp-seal{
+  border-color:var(--emerald);
+  background:var(--em-dim);
+  box-shadow:0 0 20px rgba(16,185,129,0.28),inset 0 0 14px rgba(16,185,129,0.1);
+  animation:stamp-breathe 3s ease-in-out infinite;
+}
+.stamp-item.active .stamp-seal::before{border-color:rgba(16,185,129,0.3);border-style:solid;}
+.stamp-item.active .stamp-seal::after{border-color:rgba(16,185,129,0.12);}
+.stamp-item.active .stamp-code{
+  color:var(--emerald);
+  text-shadow:0 0 12px rgba(16,185,129,0.5);
+}
+.stamp-item.active .stamp-word{color:var(--emerald);opacity:.9;}
+.stamp-item.active .stamp-status-tag{color:var(--emerald);}
+.stamp-item.active .stamp-full-name{color:var(--text);}
+
+@keyframes stamp-breathe{
+  0%,100%{box-shadow:0 0 20px rgba(16,185,129,0.28),inset 0 0 14px rgba(16,185,129,0.1);}
+  50%{box-shadow:0 0 30px rgba(16,185,129,0.4),inset 0 0 18px rgba(16,185,129,0.16);}
+}
 
 /* ── Badges ──────────────────────────────────────────── */
 .badges-card{padding:12px 16px;}

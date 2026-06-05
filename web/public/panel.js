@@ -24,7 +24,7 @@ const S = {
   seasonStamps:[], badges:[], nearbyRanks:null,
   dailyMissions:[], prizePool:null, syncedAt:null,
   recentEvents:[], leaderboard:null, myRank:null,
-  lbLoaded:false, countdownTimer:null, prevEventCount:0
+  lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0
 };
 let myTelegramId = null;
 
@@ -62,13 +62,25 @@ async function init() {
     renderSeasonTab();
     hide('loading');
     show('app');
+    startAutoRefresh();
   } catch(err) {
-    q('#error-message').textContent = err.message || 'Could not load.';
+    console.error('panel init error:', err);
+    const em = q('#error-message');
+    if (em) em.textContent = err.message || 'Could not load.';
     hide('loading'); show('gate-error');
   }
 }
 
 function retryInit() { hide('gate-error'); show('loading'); S.lbLoaded=false; init(); }
+
+function startAutoRefresh() {
+  if (S.refreshTimer) clearInterval(S.refreshTimer);
+  S.refreshTimer = setInterval(doRefresh, 15000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') doRefresh();
+});
 
 /* ── API ───────────────────────────────────────────────── */
 function initData() { return window.Telegram?.WebApp?.initData || ''; }
@@ -95,7 +107,7 @@ function switchTab(tab) {
 
 /* ── Header ────────────────────────────────────────────── */
 function renderHeader() {
-  if (S.season) { const b=q('#season-badge'); b.textContent=S.season.name; b.classList.remove('hidden'); }
+  if (S.season) { const b=q('#season-badge'); if(b){b.textContent=S.season.name; b.classList.remove('hidden');} }
 }
 
 /* ── Passport ──────────────────────────────────────────── */
@@ -108,32 +120,31 @@ function renderPassport() {
 
   // Passport card
   const card = q('#passport-card');
-  card.className = `passport-card rank-${rank.key}`;
+  if(card) card.className = `passport-card rank-${rank.key}`;
   const letter = (u?.firstName?.[0] || u?.username?.[0] || '?').toUpperCase();
-  q('#passport-avatar').textContent = letter;
-  q('#passport-name').textContent   = u?.username ? '@'+u.username : (u?.firstName || 'Operator');
-  q('#passport-rank').textContent   = `${rank.icon} ${rank.label}`;
-  q('#passport-id').textContent     = u?.operatorId || 'OP-0000';
-  q('#passport-since').textContent  = u?.createdAt ? 'Since '+fmtDate(u.createdAt) : '';
+  setText('passport-avatar', letter);
+  setText('passport-name', u?.username ? '@'+u.username : (u?.firstName || 'Operator'));
+  setText('passport-rank', `${rank.icon} ${rank.label}`);
+  setText('passport-id', u?.operatorId || 'OP-0000');
+  setText('passport-since', u?.createdAt ? 'Since '+fmtDate(u.createdAt) : '');
 
   // Current season card
   const pill = q('#scn-status-pill');
   if (S.season) {
-    q('#scn-season-name').textContent = S.season.name;
-    pill.textContent  = S.season.status;
-    pill.className    = 'status-pill '+S.season.status.toLowerCase();
-    pill.style.display = '';
+    setText('scn-season-name', S.season.name);
+    if(pill){pill.textContent=S.season.status; pill.className='status-pill '+S.season.status.toLowerCase(); pill.style.display='';}
   } else {
-    q('#scn-season-name').textContent = 'No active season';
-    pill.style.display = 'none';
+    setText('scn-season-name', 'No active season');
+    if(pill) pill.style.display = 'none';
   }
 
-  q('#scn-pts').textContent = fmtNum(pts);
+  setText('scn-pts', fmtNum(pts));
 
+  const meta = q('#scn-meta');
   if (S.stats?.rank) {
-    q('#scn-meta').innerHTML = `Rank <strong class="cyan">#${S.stats.rank}</strong> · ${S.stats.eventsCount} events`;
+    if(meta) meta.innerHTML = `Rank <strong class="cyan">#${S.stats.rank}</strong> · ${S.stats.eventsCount} events`;
   } else {
-    q('#scn-meta').textContent = S.season ? 'Earn points to get ranked' : 'Season not started';
+    setText('scn-meta', S.season ? 'Earn points to get ranked' : 'Season not started');
   }
 
   // Goal bar
@@ -141,9 +152,9 @@ function renderPassport() {
     const ptsToNext  = next.min - pts;
     const rangeSize  = next.min - rank.min;
     const progress   = rangeSize > 0 ? Math.min(100, ((pts - rank.min) / rangeSize) * 100) : 100;
-    q('#goal-label').innerHTML = `${fmtNum(ptsToNext)} pts to <strong>${next.icon} ${next.label}</strong>`;
-    q('#goal-pct').textContent = Math.round(progress)+'%';
-    q('#goal-fill').style.width = progress.toFixed(1)+'%';
+    const gl=q('#goal-label'); if(gl) gl.innerHTML = `${fmtNum(ptsToNext)} pts to <strong>${next.icon} ${next.label}</strong>`;
+    setText('goal-pct', Math.round(progress)+'%');
+    const gf=q('#goal-fill'); if(gf) gf.style.width = progress.toFixed(1)+'%';
     show('goal-bar');
   } else {
     hide('goal-bar');
@@ -153,13 +164,13 @@ function renderPassport() {
   renderBattleCard();
 
   // Stats row
-  q('#stat-rank').textContent      = S.stats?.rank ? '#'+S.stats.rank : '—';
-  q('#stat-events').textContent    = String(S.stats?.eventsCount ?? 0);
-  q('#stat-best-rank').textContent = at?.bestRank ? '#'+at.bestRank : '—';
+  setText('stat-rank', S.stats?.rank ? '#'+S.stats.rank : '—');
+  setText('stat-events', String(S.stats?.eventsCount ?? 0));
+  setText('stat-best-rank', at?.bestRank ? '#'+at.bestRank : '—');
 
   // All-time
-  q('#at-pts').textContent     = fmtNum(at?.totalPoints ?? 0);
-  q('#at-seasons').textContent = String(at?.seasonsCount ?? 0);
+  setText('at-pts', fmtNum(at?.totalPoints ?? 0));
+  setText('at-seasons', String(at?.seasonsCount ?? 0));
 
   // Stamps
   renderStamps();
@@ -178,7 +189,7 @@ function renderPassport() {
 
   // Wallet
   if (S.wallet) {
-    q('#wallet-address').textContent = S.wallet.address;
+    setText('wallet-address', S.wallet.address);
     show('wallet-card'); hide('register-card');
   } else {
     hide('wallet-card'); show('register-card');
@@ -195,25 +206,25 @@ function renderBattleCard() {
 
   show('battle-card');
   const myName = S.user?.username ? '@'+S.user.username : (S.user?.firstName || 'You');
-  q('#b-me-rank').textContent = '#'+S.stats.rank;
-  q('#b-me-name').textContent = myName;
-  q('#b-me-pts').textContent  = fmtNum(S.stats.totalPoints);
+  setText('b-me-rank', '#'+S.stats.rank);
+  setText('b-me-name', myName);
+  setText('b-me-pts', fmtNum(S.stats.totalPoints));
 
   if (nr?.above) {
     const name = nr.above.username ? '@'+nr.above.username : (nr.above.firstName || 'Operator');
-    q('#b-above-rank').textContent = '#'+nr.above.rank;
-    q('#b-above-name').textContent = esc(name);
-    q('#b-above-pts').textContent  = fmtNum(nr.above.points);
-    q('#b-above-gap').textContent  = '+'+fmtNum(nr.above.gap);
+    setText('b-above-rank', '#'+nr.above.rank);
+    setText('b-above-name', esc(name));
+    setText('b-above-pts', fmtNum(nr.above.points));
+    setText('b-above-gap', '+'+fmtNum(nr.above.gap));
     show('battle-above');
   } else { hide('battle-above'); }
 
   if (nr?.below) {
     const name = nr.below.username ? '@'+nr.below.username : (nr.below.firstName || 'Operator');
-    q('#b-below-rank').textContent = '#'+nr.below.rank;
-    q('#b-below-name').textContent = esc(name);
-    q('#b-below-pts').textContent  = fmtNum(nr.below.points);
-    q('#b-below-gap').textContent  = '-'+fmtNum(nr.below.gap);
+    setText('b-below-rank', '#'+nr.below.rank);
+    setText('b-below-name', esc(name));
+    setText('b-below-pts', fmtNum(nr.below.points));
+    setText('b-below-gap', '-'+fmtNum(nr.below.gap));
     show('battle-below');
   } else { hide('battle-below'); }
 }
@@ -221,6 +232,7 @@ function renderBattleCard() {
 /* ── Stamps ────────────────────────────────────────────── */
 function renderStamps() {
   const row = q('#stamps-row');
+  if (!row) return;
   if (!S.seasonStamps.length) {
     row.innerHTML = '<span class="no-badges muted">No seasons yet.</span>';
     return;
@@ -239,6 +251,7 @@ function renderStamps() {
 /* ── Badges ────────────────────────────────────────────── */
 function renderBadges() {
   const grid = q('#badges-grid');
+  if (!grid) return;
   if (!S.badges.length) {
     grid.innerHTML = '<span class="no-badges muted">Complete actions to earn badges.</span>';
     return;
@@ -254,18 +267,18 @@ function renderPrizePool() {
   if (!pp) { hide('prize-card'); return; }
   show('prize-card');
 
-  q('#prize-total').textContent = fmtNum(pp.total) + ' XNT prize pool';
+  setText('prize-total', fmtNum(pp.total) + ' XNT prize pool');
 
   if (pp.myEstimated > 0 && pp.myTier) {
-    q('#prize-my-amount').textContent = fmtNum(pp.myEstimated);
-    q('#prize-my-tier').textContent   = pp.myTier;
+    setText('prize-my-amount', fmtNum(pp.myEstimated));
+    setText('prize-my-tier', pp.myTier);
     show('prize-my'); hide('prize-no-rank');
   } else {
     hide('prize-my'); show('prize-no-rank');
   }
 
   if (pp.breakdown) {
-    q('#prize-breakdown').innerHTML = pp.breakdown.map(tier => {
+    const pb=q('#prize-breakdown'); if(pb) pb.innerHTML = pp.breakdown.map(tier => {
       const isMe = pp.myTier === tier.label;
       return `
         <div class="prize-tier-row${isMe?' is-mine':''}">
@@ -283,7 +296,7 @@ function renderMissions() {
   if (!ms.length || !S.season) { hide('missions-card'); return; }
   show('missions-card');
 
-  q('#missions-row').innerHTML = ms.map(m => `
+  const mr=q('#missions-row'); if(mr) mr.innerHTML = ms.map(m => `
     <div class="mission${m.done?' done':''}">
       <div class="mission-check">✓</div>
       <span class="mission-icon">${m.icon}</span>
@@ -301,14 +314,20 @@ function updateRefreshTime() {
 }
 
 async function doRefresh() {
-  const btn = q('#refresh-btn');
-  btn.classList.add('spinning');
+  const btn1 = q('#refresh-btn');
+  const btn2 = q('#scn-refresh-btn');
+  if(btn1) btn1.classList.add('spinning');
+  if(btn2) btn2.classList.add('spinning');
   try {
     const data = await get('/api/panel/me');
     if (!data.ok) return;
     const hadEvents = S.recentEvents.length;
-    S.stats         = data.stats;
+    S.user          = data.user;
     S.wallet        = data.wallet;
+    S.season        = data.season;
+    S.stats         = data.stats;
+    S.allTime       = data.allTime;
+    S.seasonStamps  = data.seasonStamps || [];
     S.badges        = data.badges || [];
     S.nearbyRanks   = data.nearbyRanks || null;
     S.dailyMissions = data.dailyMissions || [];
@@ -316,9 +335,13 @@ async function doRefresh() {
     S.syncedAt      = data.syncedAt;
     S.prevEventCount = hadEvents;
     S.recentEvents  = data.recentEvents || [];
+    renderHeader();
     renderPassport();
+    renderSeasonTab();
+    if (S.lbLoaded) { S.lbLoaded = false; loadLeaderboard(); }
   } finally {
-    btn.classList.remove('spinning');
+    if(btn1) btn1.classList.remove('spinning');
+    if(btn2) btn2.classList.remove('spinning');
   }
 }
 
@@ -326,7 +349,7 @@ async function doRefresh() {
 function renderFeed() {
   const feed = q('#activity-feed');
   const evs  = S.recentEvents;
-  if (S.stats) q('#events-total').textContent = S.stats.eventsCount+' total';
+  if (S.stats) setText('events-total', S.stats.eventsCount+' total');
   if (!evs.length) {
     feed.innerHTML = '<div class="empty-state">No activity yet.<br>Earn points on X1Factory.</div>';
     return;
@@ -349,14 +372,14 @@ function renderFeed() {
 /* ── Season tab ────────────────────────────────────────── */
 function renderSeasonTab() {
   const s = S.season;
-  if (!s) { q('#season-card').innerHTML='<div class="empty-state">No active season.</div>'; return; }
-  q('#season-name-big').textContent = s.name;
-  const pill=q('#season-status-pill'); pill.textContent=s.status; pill.className='status-pill '+s.status.toLowerCase();
+  const sc=q('#season-card'); if(!s){if(sc)sc.innerHTML='<div class="empty-state">No active season.</div>'; return;}
+  setText('season-name-big', s.name);
+  const pill=q('#season-status-pill'); if(pill){pill.textContent=s.status; pill.className='status-pill '+s.status.toLowerCase();}
   const pct=Math.min(100,Math.max(0,(s.day/s.totalDays)*100));
-  q('#season-day-text').textContent=`Day ${s.day} / ${s.totalDays}`;
-  q('#season-progress').style.width=pct.toFixed(1)+'%';
+  setText('season-day-text', `Day ${s.day} / ${s.totalDays}`);
+  const sp=q('#season-progress'); if(sp) sp.style.width=pct.toFixed(1)+'%';
   const fmt=iso=>new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-  q('#season-dates').innerHTML=`<span>${fmt(s.startsAt)}</span><span>${fmt(s.endsAt)}</span>`;
+  const sd=q('#season-dates'); if(sd) sd.innerHTML=`<span>${fmt(s.startsAt)}</span><span>${fmt(s.endsAt)}</span>`;
   if (S.countdownTimer) clearInterval(S.countdownTimer);
   tickCountdown(new Date(s.endsAt));
   S.countdownTimer=setInterval(()=>tickCountdown(new Date(s.endsAt)),1000);
@@ -364,6 +387,7 @@ function renderSeasonTab() {
 
 function tickCountdown(endsAt) {
   const ms=endsAt.getTime()-Date.now(); const el=q('#season-countdown');
+  if(!el) return;
   if (ms<=0){el.textContent='Season ended';clearInterval(S.countdownTimer);return;}
   const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000),
         m=Math.floor((ms%3600000)/60000),sc=Math.floor((ms%60000)/1000);
@@ -372,16 +396,16 @@ function tickCountdown(endsAt) {
 
 /* ── Leaderboard ───────────────────────────────────────── */
 async function loadLeaderboard() {
-  const list=q('#lb-list'); list.innerHTML='<div class="empty-state">Loading rankings...</div>';
+  const list=q('#lb-list'); if(list) list.innerHTML='<div class="empty-state">Loading rankings...</div>';
   try {
     const data=await get('/api/panel/leaderboard');
     if (!data.ok) throw new Error(data.error||'Failed.');
     S.leaderboard=data.rows||[]; S.myRank=data.myRank??null; S.lbLoaded=true;
-    q('#lb-season-name').textContent=data.season?.name||'Rankings';
-    if (S.myRank) q('#lb-my-pos').textContent='Your rank: #'+S.myRank;
+    setText('lb-season-name', data.season?.name||'Rankings');
+    if (S.myRank) setText('lb-my-pos', 'Your rank: #'+S.myRank);
     renderLeaderboard();
-    if (S.stats?.rank) q('#stat-rank-sub').textContent=`of ${S.leaderboard.length}`;
-  } catch(err) { list.innerHTML=`<div class="empty-state">${esc(err.message)}</div>`; }
+    if (S.stats?.rank) setText('stat-rank-sub', `of ${S.leaderboard.length}`);
+  } catch(err) { if(list) list.innerHTML=`<div class="empty-state">${esc(err.message)}</div>`; }
 }
 
 function renderLeaderboard() {
@@ -427,10 +451,11 @@ async function submitWallet() {
     },800);
   } catch {showRegErr('Network error.');btn.disabled=false;btn.textContent='Register Wallet';}
 }
-function showRegErr(msg){const e=q('#register-error');e.textContent=msg;e.classList.remove('hidden');}
+function showRegErr(msg){const e=q('#register-error');if(e){e.textContent=msg;e.classList.remove('hidden');}}
 
 /* ── Helpers ───────────────────────────────────────────── */
 function q(sel){return document.querySelector(sel);}
+function setText(id,val){const e=document.getElementById(id);if(e)e.textContent=val;}
 function show(id){const e=document.getElementById(id);if(e)e.classList.remove('hidden');}
 function hide(id){const e=document.getElementById(id);if(e)e.classList.add('hidden');}
 function fmtNum(n){return Number(n).toLocaleString('en-US');}

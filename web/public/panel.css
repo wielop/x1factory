@@ -239,12 +239,19 @@ button{font-family:inherit;}
 }
 .scn-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .scn-title{font-size:13px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;}
+.scn-pts-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
 .scn-pts{
   font-size:36px;font-weight:700;
   font-family:'JetBrains Mono',monospace;
   letter-spacing:-.03em;color:var(--cyan);line-height:1;
-  margin-bottom:4px;
 }
+.scn-refresh-btn{
+  background:none;border:1.5px solid var(--cyan);color:var(--cyan);
+  border-radius:6px;padding:4px 10px;font-size:1.15rem;cursor:pointer;
+  line-height:1;transition:opacity .15s;flex-shrink:0;
+}
+.scn-refresh-btn:active{opacity:.5;}
+.scn-refresh-btn.spinning{animation:spin .6s linear infinite;}
 .scn-meta{font-size:12px;color:var(--text-2);margin-bottom:10px;}
 .scn-meta strong{color:var(--text);}
 

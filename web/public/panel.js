@@ -39,7 +39,7 @@ const ICONS = {
 /* ── State ─────────────────────────────────────────────── */
 const S = {
   user:null, wallet:null, season:null, stats:null, allTime:null,
-  seasonStamps:[], badges:{ leveled:[], trophies:[] }, nearbyRanks:null,
+  seasonStamps:[], badges:{ badges:[], trophies:[] }, nearbyRanks:null,
   dailyMissions:[], prizePool:null, syncedAt:null,
   recentEvents:[], leaderboard:null, myRank:null,
   lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0,
@@ -71,7 +71,7 @@ async function init() {
     S.stats         = data.stats;
     S.allTime       = data.allTime;
     S.seasonStamps  = data.seasonStamps || [];
-    S.badges        = data.badges || { leveled:[], trophies:[] };
+    S.badges        = data.badges || { badges:[], trophies:[] };
     S.nearbyRanks   = data.nearbyRanks || null;
     S.dailyMissions = data.dailyMissions || [];
     S.prizePool     = data.prizePool || null;
@@ -318,26 +318,22 @@ function renderBadges() {
   const grid = q('#badges-grid');
   if (!grid) return;
   const bd = S.badges || {};
-  const leveled = bd.leveled || [];
+  const badges = bd.badges || [];
   const trophies = bd.trophies || [];
-  if (!leveled.length && !trophies.length) {
-    grid.innerHTML = '<span class="no-badges muted">Complete actions to earn badges.</span>';
+  if (!badges.length && !trophies.length) {
+    grid.innerHTML = '<span class="no-badges muted">Wykonaj akcje aby odblokować odznaki.</span>';
     return;
   }
-  const LC = ['','bronze','silver','gold','platinum'];
   let html = '';
 
-  if (leveled.length) {
+  if (badges.length) {
     html += '<div class="badge-section"><div class="badge-section-title">Odznaki</div><div class="badge-leveled-grid">';
-    for (const b of leveled) {
-      const colorClass = b.key === 'genesis' ? 'badge-lvl-genesis' : (b.level > 0 ? 'badge-lvl-' + LC[b.level] : '');
-      const earned = b.level > 0;
-      html += `<div class="badge-lvl ${colorClass} ${earned ? 'earned' : 'unearned'}">
+    for (const b of badges) {
+      html += `<div class="badge-lvl ${esc(b.colorClass)} earned">
         <div class="badge-lvl-icon">${b.icon}</div>
         <div class="badge-lvl-body">
           <div class="badge-lvl-name">${esc(b.label)}</div>
-          ${earned ? `<div class="badge-lvl-tier">${esc(b.levelLabel)}</div>` : ''}
-          ${b.nextAt ? `<div class="badge-lvl-next">${esc(b.nextAt)}</div>` : ''}
+          <div class="badge-lvl-tier">${esc(b.desc)}</div>
         </div>
       </div>`;
     }
@@ -580,7 +576,7 @@ async function doRefresh() {
     S.stats         = data.stats;
     S.allTime       = data.allTime;
     S.seasonStamps  = data.seasonStamps || [];
-    S.badges        = data.badges || { leveled:[], trophies:[] };
+    S.badges        = data.badges || { badges:[], trophies:[] };
     S.nearbyRanks   = data.nearbyRanks || null;
     S.dailyMissions = data.dailyMissions || [];
     S.prizePool     = data.prizePool || null;

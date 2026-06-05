@@ -81,84 +81,33 @@ function buildPrizeBreakdown(total: number) {
   });
 }
 
-interface LeveledBadge {
-  key: string; icon: string; label: string;
-  level: 0 | 1 | 2 | 3 | 4; levelLabel: string;
-  nextAt: string | null;
-}
+interface Badge { key: string; icon: string; label: string; desc: string; colorClass: string; }
 interface TrophyBadge { key: string; icon: string; label: string; }
 
 function computeBadges(params: {
-  cats: Set<string>;
-  allTimeStats: { seasonId: number; totalPoints: number; rank: number | null; streakCount: number }[];
-  allSeasons: { id: number; name: string; status: string }[];
-  claimCount: number;
-  maxStakePts: number;
-  seasonsCount: number;
   isGenesis: boolean;
-}): { leveled: LeveledBadge[]; trophies: TrophyBadge[] } {
-  const { cats, allTimeStats, allSeasons, claimCount, maxStakePts, seasonsCount, isGenesis } = params;
-  const maxStreak = allTimeStats.reduce((max, s) => Math.max(max, s.streakCount || 0), 0);
-  const L = ['', 'Bronze', 'Silver', 'Gold', 'Platinum'] as const;
+  hasPioneer: boolean;
+  hasBigClaim: boolean;
+  allTimeStats: { seasonId: number; rank: number | null }[];
+  allSeasons: { id: number; name: string; status: string }[];
+}): { badges: Badge[]; trophies: TrophyBadge[] } {
+  const { isGenesis, hasPioneer, hasBigClaim, allTimeStats, allSeasons } = params;
 
-  function lvl(v: number, t: readonly [number, number, number, number]): 0 | 1 | 2 | 3 | 4 {
-    for (let i = 3; i >= 0; i--) if (v >= t[i]) return (i + 1) as 1 | 2 | 3 | 4;
-    return 0;
-  }
-
-  function badge(
-    key: string, icon: string, label: string,
-    value: number, t: readonly [number, number, number, number],
-    hint: (n: number) => string,
-  ): LeveledBadge {
-    const level = lvl(value, t);
-    const nextAt = level < 4 ? hint(t[level as 0 | 1 | 2 | 3] - value) : null;
-    return { key, icon, label, level, levelLabel: L[level], nextAt };
-  }
-
-  const rigLevel: 0 | 1 | 2 | 3 = cats.has('industrial_rig_purchase') ? 3
-    : cats.has('pro_rig_purchase') ? 2
-    : cats.has('starter_rig_purchase') ? 1 : 0;
-
-  const stakeLevel = lvl(maxStakePts, [25, 100, 600, 1200]);
-  const STAKE_L = ['', 'Holder', 'Believer', 'Whale', 'Titan'] as const;
-  const STAKE_N = ['Stake 100 MIND', 'Stake 500 MIND', 'Stake 2,500 MIND', 'Stake 5,000 MIND'] as const;
-
-  const leveled: LeveledBadge[] = [
-    badge('miner',   '⛏️', 'Miner',   claimCount,   [10, 50, 150, 500], n => `${n} more claims`),
-    badge('streak',  '🔥', 'Streak',  maxStreak,    [3, 7, 14, 21],     n => `${n} more days`),
-    badge('seasons', '📅', 'Seasons', seasonsCount, [2, 4, 6, 10],      n => `${n} more seasons`),
-    {
-      key: 'rig', icon: '🏭', label: 'Rig',
-      level: rigLevel as 0 | 1 | 2 | 3 | 4,
-      levelLabel: (['', 'Starter', 'Pro', 'Industrial'] as const)[rigLevel],
-      nextAt: rigLevel < 3
-        ? (['Buy a Starter Rig', 'Upgrade to Pro Rig', 'Upgrade to Industrial Rig'] as const)[rigLevel as 0 | 1 | 2]
-        : null,
-    },
-    {
-      key: 'staker', icon: '🔒', label: 'Staker',
-      level: stakeLevel,
-      levelLabel: STAKE_L[stakeLevel],
-      nextAt: stakeLevel < 4 ? STAKE_N[stakeLevel as 0 | 1 | 2 | 3] : null,
-    },
-  ];
-
-  if (isGenesis) {
-    leveled.push({ key: 'genesis', icon: '🌟', label: 'Genesis', level: 4, levelLabel: 'Genesis', nextAt: null });
-  }
+  const badges: Badge[] = [];
+  if (isGenesis)    badges.push({ key: 'genesis',         icon: '🌟', label: 'Genesis',      desc: 'Pierwsi 100 użytkowników',  colorClass: 'badge-lvl-genesis'   });
+  if (hasPioneer)   badges.push({ key: 'pioneer',         icon: '🛸', label: 'Pioneer',       desc: 'Portfel + pierwszy check-in', colorClass: 'badge-lvl-platinum' });
+  if (hasBigClaim)  badges.push({ key: 'first_big_claim', icon: '⚡', label: 'Big Claimer',   desc: 'Claim ≥ 500 MIND',          colorClass: 'badge-lvl-gold'      });
 
   const trophies: TrophyBadge[] = [];
   for (const s of allTimeStats) {
     if (s.rank === null) continue;
     const season = allSeasons.find(a => a.id === s.seasonId);
     if (!season || season.status !== 'COMPLETED') continue;
-    if (s.rank === 1)      trophies.push({ key: `winner_${s.seasonId}`, icon: '👑', label: `Winner · ${season.name}` });
-    else if (s.rank <= 3)  trophies.push({ key: `top3_${s.seasonId}`,   icon: '🥇', label: `Top 3 · ${season.name}` });
-    else if (s.rank <= 10) trophies.push({ key: `top10_${s.seasonId}`,  icon: '🏆', label: `Top 10 · ${season.name}` });
+    if (s.rank === 1)     trophies.push({ key: `champion_${s.seasonId}`, icon: '👑', label: `Champion · ${season.name}` });
+    else if (s.rank <= 3) trophies.push({ key: `podium_${s.seasonId}`,   icon: '🏆', label: `Podium · ${season.name}` });
   }
 
-  return { leveled, trophies };
+  return { badges, trophies };
 }
 
 
@@ -198,7 +147,7 @@ export async function GET(req: NextRequest) {
     const botToken = process.env.BOT_TOKEN ?? "";
 
     // Parallel: current season, wallet, all seasons, all-time stats, event categories, photo
-    const [season, wallet, allSeasons, allTimeStatsList, eventCategoryRows, photoUrl, claimCount, maxStakePtsRow] = await Promise.all([
+    const [season, wallet, allSeasons, allTimeStatsList, eventCategoryRows, photoUrl, hasBigClaimRow] = await Promise.all([
       prisma.season.findFirst({
         where: { status: { in: ["ACTIVE", "UPCOMING"] } },
         orderBy: { startsAt: "asc" },
@@ -215,11 +164,9 @@ export async function GET(req: NextRequest) {
         distinct: ["category"],
       }),
       getTelegramPhotoUrl(telegramId, botToken),
-      prisma.seasonPoint.count({ where: { userId: user.id, category: "claim_mind_daily" } }),
       prisma.seasonPoint.findFirst({
-        where: { userId: user.id, category: "stake_snapshot" },
-        orderBy: { points: "desc" },
-        select: { points: true },
+        where: { userId: user.id, category: 'claim_mind_daily', points: { gte: 150 } },
+        select: { id: true },
       }),
     ]);
 
@@ -318,15 +265,12 @@ export async function GET(req: NextRequest) {
 
     // Badges
     const cats = new Set(eventCategoryRows.map((e) => e.category));
-    const maxStakePts = maxStakePtsRow?.points ?? 0;
     const badges = computeBadges({
-      cats,
+      isGenesis: user.id <= 100,
+      hasPioneer: !!wallet && cats.has('daily_checkin'),
+      hasBigClaim: !!hasBigClaimRow,
       allTimeStats: allTimeStatsList,
       allSeasons,
-      claimCount,
-      maxStakePts,
-      seasonsCount,
-      isGenesis: user.id <= 200,
     });
 
     // Daily missions

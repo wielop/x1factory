@@ -110,7 +110,8 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   const panel = q('#tab-'+tab); if (panel) panel.classList.remove('hidden');
-  if (tab==='leaderboard' && !S.lbLoaded) loadLeaderboard();
+  if (tab === 'missions') renderMissionsTab();
+  if (tab === 'leaderboard' && !S.lbLoaded) loadLeaderboard();
 }
 
 /* ── Header ────────────────────────────────────────────── */
@@ -195,9 +196,8 @@ function renderPassport() {
   // Prize pool
   renderPrizePool();
 
-  // Daily missions
-  renderMissions();
-  renderWeeklyMission();
+  // Missions snap (passport tab)
+  renderMissionsSnap();
 
   // Refresh time
   updateRefreshTime();
@@ -307,8 +307,8 @@ function renderPrizePool() {
 
 /* ── Daily Check-in / Energy tap ──────────────────────── */
 async function doCheckin() {
-  const btn = q('#checkin-btn');
-  const msg = q('#checkin-msg');
+  const btn = q('#ms-checkin-btn');
+  const msg = q('#ms-checkin-msg');
   if (!btn || btn.disabled) return;
   btn.disabled = true;
   const prevText = btn.textContent;
@@ -324,11 +324,10 @@ async function doCheckin() {
 
     if (data.alreadyDone) {
       S.energy = { current: 0, max: data.energyMax || 5, nextRechargeAt: S.energy?.nextRechargeAt };
-      renderEnergy();
+      renderMissionsTab();
       return;
     }
 
-    // Update state
     S.energy = { current: data.energyCurrent, max: data.energyMax, nextRechargeAt: S.energy?.nextRechargeAt };
     if (data.isFirstTap) {
       S.streak = { count: data.streak, lastAt: new Date().toISOString() };
@@ -341,20 +340,17 @@ async function doCheckin() {
     S.stats = S.stats ? { ...S.stats, totalPoints: data.totalPoints, rank: data.rank } : null;
     setText('scn-pts', fmtNum(data.totalPoints));
 
-    // Floating +pts animation
     floatPts(btn, '+' + data.pointsAwarded);
 
-    // Show bonuses in message
     const parts = [];
     if (data.pointsAwarded) parts.push(`+${data.pointsAwarded} pts`);
-    if (data.streakBonus)   parts.push(`🔥 streak bonus +${data.streakBonus}`);
-    if (data.weeklyBonus)   parts.push(`📅 weekly bonus +${data.weeklyBonus}`);
+    if (data.streakBonus)   parts.push(`🔥 +${data.streakBonus} streak bonus`);
+    if (data.weeklyBonus)   parts.push(`📅 +${data.weeklyBonus} weekly bonus`);
     if (msg && parts.length) { msg.textContent = parts.join(' · '); msg.classList.remove('hidden'); }
 
-    renderMissions();
-    renderWeeklyMission();
+    renderMissionsTab();
+    renderMissionsSnap();
 
-    // Streak milestone celebration
     if (data.streakBonus && data.streak) {
       setTimeout(() => showStreakCelebration(data.streak, data.streakBonus), 300);
     }
@@ -384,139 +380,166 @@ function showStreakCelebration(days, bonus) {
   setTimeout(() => el.remove(), 2800);
 }
 
-/* ── Daily missions ────────────────────────────────────── */
-function renderMissions() {
+/* ── Missions snap (passport tab compact) ──────────────── */
+function renderMissionsSnap() {
   const ms = S.dailyMissions;
-  if (!ms.length || !S.season) { hide('missions-card'); return; }
-  show('missions-card');
-
-  const mr = q('#missions-row'); if (mr) mr.innerHTML = ms.map(m => `
-    <div class="mission${m.done?' done':''}">
-      <div class="mission-check">✓</div>
-      <span class="mission-icon">${m.icon}</span>
-      <span class="mission-label">${esc(m.label)}</span>
-      <span class="mission-pts">${m.done ? 'done' : '+'+m.pts+' pts'}</span>
+  if (!ms.length || !S.season) { hide('missions-snap'); return; }
+  show('missions-snap');
+  const row = q('#missions-snap-row');
+  if (!row) return;
+  const e = S.energy || { current:5, max:5 };
+  const energyDone = (e.current ?? 5) <= 0;
+  const items = [
+    { icon:'⚡', label:'Energy', done: energyDone },
+    ...ms.filter(m => m.key !== 'checkin').map(m => ({ icon: m.icon, label: m.label, done: m.done }))
+  ];
+  row.innerHTML = items.map(it => `
+    <div class="snap-item${it.done?' done':''}">
+      <span class="snap-icon">${it.icon}</span>
+      <span class="snap-label">${esc(it.label)}</span>
+      <span class="snap-check">${it.done ? '✓' : ''}</span>
     </div>`
   ).join('');
-
-  renderEnergy();
-  renderStreak();
 }
 
-/* ── Energy ────────────────────────────────────────────── */
-function renderEnergy() {
-  const e = S.energy || { current:5, max:5 };
-  const current = e.current ?? 5;
-  const max     = e.max ?? 5;
+/* ── Missions tab (full) ───────────────────────────────── */
+function renderMissionsTab() {
+  if (!S.season) return;
 
-  setText('energy-current', String(current));
-  setText('energy-max', String(max));
-
-  const dotsEl = q('#energy-dots');
-  if (dotsEl) {
-    let html = '';
-    for (let i = 0; i < max; i++) {
-      html += `<span class="energy-dot${i < current ? '' : ' empty'}"></span>`;
-    }
-    dotsEl.innerHTML = html;
+  // Date header
+  const dateEl = q('#ms-today');
+  if (dateEl) {
+    dateEl.textContent = new Date().toLocaleDateString('pl-PL', { weekday:'long', day:'numeric', month:'short' });
   }
 
-  const btn = q('#checkin-btn');
-  const msg = q('#checkin-msg');
+  // ── Energy ──
+  const e = S.energy || { current:5, max:5 };
+  const cur = e.current ?? 5;
+  const max = e.max ?? 5;
 
-  if (current <= 0) {
-    if (btn) {
+  setText('ms-energy-cur', String(cur));
+  setText('ms-energy-max', String(max));
+
+  const dotsEl = q('#ms-energy-dots');
+  if (dotsEl) {
+    let h = '';
+    for (let i = 0; i < max; i++) h += `<span class="ms-edot${i < cur ? '' : ' empty'}"></span>`;
+    dotsEl.innerHTML = h;
+  }
+
+  const badgeEl = q('#ms-energy-badge');
+  if (badgeEl) badgeEl.textContent = cur > 0 ? (cur === max ? '+10' : '+2') : '✓';
+
+  const btn = q('#ms-checkin-btn');
+  if (btn) {
+    if (cur <= 0) {
       btn.disabled = true;
       let rechargeText = '';
       if (e.nextRechargeAt) {
         const msLeft = new Date(e.nextRechargeAt).getTime() - Date.now();
         if (msLeft > 0) {
-          const h = Math.floor(msLeft / 3600000);
-          const m = Math.floor((msLeft % 3600000) / 60000);
-          rechargeText = ` (${h}h ${pad(m)}m)`;
+          const h2 = Math.floor(msLeft / 3600000);
+          const m2 = Math.floor((msLeft % 3600000) / 60000);
+          rechargeText = ` — ładuje się za ${h2}h ${pad(m2)}m`;
         }
       }
-      btn.textContent = '⚡ Energy recharged in' + rechargeText;
-    }
-  } else {
-    const isFirst = !S.dailyMissions.find(m => m.key === 'checkin')?.done;
-    if (btn) {
+      btn.textContent = '⚡ Energia wyczerpana' + rechargeText;
+    } else {
+      const isFirst = !S.dailyMissions.find(m => m.key === 'checkin')?.done;
       btn.disabled = false;
       btn.textContent = isFirst
-        ? `⚡ Check In +10 pts  (${current} energy left)`
-        : `⚡ Tap +2 pts  (${current} left)`;
-    }
-    if (msg) msg.classList.add('hidden');
-  }
-}
-
-/* ── Streak ────────────────────────────────────────────── */
-function renderStreak() {
-  const count = S.streak?.count || 0;
-  const row = q('#streak-row');
-  if (!row) return;
-
-  if (count === 0) { row.classList.add('hidden'); return; }
-  row.classList.remove('hidden');
-
-  setText('streak-count', String(count));
-
-  const STREAK_MILESTONES = [3, 7, 14, 21];
-  const next = STREAK_MILESTONES.find(m => m > count);
-  const nextEl = q('#streak-next');
-  if (nextEl) {
-    if (next) {
-      nextEl.textContent = `${next - count} to ${next}d bonus`;
-      nextEl.classList.remove('hidden');
-    } else {
-      nextEl.classList.add('hidden');
+        ? `⚡ Check In +10 pts  (${cur}/5 energii)`
+        : `⚡ Tap +2 pts  (${cur} energii zostało)`;
     }
   }
-}
 
-/* ── Weekly mission ────────────────────────────────────── */
-function renderWeeklyMission() {
+  // ── Claim MIND status ──
+  const claimDone = S.dailyMissions.find(m => m.key === 'claim')?.done;
+  const claimCard = q('#ms-claim-card');
+  if (claimCard) claimCard.classList.toggle('ms-card-done', !!claimDone);
+  const claimBadge = q('#ms-claim-badge');
+  if (claimBadge) { claimBadge.textContent = claimDone ? '✓ Done' : '+5–150'; claimBadge.className = 'ms-card-badge' + (claimDone ? ' ms-badge-done' : ''); }
+
+  // ── Active Rig status ──
+  const rigDone = S.dailyMissions.find(m => m.key === 'active_rig')?.done;
+  const rigCard = q('#ms-rig-card');
+  if (rigCard) rigCard.classList.toggle('ms-card-done', !!rigDone);
+  const rigBadge = q('#ms-rig-badge');
+  if (rigBadge) { rigBadge.textContent = rigDone ? '✓ Done' : '+2–20'; rigBadge.className = 'ms-card-badge' + (rigDone ? ' ms-badge-done' : ''); }
+
+  // ── Streak ──
+  const streakCount = S.streak?.count || 0;
+  setText('ms-streak-big', String(streakCount));
+
+  const pill = q('#ms-streak-pill');
+  if (pill) {
+    if (streakCount > 0) { pill.textContent = streakCount + ' dni'; pill.classList.remove('hidden'); }
+    else pill.classList.add('hidden');
+  }
+
+  const hintEl = q('#ms-streak-hint');
+  if (hintEl) {
+    const MILESTONES = [3,7,14,21];
+    const next = MILESTONES.find(m => m > streakCount);
+    hintEl.textContent = streakCount === 0
+      ? 'Zacznij check-in już dziś'
+      : next
+        ? `Jeszcze ${next - streakCount} ${next - streakCount === 1 ? 'dzień' : 'dni'} do bonusu +${[50,150,350,700][[3,7,14,21].indexOf(next)]} pts`
+        : '🏆 Osiągnąłeś maksymalny milestone!';
+  }
+
+  const msNodes = document.querySelectorAll('#ms-milestones .ms-milestone');
+  msNodes.forEach(node => {
+    const days = parseInt(node.dataset.days, 10);
+    node.classList.toggle('ms-ms-reached', streakCount >= days);
+    node.classList.toggle('ms-ms-next', streakCount < days && (!node.previousElementSibling || streakCount >= parseInt(node.previousElementSibling.dataset.days||'0',10)));
+  });
+
+  // ── Weekly mission ──
   const wm = S.weeklyMission;
-  const card = q('#weekly-card');
-  if (!card) return;
-  if (!wm || !S.season) { hide('weekly-card'); return; }
-  show('weekly-card');
+  const weeklyCard = q('#ms-weekly-card');
+  if (!wm) { if (weeklyCard) weeklyCard.classList.add('hidden'); return; }
+  if (weeklyCard) weeklyCard.classList.remove('hidden');
 
-  const progress = wm.progress || 0;
-  const goal     = wm.goal || 5;
-  const pct      = Math.min(100, (progress / goal) * 100);
+  const prog = wm.progress || 0;
+  const goal = wm.goal || 5;
+  const pct  = Math.min(100, (prog / goal) * 100);
 
-  setText('weekly-progress-text', `${progress}/${goal}`);
+  setText('ms-weekly-frac', `${prog}/${goal}`);
+  const bar = q('#ms-weekly-bar'); if (bar) bar.style.width = pct.toFixed(1) + '%';
 
-  const fill = q('#weekly-bar-fill');
-  if (fill) fill.style.width = pct.toFixed(1) + '%';
+  const wdots = q('#ms-weekly-dots');
+  if (wdots) {
+    let h = '';
+    for (let i = 0; i < goal; i++) h += `<span class="ms-wdot${i < prog ? ' filled' : ''}"></span>`;
+    wdots.innerHTML = h;
+  }
 
-  const dotsEl = q('#weekly-dots');
-  if (dotsEl) {
-    let html = '';
-    for (let i = 0; i < goal; i++) {
-      html += `<span class="weekly-dot${i < progress ? ' filled' : ''}"></span>`;
+  const wBadge = q('#ms-weekly-badge');
+  if (wBadge) {
+    wBadge.textContent = wm.completed ? '✅ Done' : `+${wm.bonus}`;
+    wBadge.className = 'ms-card-badge ms-badge-purple' + (wm.completed ? ' ms-badge-done' : '');
+  }
+
+  const wStatus = q('#ms-weekly-status');
+  if (wStatus) {
+    if (wm.completed) {
+      wStatus.textContent = '✅ Misja tygodniowa ukończona! +200 pts zostało przyznane.';
+      wStatus.className = 'ms-weekly-status done';
+    } else {
+      const left = goal - prog;
+      wStatus.textContent = `Zostało ${left} ${left === 1 ? 'check-in' : 'check-iny'} do nagrody`;
+      wStatus.className = 'ms-weekly-status';
     }
-    dotsEl.innerHTML = html;
   }
 
-  const bonusEl = q('#weekly-bonus');
-  const doneEl  = q('#weekly-done');
-  if (wm.completed) {
-    if (bonusEl) bonusEl.classList.add('hidden');
-    if (doneEl)  doneEl.classList.remove('hidden');
-  } else {
-    if (bonusEl) { bonusEl.textContent = `+${wm.bonus} pts`; bonusEl.classList.remove('hidden'); }
-    if (doneEl)  doneEl.classList.add('hidden');
-  }
-
-  const resetEl = q('#weekly-reset');
+  const resetEl = q('#ms-week-reset');
   if (resetEl && wm.nextResetAt) {
     const msLeft = new Date(wm.nextResetAt).getTime() - Date.now();
     if (msLeft > 0) {
       const d = Math.floor(msLeft / 86400000);
-      const h = Math.floor((msLeft % 86400000) / 3600000);
-      resetEl.textContent = `Resets in ${d}d ${pad(h)}h`;
+      const h2 = Math.floor((msLeft % 86400000) / 3600000);
+      resetEl.textContent = `reset za ${d}d ${pad(h2)}h`;
     }
   }
 }

@@ -47,6 +47,10 @@
         <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
         <span class="tab-label">Passport</span>
       </button>
+      <button class="tab-btn" data-tab="missions" onclick="switchTab('missions')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm2 10a1 1 0 10-2 0v2a1 1 0 102 0v-2zm2-7a1 1 0 011 1v6a1 1 0 11-2 0V6a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+        <span class="tab-label">Missions</span>
+      </button>
       <button class="tab-btn" data-tab="season" onclick="switchTab('season')">
         <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
         <span class="tab-label">Season</span>
@@ -126,50 +130,13 @@
           </div>
         </div>
 
-        <!-- Daily missions -->
-        <div class="missions-card card hidden" id="missions-card">
-          <div class="missions-title">Today's Missions</div>
-          <div class="missions-row" id="missions-row"></div>
-
-          <!-- Energy system -->
-          <div class="energy-section">
-            <div class="energy-header">
-              <span class="energy-label">⚡ Daily Energy</span>
-              <span class="energy-counter-wrap">
-                <span id="energy-current">5</span><span class="energy-sep">/</span><span id="energy-max">5</span>
-              </span>
-            </div>
-            <div class="energy-dots" id="energy-dots"></div>
-            <button class="checkin-btn" id="checkin-btn" onclick="doCheckin()">⚡ Check In +10 pts</button>
-            <div class="checkin-msg hidden" id="checkin-msg"></div>
+        <!-- Missions quick-status -->
+        <div class="missions-snap card hidden" id="missions-snap">
+          <div class="missions-snap-top">
+            <span class="missions-snap-title">Today's Missions</span>
+            <button class="missions-snap-go" onclick="switchTab('missions')">View all →</button>
           </div>
-
-          <!-- Streak row -->
-          <div class="streak-row hidden" id="streak-row">
-            <span class="streak-fire">🔥</span>
-            <span class="streak-label">Streak</span>
-            <span class="streak-count" id="streak-count">0</span>
-            <span class="streak-unit">days</span>
-            <span class="streak-next hidden" id="streak-next"></span>
-          </div>
-        </div>
-
-        <!-- Weekly mission -->
-        <div class="weekly-card card hidden" id="weekly-card">
-          <div class="weekly-header">
-            <span class="weekly-title">📅 Weekly Mission</span>
-            <span class="weekly-bonus hidden" id="weekly-bonus">+200 pts</span>
-            <span class="weekly-done hidden" id="weekly-done">✅ Done</span>
-          </div>
-          <div class="weekly-desc">Check in <strong>5 days</strong> this week</div>
-          <div class="weekly-progress-row">
-            <div class="weekly-dots" id="weekly-dots"></div>
-            <span class="weekly-progress-text" id="weekly-progress-text">0/5</span>
-          </div>
-          <div class="weekly-bar-track">
-            <div class="weekly-bar-fill" id="weekly-bar-fill" style="width:0%"></div>
-          </div>
-          <div class="weekly-reset" id="weekly-reset"></div>
+          <div class="missions-snap-row" id="missions-snap-row"></div>
         </div>
 
         <!-- Battle card -->
@@ -276,6 +243,141 @@
         </div>
         <div id="activity-feed" class="activity-feed">
           <div class="empty-state">No activity yet.<br>Earn points on X1Factory.</div>
+        </div>
+
+      </section>
+
+      <!-- ═══ MISSIONS TAB ═══ -->
+      <section id="tab-missions" class="tab-panel hidden">
+
+        <!-- ── Daily header ── -->
+        <div class="ms-section-head">
+          <span class="ms-section-title">⚡ Misje dzienne</span>
+          <span class="ms-section-date" id="ms-today"></span>
+        </div>
+
+        <!-- 1. Daily Energy / Check-in -->
+        <div class="ms-card card">
+          <div class="ms-card-top">
+            <span class="ms-icon ms-icon-energy">⚡</span>
+            <div class="ms-card-body">
+              <div class="ms-card-name">Daily Energy</div>
+              <div class="ms-card-desc">5 tapnięć dziennie — energia ładuje się o północy UTC</div>
+            </div>
+            <div class="ms-card-badge cyan" id="ms-energy-badge">+10</div>
+          </div>
+          <div class="ms-reward-list">
+            <div class="ms-reward-row"><span>Pierwsze tapnięcie (check-in)</span><b class="cyan">+10 pts</b></div>
+            <div class="ms-reward-row"><span>Każde kolejne tapnięcie (×4)</span><b>+2 pts</b></div>
+            <div class="ms-reward-row ms-reward-total"><span>Łącznie maksimum dziennie</span><b class="cyan">+18 pts</b></div>
+          </div>
+          <div class="ms-energy-bar-row">
+            <div class="ms-energy-dots" id="ms-energy-dots"></div>
+            <span class="ms-energy-label-cnt"><span id="ms-energy-cur">5</span>/<span id="ms-energy-max">5</span></span>
+          </div>
+          <button class="ms-btn" id="ms-checkin-btn" onclick="doCheckin()">⚡ Check In +10 pts</button>
+          <div class="ms-btn-msg hidden" id="ms-checkin-msg"></div>
+        </div>
+
+        <!-- 2. Claim MIND -->
+        <div class="ms-card card" id="ms-claim-card">
+          <div class="ms-card-top">
+            <span class="ms-icon">💎</span>
+            <div class="ms-card-body">
+              <div class="ms-card-name">Claim MIND</div>
+              <div class="ms-card-desc">Odbieraj tokeny MIND na X1Factory każdego dnia</div>
+            </div>
+            <div class="ms-card-badge" id="ms-claim-badge">+5–150</div>
+          </div>
+          <div class="ms-reward-list">
+            <div class="ms-reward-row"><span>Dowolna kwota</span><b>+5 pts</b></div>
+            <div class="ms-reward-row"><span>≥ 50 MIND</span><b>+15 pts</b></div>
+            <div class="ms-reward-row"><span>≥ 100 MIND</span><b>+30 pts</b></div>
+            <div class="ms-reward-row"><span>≥ 250 MIND</span><b>+80 pts</b></div>
+            <div class="ms-reward-row"><span>≥ 500 MIND</span><b class="cyan">+150 pts</b></div>
+          </div>
+        </div>
+
+        <!-- 3. Active Rig -->
+        <div class="ms-card card" id="ms-rig-card">
+          <div class="ms-card-top">
+            <span class="ms-icon">🏭</span>
+            <div class="ms-card-body">
+              <div class="ms-card-name">Active Rig</div>
+              <div class="ms-card-desc">Miej aktywny rig online — punkty przyznawane automatycznie każdego dnia</div>
+            </div>
+            <div class="ms-card-badge" id="ms-rig-badge">+2–20</div>
+          </div>
+          <div class="ms-reward-list">
+            <div class="ms-reward-row"><span>Starter rig online</span><b>+2 pts</b></div>
+            <div class="ms-reward-row"><span>Pro rig online</span><b>+8 pts</b></div>
+            <div class="ms-reward-row"><span>Industrial rig online</span><b class="cyan">+20 pts</b></div>
+          </div>
+        </div>
+
+        <!-- ── Streak header ── -->
+        <div class="ms-section-head" style="margin-top:4px">
+          <span class="ms-section-title">🔥 Seria (Streak)</span>
+          <span class="ms-streak-pill hidden" id="ms-streak-pill">0 dni</span>
+        </div>
+
+        <div class="ms-streak-card card">
+          <div class="ms-streak-hero">
+            <span class="ms-streak-big" id="ms-streak-big">0</span>
+            <div class="ms-streak-meta">
+              <div class="ms-streak-label-big">dni z rzędu</div>
+              <div class="ms-streak-hint" id="ms-streak-hint">Zacznij check-in już dziś</div>
+            </div>
+          </div>
+          <div class="ms-milestones" id="ms-milestones">
+            <div class="ms-milestone" data-days="3">
+              <span class="ms-ms-icon">🔥</span>
+              <span class="ms-ms-label">3 dni z rzędu</span>
+              <span class="ms-ms-pts">+50 pts</span>
+            </div>
+            <div class="ms-milestone" data-days="7">
+              <span class="ms-ms-icon">🔥</span>
+              <span class="ms-ms-label">7 dni z rzędu</span>
+              <span class="ms-ms-pts">+150 pts</span>
+            </div>
+            <div class="ms-milestone" data-days="14">
+              <span class="ms-ms-icon">🔥</span>
+              <span class="ms-ms-label">14 dni z rzędu</span>
+              <span class="ms-ms-pts">+350 pts</span>
+            </div>
+            <div class="ms-milestone" data-days="21">
+              <span class="ms-ms-icon">🔥</span>
+              <span class="ms-ms-label">21 dni z rzędu</span>
+              <span class="ms-ms-pts">+700 pts</span>
+            </div>
+          </div>
+          <div class="ms-streak-tip">Pominięcie dnia zeruje serię do 0.</div>
+        </div>
+
+        <!-- ── Weekly header ── -->
+        <div class="ms-section-head" style="margin-top:4px">
+          <span class="ms-section-title">📅 Misje tygodniowe</span>
+          <span class="ms-reset-tag" id="ms-week-reset"></span>
+        </div>
+
+        <!-- Weekly check-in -->
+        <div class="ms-card card" id="ms-weekly-card">
+          <div class="ms-card-top">
+            <span class="ms-icon">📅</span>
+            <div class="ms-card-body">
+              <div class="ms-card-name">Tygodniowy Check-in</div>
+              <div class="ms-card-desc">Zrób check-in <strong>5 razy w tym tygodniu</strong> (poniedziałek–niedziela)</div>
+            </div>
+            <div class="ms-card-badge ms-badge-purple" id="ms-weekly-badge">+200</div>
+          </div>
+          <div class="ms-weekly-progress">
+            <div class="ms-weekly-dots" id="ms-weekly-dots"></div>
+            <span class="ms-weekly-frac" id="ms-weekly-frac">0/5</span>
+          </div>
+          <div class="ms-bar-track">
+            <div class="ms-bar-fill" id="ms-weekly-bar" style="width:0%"></div>
+          </div>
+          <div class="ms-weekly-status" id="ms-weekly-status"></div>
         </div>
 
       </section>

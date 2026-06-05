@@ -681,6 +681,190 @@ button{font-family:inherit;}
 .refresh-btn.spinning .refresh-icon{animation:spin .4s linear;}
 .refresh-time{font-size:10px;color:var(--text-3);}
 
+/* ── Missions snap (passport tab) ───────────────────── */
+.missions-snap{padding:11px 14px;}
+.missions-snap-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.missions-snap-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);}
+.missions-snap-go{
+  background:none;border:none;color:var(--cyan);font-size:11px;font-weight:600;
+  cursor:pointer;padding:0;font-family:inherit;
+}
+.missions-snap-row{display:flex;gap:7px;}
+.snap-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:9px 5px;border-radius:var(--rs);
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  transition:all .2s;position:relative;
+}
+.snap-item.done{background:rgba(16,185,129,.08);border-color:var(--border-e);}
+.snap-icon{font-size:18px;line-height:1;}
+.snap-label{font-size:9px;font-weight:600;color:var(--text-3);text-align:center;line-height:1.2;text-transform:uppercase;letter-spacing:.04em;}
+.snap-item.done .snap-label{color:var(--emerald);}
+.snap-check{
+  position:absolute;top:4px;right:4px;
+  font-size:9px;font-weight:700;color:var(--emerald);
+  width:13px;height:13px;border-radius:50%;
+  background:rgba(16,185,129,.2);
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* ── Missions tab ────────────────────────────────────── */
+.ms-section-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:2px 2px 0;
+}
+.ms-section-title{
+  font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--text-2);
+}
+.ms-section-date{font-size:11px;color:var(--text-3);}
+
+/* mission card */
+.ms-card{padding:0;overflow:hidden;}
+.ms-card-done{border-color:var(--border-e)!important;background:linear-gradient(135deg,var(--bg-card),rgba(16,185,129,.04))!important;}
+.ms-card-top{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:13px 14px 10px;
+}
+.ms-icon{font-size:22px;line-height:1;flex-shrink:0;margin-top:1px;}
+.ms-icon-energy{filter:drop-shadow(0 0 6px rgba(34,211,238,.5));}
+.ms-card-body{flex:1;min-width:0;}
+.ms-card-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.ms-card-desc{font-size:12px;color:var(--text-2);line-height:1.45;}
+.ms-card-desc strong{color:var(--text);}
+.ms-card-badge{
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;font-weight:700;color:var(--text-2);
+  padding:3px 8px;border-radius:100px;
+  background:rgba(255,255,255,.06);border:1px solid var(--border);
+  flex-shrink:0;white-space:nowrap;
+}
+.ms-card-badge.cyan{color:var(--cyan);background:var(--cyan-dim);border-color:var(--border-c);}
+.ms-badge-purple{color:var(--purple);background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.22);}
+.ms-badge-done{color:var(--emerald);background:rgba(16,185,129,.1);border-color:var(--border-e);}
+
+/* reward list */
+.ms-reward-list{
+  border-top:1px solid var(--border);
+  padding:0 14px;
+}
+.ms-reward-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;font-size:12px;color:var(--text-2);
+  border-bottom:1px solid rgba(255,255,255,.03);
+}
+.ms-reward-row:last-child{border-bottom:none;}
+.ms-reward-row b{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text);}
+.ms-reward-total{background:rgba(34,211,238,.04);margin:0 -14px;padding:8px 14px;}
+.ms-reward-total b{color:var(--cyan);}
+
+/* energy bar */
+.ms-energy-bar-row{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px 2px;
+}
+.ms-energy-dots{display:flex;gap:5px;flex:1;}
+.ms-edot{
+  flex:1;height:8px;border-radius:4px;
+  background:var(--cyan);box-shadow:0 0 8px rgba(34,211,238,.4);
+  transition:all .3s;
+}
+.ms-edot.empty{background:rgba(255,255,255,.07);box-shadow:none;}
+.ms-energy-label-cnt{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;font-weight:700;color:var(--cyan);
+  flex-shrink:0;
+}
+
+/* action button */
+.ms-btn{
+  display:block;width:calc(100% - 28px);margin:10px 14px 14px;
+  padding:11px;
+  background:linear-gradient(135deg,rgba(34,211,238,.18),rgba(16,185,129,.1));
+  border:1.5px solid var(--cyan);color:var(--cyan);
+  border-radius:var(--r);font-size:13px;font-weight:700;
+  cursor:pointer;font-family:inherit;transition:all .15s;
+  letter-spacing:.02em;
+}
+.ms-btn:active{opacity:.65;transform:scale(.98);}
+.ms-btn:disabled{
+  opacity:.38;cursor:default;
+  background:rgba(255,255,255,.04);
+  border-color:var(--border);color:var(--text-3);
+}
+.ms-btn-msg{
+  margin:-4px 14px 12px;font-size:12px;
+  text-align:center;color:var(--emerald);line-height:1.4;
+}
+.ms-btn-msg.error{color:var(--rose);}
+
+/* streak card */
+.ms-streak-card{padding:14px 16px;}
+.ms-streak-hero{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+.ms-streak-big{
+  font-family:'JetBrains Mono',monospace;
+  font-size:48px;font-weight:700;color:var(--amber);
+  line-height:1;text-shadow:0 0 20px rgba(252,211,77,.3);
+}
+.ms-streak-label-big{font-size:14px;font-weight:700;color:var(--amber);}
+.ms-streak-hint{font-size:12px;color:var(--text-2);margin-top:2px;}
+
+/* streak milestones */
+.ms-milestones{display:flex;flex-direction:column;gap:2px;margin-bottom:12px;}
+.ms-milestone{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;border-radius:var(--rs);
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  transition:all .25s;
+}
+.ms-ms-reached{
+  background:rgba(252,211,77,.08);border-color:rgba(252,211,77,.22);
+}
+.ms-ms-next{
+  background:rgba(252,211,77,.04);border-color:rgba(252,211,77,.15);
+  box-shadow:0 0 12px rgba(252,211,77,.08);
+}
+.ms-ms-icon{font-size:16px;width:20px;text-align:center;}
+.ms-ms-label{flex:1;font-size:13px;color:var(--text-2);}
+.ms-ms-reached .ms-ms-label{color:var(--amber);}
+.ms-ms-next .ms-ms-label{color:var(--text);}
+.ms-ms-pts{
+  font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+  color:var(--text-3);
+}
+.ms-ms-reached .ms-ms-pts{color:var(--amber);}
+.ms-ms-next .ms-ms-pts{color:var(--amber);}
+.ms-streak-tip{font-size:11px;color:var(--text-3);text-align:center;}
+
+/* streak pill */
+.ms-streak-pill{
+  font-size:11px;font-weight:700;color:var(--amber);
+  padding:2px 8px;border-radius:100px;
+  background:rgba(252,211,77,.1);border:1px solid rgba(252,211,77,.2);
+}
+
+/* weekly mission */
+.ms-weekly-progress{display:flex;align-items:center;gap:10px;padding:10px 14px 6px;}
+.ms-weekly-dots{display:flex;gap:6px;flex:1;}
+.ms-wdot{
+  flex:1;height:10px;border-radius:5px;
+  background:rgba(255,255,255,.07);border:1px solid var(--border);
+  transition:all .4s;
+}
+.ms-wdot.filled{
+  background:var(--purple);border-color:rgba(167,139,250,.4);
+  box-shadow:0 0 8px rgba(167,139,250,.3);
+}
+.ms-weekly-frac{
+  font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;
+  color:var(--purple);flex-shrink:0;
+}
+.ms-bar-track{height:3px;background:rgba(255,255,255,.06);margin:0 14px 8px;border-radius:2px;overflow:hidden;}
+.ms-bar-fill{height:100%;background:linear-gradient(90deg,var(--purple),rgba(167,139,250,.6));border-radius:2px;transition:width .6s;}
+.ms-weekly-status{padding:0 14px 12px;font-size:12px;color:var(--text-2);}
+.ms-weekly-status.done{color:var(--emerald);}
+.ms-reset-tag{font-size:10px;color:var(--text-3);}
+
 /* ── New event flash ─────────────────────────────────── */
 @keyframes flashIn {
   0%{opacity:0;transform:translateY(-6px);}

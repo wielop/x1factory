@@ -27,7 +27,6 @@ const S = {
   lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0,
   photoUrl:null,
   streak:{ count:0, lastAt:null },
-  energy:{ current:5, max:5, nextRechargeAt:null },
   weeklyMission:null,
 };
 let myTelegramId = null;
@@ -62,7 +61,6 @@ async function init() {
     S.prevEventCount = S.recentEvents.length;
     S.recentEvents  = data.recentEvents || [];
     S.streak        = data.streak || { count:0, lastAt:null };
-    S.energy        = data.energy || { current:5, max:5, nextRechargeAt:null };
     S.weeklyMission = data.weeklyMission || null;
 
     renderHeader();
@@ -323,17 +321,13 @@ async function doCheckin() {
     if (!data.ok) throw new Error(data.error || 'Failed.');
 
     if (data.alreadyDone) {
-      S.energy = { current: 0, max: data.energyMax || 5, nextRechargeAt: S.energy?.nextRechargeAt };
       renderMissionsTab();
       return;
     }
 
-    S.energy = { current: data.energyCurrent, max: data.energyMax, nextRechargeAt: S.energy?.nextRechargeAt };
-    if (data.isFirstTap) {
-      S.streak = { count: data.streak, lastAt: new Date().toISOString() };
-      const cm = S.dailyMissions.find(m => m.key === 'checkin');
-      if (cm) cm.done = true;
-    }
+    S.streak = { count: data.streak, lastAt: new Date().toISOString() };
+    const cm = S.dailyMissions.find(m => m.key === 'checkin');
+    if (cm) cm.done = true;
     if (data.weeklyCheckins != null && S.weeklyMission) {
       S.weeklyMission = { ...S.weeklyMission, progress: data.weeklyCheckins, completed: S.weeklyMission.completed || data.weeklyBonus > 0 };
     }
@@ -387,12 +381,7 @@ function renderMissionsSnap() {
   show('missions-snap');
   const row = q('#missions-snap-row');
   if (!row) return;
-  const e = S.energy || { current:5, max:5 };
-  const energyDone = (e.current ?? 5) <= 0;
-  const items = [
-    { icon:'⚡', label:'Energy', done: energyDone },
-    ...ms.filter(m => m.key !== 'checkin').map(m => ({ icon: m.icon, label: m.label, done: m.done }))
-  ];
+  const items = ms.map(m => ({ icon: m.icon, label: m.label, done: m.done }));
   row.innerHTML = items.map(it => `
     <div class="snap-item${it.done?' done':''}">
       <span class="snap-icon">${it.icon}</span>
@@ -412,46 +401,17 @@ function renderMissionsTab() {
     dateEl.textContent = new Date().toLocaleDateString('pl-PL', { weekday:'long', day:'numeric', month:'short' });
   }
 
-  // ── Energy ──
-  const e = S.energy || { current:5, max:5 };
-  const cur = e.current ?? 5;
-  const max = e.max ?? 5;
-
-  setText('ms-energy-cur', String(cur));
-  setText('ms-energy-max', String(max));
-
-  const dotsEl = q('#ms-energy-dots');
-  if (dotsEl) {
-    let h = '';
-    for (let i = 0; i < max; i++) h += `<span class="ms-edot${i < cur ? '' : ' empty'}"></span>`;
-    dotsEl.innerHTML = h;
-  }
-
-  const badgeEl = q('#ms-energy-badge');
-  if (badgeEl) badgeEl.textContent = cur > 0 ? (cur === max ? '+10' : '+2') : '✓';
-
+  // ── Check-in button ──
+  const checkinDone = S.dailyMissions.find(m => m.key === 'checkin')?.done;
   const btn = q('#ms-checkin-btn');
   if (btn) {
-    if (cur <= 0) {
-      btn.disabled = true;
-      let rechargeText = '';
-      if (e.nextRechargeAt) {
-        const msLeft = new Date(e.nextRechargeAt).getTime() - Date.now();
-        if (msLeft > 0) {
-          const h2 = Math.floor(msLeft / 3600000);
-          const m2 = Math.floor((msLeft % 3600000) / 60000);
-          rechargeText = ` — ładuje się za ${h2}h ${pad(m2)}m`;
-        }
-      }
-      btn.textContent = '⚡ Energia wyczerpana' + rechargeText;
-    } else {
-      const isFirst = !S.dailyMissions.find(m => m.key === 'checkin')?.done;
-      btn.disabled = false;
-      btn.textContent = isFirst
-        ? `⚡ Check In +10 pts  (${cur}/5 energii)`
-        : `⚡ Tap +2 pts  (${cur} energii zostało)`;
-    }
+    btn.disabled = !!checkinDone;
+    btn.textContent = checkinDone ? '✅ Zrobione dziś' : '⚡ Check In  +10 pts';
+    btn.classList.toggle('ms-btn-done', !!checkinDone);
   }
+
+  const badgeEl = q('#ms-checkin-badge');
+  if (badgeEl) badgeEl.textContent = checkinDone ? '✓' : '+10';
 
   // ── Claim MIND status ──
   const claimDone = S.dailyMissions.find(m => m.key === 'claim')?.done;
@@ -574,7 +534,6 @@ async function doRefresh() {
     S.prevEventCount = hadEvents;
     S.recentEvents  = data.recentEvents || [];
     S.streak        = data.streak || { count:0, lastAt:null };
-    S.energy        = data.energy || { current:5, max:5, nextRechargeAt:null };
     S.weeklyMission = data.weeklyMission || null;
     renderHeader();
     renderPassport();

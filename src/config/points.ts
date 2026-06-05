@@ -9,7 +9,9 @@ export const POINT_VALUES = {
   daily_active_starter: 2,
   daily_active_pro: 8,
   daily_active_industrial: 20,
-  daily_checkin: 10
+  daily_checkin: 10,
+  energy_tap: 2,
+  weekly_checkin_5: 200,
 } as const;
 
 export const CLAIM_MIND_DAILY_THRESHOLDS = [
@@ -42,7 +44,9 @@ export const FIXED_EVENT_TYPES = Object.keys(POINT_VALUES) as Array<keyof typeof
 export const SUPPORTED_EVENT_TYPES = [
   ...FIXED_EVENT_TYPES,
   "claim_mind_daily",
-  "stake_snapshot"
+  "stake_snapshot",
+  "streak_bonus",
+  "weekly_mission_checkin",
 ] as const;
 
 export type SupportedEventType = (typeof SUPPORTED_EVENT_TYPES)[number];

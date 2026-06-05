@@ -9,6 +9,16 @@ function shortWallet(address: string) {
   return address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
 }
 
+const ENERGY_MAX = 5;
+const WEEKLY_CHECKIN_GOAL = 5;
+
+function weekStartUTC(): Date {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const diffDays = day === 0 ? 6 : day - 1;
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffDays));
+}
+
 function formatEventCategory(category: string): string {
   switch (category) {
     case "claim_mind_daily":        return "Daily MIND claim";
@@ -24,6 +34,9 @@ function formatEventCategory(category: string): string {
     case "daily_active_pro":        return "Pro rig active";
     case "daily_active_industrial": return "Industrial rig active";
     case "daily_checkin":           return "Daily check-in";
+    case "energy_tap":              return "Energy tap";
+    case "streak_bonus":            return "Streak bonus";
+    case "weekly_mission_checkin":  return "Weekly mission reward";
     default:                        return category.replaceAll("_", " ");
   }
 }
@@ -174,8 +187,11 @@ export async function GET(req: NextRequest) {
       getTelegramPhotoUrl(telegramId, botToken),
     ]);
 
+    const todayUtcEnd = new Date(todayUtcStart.getTime() + 86400000);
+    const weekStart = weekStartUTC();
+
     // Current season data
-    const [stats, recentPoints, todayPoints] = await Promise.all([
+    const [stats, recentPoints, todayPoints, todayTaps, weeklyCheckins, weeklyMissionAwarded] = await Promise.all([
       season
         ? prisma.userSeasonStats.findUnique({
             where: { userId_seasonId: { userId: user.id, seasonId: season.id } },
@@ -194,6 +210,36 @@ export async function GET(req: NextRequest) {
             select: { category: true, points: true },
           })
         : Promise.resolve([]),
+      season
+        ? prisma.seasonPoint.count({
+            where: {
+              userId: user.id,
+              seasonId: season.id,
+              category: { in: ["daily_checkin", "energy_tap"] },
+              createdAt: { gte: todayUtcStart, lt: todayUtcEnd },
+            },
+          })
+        : Promise.resolve(0),
+      season
+        ? prisma.seasonPoint.count({
+            where: {
+              userId: user.id,
+              seasonId: season.id,
+              category: "daily_checkin",
+              createdAt: { gte: weekStart },
+            },
+          })
+        : Promise.resolve(0),
+      season
+        ? prisma.seasonPoint.findFirst({
+            where: {
+              userId: user.id,
+              seasonId: season.id,
+              category: "weekly_mission_checkin",
+              createdAt: { gte: weekStart },
+            },
+          })
+        : Promise.resolve(null),
     ]);
 
     // Battle card: who's just above and just below in rankings
@@ -281,6 +327,22 @@ export async function GET(req: NextRequest) {
       },
     ];
 
+    const tomorrowUtcStart = todayUtcEnd;
+    const energyCurrent = Math.max(0, ENERGY_MAX - todayTaps);
+
+    const weeklyMission = season
+      ? {
+          progress: weeklyCheckins,
+          goal: WEEKLY_CHECKIN_GOAL,
+          bonus: 200,
+          completed: !!weeklyMissionAwarded,
+          nextResetAt: (() => {
+            const ws = weekStartUTC();
+            return new Date(ws.getTime() + 7 * 86400000).toISOString();
+          })(),
+        }
+      : null;
+
     // Prize pool
     const prizeTotal = getPrizePool();
     const myPrize = getPrizeForRank(stats?.rank, prizeTotal);
@@ -333,6 +395,18 @@ export async function GET(req: NextRequest) {
             lastEventAt: stats.lastEventAt?.toISOString() ?? null,
           }
         : null,
+      streak: {
+        count: stats?.streakCount ?? 0,
+        lastAt: stats?.lastCheckinAt?.toISOString() ?? null,
+      },
+      energy: season
+        ? {
+            current: energyCurrent,
+            max: ENERGY_MAX,
+            nextRechargeAt: tomorrowUtcStart.toISOString(),
+          }
+        : null,
+      weeklyMission,
       allTime: {
         totalPoints: allTimePoints,
         seasonsCount,

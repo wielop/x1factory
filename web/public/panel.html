@@ -130,8 +130,46 @@
         <div class="missions-card card hidden" id="missions-card">
           <div class="missions-title">Today's Missions</div>
           <div class="missions-row" id="missions-row"></div>
-          <button class="checkin-btn" id="checkin-btn" onclick="doCheckin()">Daily Check-in ✅ +10 pts</button>
-          <div class="checkin-msg hidden" id="checkin-msg"></div>
+
+          <!-- Energy system -->
+          <div class="energy-section">
+            <div class="energy-header">
+              <span class="energy-label">⚡ Daily Energy</span>
+              <span class="energy-counter-wrap">
+                <span id="energy-current">5</span><span class="energy-sep">/</span><span id="energy-max">5</span>
+              </span>
+            </div>
+            <div class="energy-dots" id="energy-dots"></div>
+            <button class="checkin-btn" id="checkin-btn" onclick="doCheckin()">⚡ Check In +10 pts</button>
+            <div class="checkin-msg hidden" id="checkin-msg"></div>
+          </div>
+
+          <!-- Streak row -->
+          <div class="streak-row hidden" id="streak-row">
+            <span class="streak-fire">🔥</span>
+            <span class="streak-label">Streak</span>
+            <span class="streak-count" id="streak-count">0</span>
+            <span class="streak-unit">days</span>
+            <span class="streak-next hidden" id="streak-next"></span>
+          </div>
+        </div>
+
+        <!-- Weekly mission -->
+        <div class="weekly-card card hidden" id="weekly-card">
+          <div class="weekly-header">
+            <span class="weekly-title">📅 Weekly Mission</span>
+            <span class="weekly-bonus hidden" id="weekly-bonus">+200 pts</span>
+            <span class="weekly-done hidden" id="weekly-done">✅ Done</span>
+          </div>
+          <div class="weekly-desc">Check in <strong>5 days</strong> this week</div>
+          <div class="weekly-progress-row">
+            <div class="weekly-dots" id="weekly-dots"></div>
+            <span class="weekly-progress-text" id="weekly-progress-text">0/5</span>
+          </div>
+          <div class="weekly-bar-track">
+            <div class="weekly-bar-fill" id="weekly-bar-fill" style="width:0%"></div>
+          </div>
+          <div class="weekly-reset" id="weekly-reset"></div>
         </div>
 
         <!-- Battle card -->
@@ -285,8 +323,9 @@
             <div class="earn-row"><span>Industrial rig online</span><b class="emerald">+20</b></div>
           </div>
           <div class="earn-group">
-            <div class="earn-group-head">📅 Daily Check-in <span class="earn-tag">per day</span></div>
-            <div class="earn-row"><span>Daily check-in</span><b class="emerald">+10</b></div>
+            <div class="earn-group-head">⚡ Daily Energy <span class="earn-tag">5 taps/day</span></div>
+            <div class="earn-row"><span>First tap (check-in)</span><b class="emerald">+10</b></div>
+            <div class="earn-row"><span>Each extra tap (×4)</span><b class="emerald">+2</b></div>
           </div>
           <div class="earn-group">
             <div class="earn-group-head">💎 MIND Claim <span class="earn-tag">daily</span></div>
@@ -305,11 +344,15 @@
             <div class="earn-row"><span>≥ 5,000 XNT</span><b class="cyan">+1,200</b></div>
           </div>
           <div class="earn-group">
-            <div class="earn-group-head">🔥 Streaks <span class="earn-tag">bonus</span></div>
-            <div class="earn-row"><span>3-day streak</span><b class="emerald">+50</b></div>
-            <div class="earn-row"><span>7-day streak</span><b class="emerald">+150</b></div>
-            <div class="earn-row"><span>14-day streak</span><b class="emerald">+350</b></div>
-            <div class="earn-row"><span>21-day streak</span><b class="emerald">+700</b></div>
+            <div class="earn-group-head">🔥 Streak Bonuses <span class="earn-tag">milestone</span></div>
+            <div class="earn-row"><span>3-day streak</span><b class="amber">+50</b></div>
+            <div class="earn-row"><span>7-day streak</span><b class="amber">+150</b></div>
+            <div class="earn-row"><span>14-day streak</span><b class="amber">+350</b></div>
+            <div class="earn-row"><span>21-day streak</span><b class="amber">+700</b></div>
+          </div>
+          <div class="earn-group">
+            <div class="earn-group-head">📅 Weekly Mission <span class="earn-tag">weekly</span></div>
+            <div class="earn-row"><span>Check in 5 days this week</span><b class="purple">+200</b></div>
           </div>
         </div>
 

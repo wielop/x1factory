@@ -25,7 +25,10 @@ const S = {
   dailyMissions:[], prizePool:null, syncedAt:null,
   recentEvents:[], leaderboard:null, myRank:null,
   lbLoaded:false, countdownTimer:null, refreshTimer:null, prevEventCount:0,
-  photoUrl:null
+  photoUrl:null,
+  streak:{ count:0, lastAt:null },
+  energy:{ current:5, max:5, nextRechargeAt:null },
+  weeklyMission:null,
 };
 let myTelegramId = null;
 
@@ -58,6 +61,9 @@ async function init() {
     S.syncedAt      = data.syncedAt || null;
     S.prevEventCount = S.recentEvents.length;
     S.recentEvents  = data.recentEvents || [];
+    S.streak        = data.streak || { count:0, lastAt:null };
+    S.energy        = data.energy || { current:5, max:5, nextRechargeAt:null };
+    S.weeklyMission = data.weeklyMission || null;
 
     renderHeader();
     renderPassport();
@@ -191,6 +197,7 @@ function renderPassport() {
 
   // Daily missions
   renderMissions();
+  renderWeeklyMission();
 
   // Refresh time
   updateRefreshTime();
@@ -298,11 +305,14 @@ function renderPrizePool() {
   }
 }
 
-/* ── Daily Check-in ────────────────────────────────────── */
+/* ── Daily Check-in / Energy tap ──────────────────────── */
 async function doCheckin() {
   const btn = q('#checkin-btn');
   const msg = q('#checkin-msg');
-  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const prevText = btn.textContent;
+  btn.textContent = '...';
   if (msg) { msg.classList.add('hidden'); msg.classList.remove('error'); }
   try {
     const r = await fetch('/api/panel/checkin', {
@@ -311,22 +321,67 @@ async function doCheckin() {
     });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'Failed.');
+
     if (data.alreadyDone) {
-      if (btn) { btn.textContent = 'Already checked in today ✅'; }
-      if (msg) { msg.textContent = 'Come back tomorrow!'; msg.classList.remove('hidden'); }
-    } else {
-      if (btn) { btn.textContent = 'Checked in ✅'; }
-      if (msg) { msg.textContent = `+${data.pointsAwarded} pts earned! Total: ${data.totalPoints}`; msg.classList.remove('hidden'); }
-      S.stats = S.stats ? { ...S.stats, totalPoints: data.totalPoints, rank: data.rank } : null;
-      setText('scn-pts', fmtNum(data.totalPoints));
+      S.energy = { current: 0, max: data.energyMax || 5, nextRechargeAt: S.energy?.nextRechargeAt };
+      renderEnergy();
+      return;
+    }
+
+    // Update state
+    S.energy = { current: data.energyCurrent, max: data.energyMax, nextRechargeAt: S.energy?.nextRechargeAt };
+    if (data.isFirstTap) {
+      S.streak = { count: data.streak, lastAt: new Date().toISOString() };
       const cm = S.dailyMissions.find(m => m.key === 'checkin');
       if (cm) cm.done = true;
-      renderMissions();
+    }
+    if (data.weeklyCheckins != null && S.weeklyMission) {
+      S.weeklyMission = { ...S.weeklyMission, progress: data.weeklyCheckins, completed: S.weeklyMission.completed || data.weeklyBonus > 0 };
+    }
+    S.stats = S.stats ? { ...S.stats, totalPoints: data.totalPoints, rank: data.rank } : null;
+    setText('scn-pts', fmtNum(data.totalPoints));
+
+    // Floating +pts animation
+    floatPts(btn, '+' + data.pointsAwarded);
+
+    // Show bonuses in message
+    const parts = [];
+    if (data.pointsAwarded) parts.push(`+${data.pointsAwarded} pts`);
+    if (data.streakBonus)   parts.push(`🔥 streak bonus +${data.streakBonus}`);
+    if (data.weeklyBonus)   parts.push(`📅 weekly bonus +${data.weeklyBonus}`);
+    if (msg && parts.length) { msg.textContent = parts.join(' · '); msg.classList.remove('hidden'); }
+
+    renderMissions();
+    renderWeeklyMission();
+
+    // Streak milestone celebration
+    if (data.streakBonus && data.streak) {
+      setTimeout(() => showStreakCelebration(data.streak, data.streakBonus), 300);
     }
   } catch(err) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Daily Check-in ✅ +10 pts'; }
+    btn.disabled = false;
+    btn.textContent = prevText;
     if (msg) { msg.textContent = err.message || 'Error'; msg.classList.remove('hidden'); msg.classList.add('error'); }
   }
+}
+
+function floatPts(anchor, text) {
+  const el = document.createElement('div');
+  el.className = 'pts-float';
+  el.textContent = text;
+  const rect = anchor.getBoundingClientRect();
+  el.style.left = (rect.left + rect.width / 2) + 'px';
+  el.style.top  = rect.top + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+
+function showStreakCelebration(days, bonus) {
+  const el = document.createElement('div');
+  el.className = 'streak-celebrate';
+  el.innerHTML = `🔥 ${days}-day streak!<br><span>+${bonus} bonus pts</span>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
 }
 
 /* ── Daily missions ────────────────────────────────────── */
@@ -335,7 +390,7 @@ function renderMissions() {
   if (!ms.length || !S.season) { hide('missions-card'); return; }
   show('missions-card');
 
-  const mr=q('#missions-row'); if(mr) mr.innerHTML = ms.map(m => `
+  const mr = q('#missions-row'); if (mr) mr.innerHTML = ms.map(m => `
     <div class="mission${m.done?' done':''}">
       <div class="mission-check">✓</div>
       <span class="mission-icon">${m.icon}</span>
@@ -344,14 +399,126 @@ function renderMissions() {
     </div>`
   ).join('');
 
-  const checkinDone = ms.find(m => m.key === 'checkin')?.done;
-  const btn = q('#checkin-btn');
-  if (btn) {
-    btn.disabled = !!checkinDone;
-    btn.textContent = checkinDone ? 'Checked in today ✅' : 'Daily Check-in ✅ +10 pts';
+  renderEnergy();
+  renderStreak();
+}
+
+/* ── Energy ────────────────────────────────────────────── */
+function renderEnergy() {
+  const e = S.energy || { current:5, max:5 };
+  const current = e.current ?? 5;
+  const max     = e.max ?? 5;
+
+  setText('energy-current', String(current));
+  setText('energy-max', String(max));
+
+  const dotsEl = q('#energy-dots');
+  if (dotsEl) {
+    let html = '';
+    for (let i = 0; i < max; i++) {
+      html += `<span class="energy-dot${i < current ? '' : ' empty'}"></span>`;
+    }
+    dotsEl.innerHTML = html;
   }
+
+  const btn = q('#checkin-btn');
   const msg = q('#checkin-msg');
-  if (msg && checkinDone) { msg.classList.add('hidden'); }
+
+  if (current <= 0) {
+    if (btn) {
+      btn.disabled = true;
+      let rechargeText = '';
+      if (e.nextRechargeAt) {
+        const msLeft = new Date(e.nextRechargeAt).getTime() - Date.now();
+        if (msLeft > 0) {
+          const h = Math.floor(msLeft / 3600000);
+          const m = Math.floor((msLeft % 3600000) / 60000);
+          rechargeText = ` (${h}h ${pad(m)}m)`;
+        }
+      }
+      btn.textContent = '⚡ Energy recharged in' + rechargeText;
+    }
+  } else {
+    const isFirst = !S.dailyMissions.find(m => m.key === 'checkin')?.done;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = isFirst
+        ? `⚡ Check In +10 pts  (${current} energy left)`
+        : `⚡ Tap +2 pts  (${current} left)`;
+    }
+    if (msg) msg.classList.add('hidden');
+  }
+}
+
+/* ── Streak ────────────────────────────────────────────── */
+function renderStreak() {
+  const count = S.streak?.count || 0;
+  const row = q('#streak-row');
+  if (!row) return;
+
+  if (count === 0) { row.classList.add('hidden'); return; }
+  row.classList.remove('hidden');
+
+  setText('streak-count', String(count));
+
+  const STREAK_MILESTONES = [3, 7, 14, 21];
+  const next = STREAK_MILESTONES.find(m => m > count);
+  const nextEl = q('#streak-next');
+  if (nextEl) {
+    if (next) {
+      nextEl.textContent = `${next - count} to ${next}d bonus`;
+      nextEl.classList.remove('hidden');
+    } else {
+      nextEl.classList.add('hidden');
+    }
+  }
+}
+
+/* ── Weekly mission ────────────────────────────────────── */
+function renderWeeklyMission() {
+  const wm = S.weeklyMission;
+  const card = q('#weekly-card');
+  if (!card) return;
+  if (!wm || !S.season) { hide('weekly-card'); return; }
+  show('weekly-card');
+
+  const progress = wm.progress || 0;
+  const goal     = wm.goal || 5;
+  const pct      = Math.min(100, (progress / goal) * 100);
+
+  setText('weekly-progress-text', `${progress}/${goal}`);
+
+  const fill = q('#weekly-bar-fill');
+  if (fill) fill.style.width = pct.toFixed(1) + '%';
+
+  const dotsEl = q('#weekly-dots');
+  if (dotsEl) {
+    let html = '';
+    for (let i = 0; i < goal; i++) {
+      html += `<span class="weekly-dot${i < progress ? ' filled' : ''}"></span>`;
+    }
+    dotsEl.innerHTML = html;
+  }
+
+  const bonusEl = q('#weekly-bonus');
+  const doneEl  = q('#weekly-done');
+  if (wm.completed) {
+    if (bonusEl) bonusEl.classList.add('hidden');
+    if (doneEl)  doneEl.classList.remove('hidden');
+  } else {
+    if (bonusEl) { bonusEl.textContent = `+${wm.bonus} pts`; bonusEl.classList.remove('hidden'); }
+    if (doneEl)  doneEl.classList.add('hidden');
+  }
+
+  const resetEl = q('#weekly-reset');
+  if (resetEl && wm.nextResetAt) {
+    const msLeft = new Date(wm.nextResetAt).getTime() - Date.now();
+    if (msLeft > 0) {
+      const d = Math.floor(msLeft / 86400000);
+      const h = Math.floor((msLeft % 86400000) / 3600000);
+      resetEl.textContent = `Resets in ${d}d ${pad(h)}h`;
+    }
+  }
 }
 
 /* ── Refresh ───────────────────────────────────────────── */
@@ -383,6 +550,9 @@ async function doRefresh() {
     S.syncedAt      = data.syncedAt;
     S.prevEventCount = hadEvents;
     S.recentEvents  = data.recentEvents || [];
+    S.streak        = data.streak || { count:0, lastAt:null };
+    S.energy        = data.energy || { current:5, max:5, nextRechargeAt:null };
+    S.weeklyMission = data.weeklyMission || null;
     renderHeader();
     renderPassport();
     renderSeasonTab();

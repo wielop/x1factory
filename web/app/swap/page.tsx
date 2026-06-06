@@ -294,9 +294,14 @@ export default function SwapPage() {
 
   // GigaSwap win probability display based on swap USD value
   function gigaWinPct(usdCents: number): string {
-    if (usdCents >= 10_000) return "68%";
-    if (usdCents >= 2_000)  return "55%";
-    if (usdCents >= 500)    return "38%";
+    if (usdCents >= 16_800) return "16%";
+    if (usdCents >= 13_200) return "15%";
+    if (usdCents >= 10_100) return "14%";
+    if (usdCents >= 7_700)  return "13%";
+    if (usdCents >= 4_700)  return "13%";
+    if (usdCents >= 2_300)  return "12%";
+    if (usdCents >= 1_100)  return "11%";
+    if (usdCents >= 500)    return "10%";
     return "0%";
   }
 
@@ -763,9 +768,19 @@ export default function SwapPage() {
                     <span>Qualification</span>
                     <span className="text-zinc-300">swap ≥ $5</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-start">
                     <span>Win chance</span>
-                    <span className="text-zinc-300">38–68% based on swap value</span>
+                    <div className="text-right text-zinc-400 space-y-0.5">
+                      {[
+                        ["$5–$10","10%"],["$11–$22","11%"],["$23–$46","12%"],
+                        ["$47–$100","13%"],["$101–$131","14%"],["$132–$167","15%"],["$168+","16%"],
+                      ].map(([r,p]) => (
+                        <div key={r} className="flex justify-between gap-4">
+                          <span className="text-zinc-600">{r}</span>
+                          <span className="text-zinc-300 font-mono">{p}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex justify-between">
                     <span>Payout</span>

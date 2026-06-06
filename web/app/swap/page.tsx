@@ -110,6 +110,7 @@ export default function SwapPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [poolInfo, setPoolInfo] = useState<{ rewardPoolMind: string; rewardPoolXnt: string; rewardPoolUsdCents: string } | null>(null);
   const quoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const inDecimals = direction === "xnt_to_mind" ? XNT_DECIMALS : MIND_DECIMALS;
@@ -144,6 +145,20 @@ export default function SwapPage() {
 
   useEffect(() => { loadBalances(); }, [loadBalances]);
 
+  const loadPoolInfo = useCallback(async () => {
+    try {
+      const res = await fetch(`${QUOTE_URL}?amountIn=1000000000&direction=xnt_to_mind`);
+      const data = await res.json();
+      if (data.ok) setPoolInfo({ rewardPoolMind: data.rewardPoolMind, rewardPoolXnt: data.rewardPoolXnt, rewardPoolUsdCents: data.rewardPoolUsdCents });
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    loadPoolInfo();
+    const id = setInterval(loadPoolInfo, 30_000);
+    return () => clearInterval(id);
+  }, [loadPoolInfo]);
+
   const loadQuote = useCallback(async (amt: string, dir: Direction) => {
     const decimals = dir === "xnt_to_mind" ? XNT_DECIMALS : MIND_DECIMALS;
     const raw = parseTokens(amt, decimals);
@@ -153,7 +168,10 @@ export default function SwapPage() {
       const apiDir = dir === "xnt_to_mind" ? "xnt_to_mind" : "mind_to_xnt";
       const res = await fetch(`${QUOTE_URL}?amountIn=${raw}&direction=${apiDir}`);
       const data = await res.json();
-      if (data.ok) setQuote(data);
+      if (data.ok) {
+        setQuote(data);
+        setPoolInfo({ rewardPoolMind: data.rewardPoolMind, rewardPoolXnt: data.rewardPoolXnt, rewardPoolUsdCents: data.rewardPoolUsdCents });
+      }
     } catch {
       // ignore
     } finally {
@@ -243,7 +261,8 @@ export default function SwapPage() {
     ? Number(poolMind) / Number(poolXnt)
     : 0;
 
-  const rewardPoolActive = !!(quote?.rewardPoolMind && BigInt(quote.rewardPoolMind) > 0n);
+  const activePool = poolInfo ?? (quote ? { rewardPoolMind: quote.rewardPoolMind ?? "0", rewardPoolXnt: quote.rewardPoolXnt ?? "0", rewardPoolUsdCents: quote.rewardPoolUsdCents ?? "0" } : null);
+  const rewardPoolActive = !!(activePool?.rewardPoolMind && BigInt(activePool.rewardPoolMind) > 0n);
 
   // Swap USD value for display
   const swapUsdStr = quote?.usdCents
@@ -281,36 +300,33 @@ export default function SwapPage() {
     <div className="min-h-screen bg-[#07090e] text-zinc-100 font-sans">
 
       {/* Pool Rewards Banner */}
-      <div className="w-full border-b border-zinc-800/60 bg-[#0a0d14]">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${rewardPoolActive ? "bg-neon animate-pulse" : "bg-zinc-600"}`} />
-            <span className="text-xs font-bold text-neon tracking-wide">REWARD POOL</span>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-zinc-400 flex-wrap">
-            {rewardPoolActive ? (
-              <>
-                <span>
-                  <span className="text-zinc-500">MIND:</span>{" "}
-                  <span className="text-zinc-200 font-mono">{fmtShort(BigInt(quote!.rewardPoolMind!), MIND_DECIMALS)}</span>
-                </span>
-                <span className="text-zinc-700">|</span>
-                <span>
-                  <span className="text-zinc-500">XNT:</span>{" "}
-                  <span className="text-zinc-200 font-mono">{fmtShort(BigInt(quote!.rewardPoolXnt!), XNT_DECIMALS)}</span>
-                </span>
-                <span className="text-zinc-700">|</span>
-                <span className="text-neon/80">
-                  ≈ <span className="font-bold text-neon">${(Number(quote!.rewardPoolUsdCents!) / 100).toFixed(1)}</span> in prizes
-                </span>
-              </>
+      <div className={`w-full border-b transition-colors duration-700 ${rewardPoolActive ? "border-neon/20 bg-[#060d0e]" : "border-zinc-800/60 bg-[#0a0d14]"}`}>
+        <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${rewardPoolActive ? "bg-neon animate-pulse" : "bg-zinc-700"}`} />
+            {activePool ? (
+              rewardPoolActive ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-mono font-bold text-neon">
+                    {fmtShort(BigInt(activePool.rewardPoolMind), MIND_DECIMALS)} MIND
+                  </span>
+                  <span className="text-zinc-700 text-[10px]">+</span>
+                  <span className="text-[11px] font-mono font-bold text-neon/80">
+                    {fmtShort(BigInt(activePool.rewardPoolXnt), XNT_DECIMALS)} XNT
+                  </span>
+                  <span className="text-zinc-700 text-[10px]">·</span>
+                  <span className="text-[11px] font-bold text-neon/60">
+                    ≈ ${(Number(activePool.rewardPoolUsdCents) / 100).toFixed(1)} in prizes
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[11px] text-zinc-600">GigaSwap pool · base rewards always active</span>
+              )
             ) : (
-              <span className="text-zinc-600">
-                {quote ? "Pool loading…" : "Swap ≥$5 → GigaSwap active"}
-              </span>
+              <span className="text-[11px] text-zinc-700 animate-pulse">Loading pool…</span>
             )}
           </div>
-          <Link href="/" className="text-xs text-zinc-600 hover:text-zinc-400 transition hidden sm:block">← X1Factory</Link>
+          <Link href="/" className="text-[11px] text-zinc-600 hover:text-zinc-400 transition flex-shrink-0">← X1Factory</Link>
         </div>
       </div>
 
@@ -474,27 +490,6 @@ export default function SwapPage() {
           </div>
 
           <div className="mt-2 text-xs text-zinc-600">≈ {outUsd} USD</div>
-        </div>
-
-        {/* Chart & Info bar */}
-        <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-zinc-300">Chart & Info</span>
-            <span className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2 py-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-bold text-emerald-400 tracking-wide">LIVE</span>
-            </span>
-          </div>
-          {rate > 0 ? (
-            <div className="flex items-center gap-4 text-xs text-zinc-400">
-              <span>Vol: <span className="text-zinc-200 font-mono font-bold">${fmtShort(poolXnt, 0)} XNT</span></span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-600">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </div>
-          ) : (
-            <span className="text-xs text-zinc-600">Enter amount for quote</span>
-          )}
         </div>
 
         {/* Rate / Price Impact / Gas / Slippage */}

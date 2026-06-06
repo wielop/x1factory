@@ -652,12 +652,18 @@ export default function SwapPage() {
                 <span className="text-zinc-300 font-mono">1.0%</span>
               </div>
               <div className="flex justify-between">
-                <span>Treasury (0.5%)</span>
-                <span className="text-zinc-500 text-xs">operacje & buy-back</span>
+                <span>Treasury</span>
+                <span className="text-zinc-300 font-mono">0.5%</span>
+              </div>
+              <div className="flex justify-between pl-4 text-xs text-zinc-600">
+                <span>operacje & buy-back</span>
               </div>
               <div className="flex justify-between">
-                <span>Pula nagród (0.5%)</span>
-                <span className="text-zinc-500 text-xs">nagrody GigaSwap</span>
+                <span>Pula nagród</span>
+                <span className="text-zinc-300 font-mono">0.5%</span>
+              </div>
+              <div className="flex justify-between pl-4 text-xs text-zinc-600">
+                <span>nagrody GigaSwap dla userów</span>
               </div>
               <div className="mt-3 pt-3 border-t border-zinc-800/60">
                 <div className="text-xs text-neon/80 font-bold mb-2">⚡ GigaSwap — jak to działa?</div>

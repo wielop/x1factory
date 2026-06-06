@@ -294,14 +294,13 @@ export default function SwapPage() {
 
   // GigaSwap win probability display based on swap USD value
   function gigaWinPct(usdCents: number): string {
-    if (usdCents >= 16_800) return "16%";
-    if (usdCents >= 13_200) return "15%";
-    if (usdCents >= 10_100) return "14%";
-    if (usdCents >= 7_700)  return "13%";
-    if (usdCents >= 4_700)  return "13%";
-    if (usdCents >= 2_300)  return "12%";
-    if (usdCents >= 1_100)  return "11%";
-    if (usdCents >= 500)    return "10%";
+    if (usdCents >= 11_100) return "50%";
+    if (usdCents >= 8_700)  return "48%";
+    if (usdCents >= 6_600)  return "46%";
+    if (usdCents >= 4_700)  return "44%";
+    if (usdCents >= 3_000)  return "42%";
+    if (usdCents >= 1_600)  return "40%";
+    if (usdCents >= 500)    return "38%";
     return "0%";
   }
 
@@ -772,8 +771,8 @@ export default function SwapPage() {
                     <span>Win chance</span>
                     <div className="text-right text-zinc-400 space-y-0.5">
                       {[
-                        ["$5–$10","10%"],["$11–$22","11%"],["$23–$46","12%"],
-                        ["$47–$100","13%"],["$101–$131","14%"],["$132–$167","15%"],["$168+","16%"],
+                        ["$5–$15","38%"],["$16–$29","40%"],["$30–$46","42%"],
+                        ["$47–$65","44%"],["$66–$86","46%"],["$87–$110","48%"],["$111+","50%"],
                       ].map(([r,p]) => (
                         <div key={r} className="flex justify-between gap-4">
                           <span className="text-zinc-600">{r}</span>

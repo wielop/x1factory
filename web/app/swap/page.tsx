@@ -482,7 +482,7 @@ export default function SwapPage() {
           </div>
           {quote && (
             <div className="border-t border-zinc-800 px-4 py-2 flex items-center justify-between text-xs text-zinc-500">
-              <span>Platform fee (0.4%)</span>
+              <span>Platform fee (1.0%)</span>
               <span className="text-zinc-400 font-mono">{fmtTokens(quote.ourFee, inDecimals, 4)} {inSymbol}</span>
             </div>
           )}
@@ -602,7 +602,7 @@ export default function SwapPage() {
             <div className="space-y-2 text-sm text-zinc-400">
               <div className="flex justify-between">
                 <span>Protocol fee</span>
-                <span className="text-zinc-300 font-mono">0.4%</span>
+                <span className="text-zinc-300 font-mono">1.0%</span>
               </div>
               <div className="flex justify-between">
                 <span>Treasury (0.2%)</span>

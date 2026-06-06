@@ -24,8 +24,8 @@ const XNT_USDC_XNT_VAULT: Pubkey =
 const XNT_USDC_USDC_VAULT: Pubkey =
     solana_program::pubkey!("7iw2adw8Af7x3pY7gj5RwczFXuGjCoX92Gfy3avwXQtg");
 
-/// 0.4% total fee in basis points
-const FEE_BPS: u64 = 40;
+/// 1.0% total fee (0.5% treasury + 0.5% reward pool)
+const FEE_BPS: u64 = 100;
 const BPS_DENOM: u64 = 10_000;
 
 /// Minimum swap value in USD cents to qualify for GigaSwap ($5.00)
@@ -33,9 +33,6 @@ const GIGA_MIN_USD_CENTS: u64 = 500;
 
 /// Probability denominator: giga_probability() returns numerator out of this
 const GIGA_BASE_DENOM: u64 = 100;
-
-/// Payout = GIGA_PAYOUT_PCT % of dominant token pool × multiplier
-const GIGA_PAYOUT_PCT: u64 = 5;
 
 const CONFIG_SEED: &[u8] = b"router_config";
 const REWARD_POOL_SEED: &[u8] = b"reward_pool";
@@ -387,6 +384,7 @@ fn do_swap<'info>(
     let giga_result = process_giga_swap(
         &ctx,
         usd_value,
+        fee_total,
         xnt_vault_raw,
         mind_vault_raw,
         input_is_mind,
@@ -478,14 +476,15 @@ struct GigaResult {
     paid_mind: bool,
 }
 
-/// GigaSwap: if swap qualifies (≥ $5 USD), random chance to win bonus from
-/// whichever reward pool token has more USD value. Payout = GIGA_PAYOUT_PCT%
-/// of dominant pool × multiplier.
+/// GigaSwap: if swap qualifies (≥ $5 USD), random chance to win bonus.
+/// Payout = fee_total × multiplier, capped by dominant pool balance.
+/// fee_total × mult is bot-proof: bots can never win more than they paid in fees.
 /// remaining[11] = reward_pool_output_account (mut)
 #[inline(never)]
 fn process_giga_swap<'info>(
     ctx: &Context<'_, '_, '_, 'info, SwapBaseInput<'info>>,
     usd_value: u64,
+    fee_total: u64,
     xnt_vault_raw: u64,
     mind_vault_raw: u64,
     input_is_mind: bool,
@@ -525,8 +524,8 @@ fn process_giga_swap<'info>(
         return Ok(no_win);
     }
 
-    let base = dominant_bal * GIGA_PAYOUT_PCT / 100;
-    let payout = (base * multiplier).min(dominant_bal);
+    // Payout = fee_total × multiplier, capped by pool. Bot-proof: E[win] < fee paid.
+    let payout = (fee_total.saturating_mul(multiplier)).min(dominant_bal);
     if payout == 0 {
         return Ok(no_win);
     }
@@ -632,24 +631,26 @@ fn pseudo_random(user: &Pubkey, counter: u64) -> u64 {
 }
 
 /// Probability numerator (out of GIGA_BASE_DENOM=100).
-/// Increased chances vs v1 to encourage swapping.
+/// Lower than v2 to slow down bots; legit players still win often enough.
 fn giga_probability(usd_cents: u64) -> u64 {
     match usd_cents {
-        0..=499        => 0,  // below $5 — no GigaSwap
-        500..=1_999    => 5,  // $5–$20   → 5%
-        2_000..=9_999  => 12, // $20–$100 → 12%
-        10_000..=49_999 => 22, // $100–$500 → 22%
-        _              => 40, // $500+    → 40%
+        0..=499         => 0,  // below $5 — no GigaSwap
+        500..=1_999     => 3,  // $5–$20   → 3%
+        2_000..=9_999   => 7,  // $20–$100 → 7%
+        10_000..=49_999 => 15, // $100–$500 → 15%
+        _               => 20, // $500+    → 20%
     }
 }
 
-/// Maps rng to a payout multiplier applied to GIGA_PAYOUT_PCT% of dominant pool.
+/// Maps rng to payout multiplier. 1× has smaller share; higher multipliers more likely.
+/// Payout = fee_total × multiplier, so multipliers directly express "how many times fee".
 fn pick_multiplier(rng: u64) -> u64 {
     match rng % 100 {
-        0..=54  => 1, // 55%: 1× base
-        55..=79 => 2, // 25%: 2× base
-        80..=91 => 3, // 12%: 3× base
-        92..=97 => 5, //  6%: 5× base
-        _        => 8, //  2%: 8× jackpot
+        0..=29  => 1,  // 30%: 1× fee back
+        30..=59 => 2,  // 30%: 2× fee
+        60..=79 => 3,  // 20%: 3× fee
+        80..=92 => 5,  // 13%: 5× fee
+        93..=98 => 8,  //  6%: 8× fee
+        _        => 15, //  1%: 15× jackpot
     }
 }

@@ -14,7 +14,7 @@ const CONFIG_PDA = new PublicKey("2jphFVpP8M7yPC9syAis7sN28aTWBU4MssmXiQGxrZb6")
 const CONFIG_XNT_USD_OFFSET = 8 + 32 + 32; // = 72
 
 const TOKEN_ACCOUNT_AMOUNT_OFFSET = 64;
-const OUR_FEE_BPS = 40n; // 0.4%
+const OUR_FEE_BPS = 100n; // 0.4%
 const XDEX_FEE_BPS = 25n; // estimated xdex 0.25%
 
 async function readVaultAmount(conn: Connection, vault: PublicKey): Promise<bigint> {

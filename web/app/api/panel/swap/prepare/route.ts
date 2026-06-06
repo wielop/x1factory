@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
     const vaultInAmt = vaultInInfo ? vaultInInfo.data.readBigUInt64LE(TOKEN_AMOUNT_OFFSET) : 0n;
     const vaultOutAmt = vaultOutInfo ? vaultOutInfo.data.readBigUInt64LE(TOKEN_AMOUNT_OFFSET) : 0n;
 
-    const OUR_FEE = (amountIn * 40n) / 10_000n;
+    const OUR_FEE = (amountIn * 100n) / 10_000n;
     const swapAmount = amountIn - OUR_FEE;
     const estimatedOut = vaultInAmt > 0n
       ? (vaultOutAmt * swapAmount) / (vaultInAmt + swapAmount)

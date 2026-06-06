@@ -103,6 +103,36 @@ pub mod swap_router {
         do_swap(ctx, amount_in, minimum_amount_out)
     }
 
+    /// Permissionless: anyone can deposit MIND or XNT (WXNT) into the reward pool.
+    /// Updates the on-chain balance counter so GigaSwap picks it up immediately.
+    /// token_is_mind: true = depositing MIND, false = depositing WXNT
+    pub fn deposit_reward_pool(
+        ctx: Context<DepositRewardPool>,
+        amount: u64,
+        token_is_mind: bool,
+    ) -> Result<()> {
+        require!(amount > 0, RouterError::ZeroAmount);
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.depositor_token_account.to_account_info(),
+                    to: ctx.accounts.reward_pool_token_account.to_account_info(),
+                    authority: ctx.accounts.depositor.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+        if token_is_mind {
+            ctx.accounts.config.reward_pool_mind_balance =
+                ctx.accounts.config.reward_pool_mind_balance.saturating_add(amount);
+        } else {
+            ctx.accounts.config.reward_pool_xnt_balance =
+                ctx.accounts.config.reward_pool_xnt_balance.saturating_add(amount);
+        }
+        Ok(())
+    }
+
     /// Authority withdraws from reward pool (admin function).
     /// token_is_mind: true = withdraw MIND, false = withdraw XNT (WXNT)
     pub fn withdraw_reward_pool(
@@ -245,6 +275,20 @@ pub struct WithdrawRewardPool<'info> {
     pub destination: Account<'info, TokenAccount>,
     #[account(address = TREASURY)]
     pub authority: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct DepositRewardPool<'info> {
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, RouterConfig>,
+    /// Source token account (depositor's MIND or WXNT ATA)
+    #[account(mut)]
+    pub depositor_token_account: Account<'info, TokenAccount>,
+    /// Destination: reward pool's MIND ATA or WXNT ATA (owned by reward_pool PDA)
+    #[account(mut)]
+    pub reward_pool_token_account: Account<'info, TokenAccount>,
+    pub depositor: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 

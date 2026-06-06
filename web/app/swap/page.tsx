@@ -277,6 +277,33 @@ export default function SwapPage() {
     return "0%";
   }
 
+  // GigaSwap prize range: payout = fee × mult + min(pool/500, fee×4), capped by dominant pool
+  const gigaPrize = (() => {
+    if (!quote?.gigaQualified || !quote.ourFee) return null;
+    const fee = BigInt(quote.ourFee);
+    const rPoolMind = BigInt(quote.rewardPoolMind ?? "0");
+    const rPoolXnt  = BigInt(quote.rewardPoolXnt  ?? "0");
+    const dominantBal = rPoolMind >= rPoolXnt ? rPoolMind : rPoolXnt;
+    const isDominantMind = rPoolMind >= rPoolXnt;
+    const poolBonus = dominantBal > 0n ? (dominantBal / 500n < fee * 4n ? dominantBal / 500n : fee * 4n) : 0n;
+    const cap = (v: bigint) => dominantBal > 0n && v > dominantBal ? dominantBal : v;
+    const minWin = cap(fee + poolBonus);
+    const maxWin = cap(fee * 15n + poolBonus);
+    const symbol = isDominantMind ? "MIND" : "XNT";
+    // USD conversion
+    const xntUsd = BigInt(quote.xntUsdCents ?? "0");
+    const DECS = 1_000_000_000n;
+    function toUsd(amount: bigint): number {
+      if (isDominantMind) {
+        const pXnt = BigInt(quote!.poolXnt ?? "0");
+        const pMind = BigInt(quote!.poolMind ?? "1");
+        return pMind > 0n ? Number((amount * xntUsd * pXnt) / (pMind * DECS)) / 100 : 0;
+      }
+      return Number((amount * xntUsd) / DECS) / 100;
+    }
+    return { minWin, maxWin, symbol, minUsd: toUsd(minWin), maxUsd: toUsd(maxWin) };
+  })();
+
   const inUsd = quote?.usdCents ? `$${(Number(quote.usdCents) / 100).toFixed(2)}` : "—";
 
   const outUsdValue = (() => {
@@ -531,12 +558,42 @@ export default function SwapPage() {
               )}
             </div>
           </div>
-          {quote?.gigaQualified && rewardPoolActive && (
-            <div className="mt-2 pt-2 border-t border-neon/20 flex items-center justify-between text-[10px] text-neon/50">
-              <span>Reward pool active</span>
-              <span className="font-bold text-neon/70">
-                ≈ ${(Number(quote.rewardPoolUsdCents!) / 100).toFixed(1)} available
-              </span>
+          {quote?.gigaQualified && gigaPrize && (
+            <div className="mt-2 pt-2 border-t border-neon/20 space-y-2">
+              {/* Prize range bar */}
+              <div className="flex items-stretch gap-2">
+                <div className="flex-1 bg-neon/5 border border-neon/20 rounded-xl px-3 py-2 text-center">
+                  <div className="text-[9px] text-neon/40 uppercase tracking-wider mb-0.5">Min win</div>
+                  <div className="text-sm font-bold text-neon/80">{fmtTokens(gigaPrize.minWin, 9, 2)} {gigaPrize.symbol}</div>
+                  <div className="text-[9px] text-neon/40">≈ ${gigaPrize.minUsd.toFixed(2)}</div>
+                </div>
+                <div className="flex flex-col items-center justify-center text-neon/30 text-xs px-1">
+                  <span>1×→15×</span>
+                  <span className="text-[8px] mt-0.5">mult</span>
+                </div>
+                <div className="flex-1 bg-neon/10 border border-neon/40 rounded-xl px-3 py-2 text-center shadow-[0_0_12px_rgba(34,242,255,0.1)]">
+                  <div className="text-[9px] text-neon/60 uppercase tracking-wider mb-0.5">🎰 Jackpot</div>
+                  <div className="text-sm font-bold text-neon">{fmtTokens(gigaPrize.maxWin, 9, 2)} {gigaPrize.symbol}</div>
+                  <div className="text-[9px] text-neon/60">≈ ${gigaPrize.maxUsd.toFixed(2)}</div>
+                </div>
+              </div>
+              {/* Multiplier odds row */}
+              <div className="flex items-center justify-between text-[9px] text-neon/30 px-1">
+                <span>1× <span className="text-zinc-700">35%</span></span>
+                <span>2× <span className="text-zinc-700">25%</span></span>
+                <span>3× <span className="text-zinc-700">17%</span></span>
+                <span>5× <span className="text-zinc-700">12%</span></span>
+                <span>8× <span className="text-zinc-700">7%</span></span>
+                <span className="text-neon/60">15× <span className="text-neon/40">5%</span></span>
+              </div>
+              {rewardPoolActive && (
+                <div className="flex items-center justify-between text-[10px] text-neon/40 pt-1 border-t border-neon/10">
+                  <span>Reward pool active</span>
+                  <span className="font-bold text-neon/60">
+                    ≈ ${(Number(quote!.rewardPoolUsdCents!) / 100).toFixed(1)} available
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

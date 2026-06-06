@@ -163,9 +163,11 @@ export async function POST(req: NextRequest) {
 
     // Estimate min amount out (simple quote — slippage applied)
     const TOKEN_AMOUNT_OFFSET = 64;
-    const [vaultInInfo, vaultOutInfo] = await Promise.all([
+    const [vaultInInfo, vaultOutInfo, wxntAtaInfo] = await Promise.all([
       conn.getAccountInfo(inputVault),
       conn.getAccountInfo(outputVault),
+      // For XNT→MIND: read existing WXNT balance so leftover from previous txs doesn't sneak in
+      !isMindToXnt ? conn.getAccountInfo(userInput) : Promise.resolve(null),
     ]);
     const vaultInAmt = vaultInInfo ? vaultInInfo.data.readBigUInt64LE(TOKEN_AMOUNT_OFFSET) : 0n;
     const vaultOutAmt = vaultOutInfo ? vaultOutInfo.data.readBigUInt64LE(TOKEN_AMOUNT_OFFSET) : 0n;
@@ -188,6 +190,17 @@ export async function POST(req: NextRequest) {
     const postSwapIxs: TransactionInstruction[] = [];
 
     if (!isMindToXnt) {
+      // If the WXNT ATA already has a balance from a previous tx, drain it first so
+      // the swap consumes exactly amountIn — not amountIn + leftover.
+      const leftoverWxnt = wxntAtaInfo?.data?.length >= 72
+        ? wxntAtaInfo.data.readBigUInt64LE(64)
+        : 0n;
+      if (leftoverWxnt > 0n) {
+        wrapIxs.push(
+          createCloseAccountInstruction(userInput, user, user, [], TOKEN_PROGRAM_ID),
+          createAssociatedTokenAccountInstruction(user, userInput, user, WXNT_MINT),
+        );
+      }
       // XNT→MIND: fund userInput (WXNT ATA) with native XNT lamports, then sync
       wrapIxs.push(
         SystemProgram.transfer({ fromPubkey: user, toPubkey: userInput, lamports: amountIn }),

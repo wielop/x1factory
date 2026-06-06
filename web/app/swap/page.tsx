@@ -492,43 +492,6 @@ export default function SwapPage() {
           <div className="mt-2 text-xs text-zinc-600">≈ {outUsd} USD</div>
         </div>
 
-        {/* Rate / Price Impact / Gas / Slippage */}
-        <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl mb-3 overflow-hidden">
-          <div className="grid grid-cols-4 divide-x divide-zinc-800">
-            <div className="px-3 py-3 text-center">
-              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Rate</div>
-              {rate > 0 ? (
-                <div className="text-[10px] text-zinc-300 leading-relaxed">
-                  <div>1 XNT ≈ {rate.toFixed(2)} MIND</div>
-                  <div>1 MIND ≈ {(1/rate).toFixed(4)} XNT</div>
-                </div>
-              ) : (
-                <div className="text-xs text-zinc-600">—</div>
-              )}
-            </div>
-            <div className="px-3 py-3 text-center">
-              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Price Impact</div>
-              <div className={`text-sm font-bold ${quote && quote.priceImpactBps > 100 ? "text-yellow-400" : "text-neon"}`}>
-                {quote ? `${(quote.priceImpactBps / 100).toFixed(2)}%` : "—"}
-              </div>
-            </div>
-            <div className="px-3 py-3 text-center">
-              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Est. Gas</div>
-              <div className="text-xs font-bold text-zinc-300">~0.0002 XNT</div>
-            </div>
-            <div className="px-3 py-3 text-center">
-              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Slippage</div>
-              <div className="text-sm font-bold text-zinc-300">{slippage}%</div>
-            </div>
-          </div>
-          {quote && (
-            <div className="border-t border-zinc-800 px-4 py-2 flex items-center justify-between text-xs text-zinc-500">
-              <span>Platform fee (1.0%)</span>
-              <span className="text-zinc-400 font-mono">{fmtTokens(quote.ourFee, inDecimals, 4)} {inSymbol}</span>
-            </div>
-          )}
-        </div>
-
         {/* GigaSwap Indicator */}
         <div className={`mb-3 rounded-2xl px-4 py-3 transition-all duration-500 ${
           quote?.gigaQualified
@@ -574,6 +537,43 @@ export default function SwapPage() {
               <span className="font-bold text-neon/70">
                 ≈ ${(Number(quote.rewardPoolUsdCents!) / 100).toFixed(1)} available
               </span>
+            </div>
+          )}
+        </div>
+
+        {/* Rate / Price Impact / Gas / Slippage */}
+        <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl mb-3 overflow-hidden">
+          <div className="grid grid-cols-4 divide-x divide-zinc-800">
+            <div className="px-3 py-3 text-center">
+              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Rate</div>
+              {rate > 0 ? (
+                <div className="text-[10px] text-zinc-300 leading-relaxed">
+                  <div>1 XNT ≈ {rate.toFixed(2)} MIND</div>
+                  <div>1 MIND ≈ {(1/rate).toFixed(4)} XNT</div>
+                </div>
+              ) : (
+                <div className="text-xs text-zinc-600">—</div>
+              )}
+            </div>
+            <div className="px-3 py-3 text-center">
+              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Price Impact</div>
+              <div className={`text-sm font-bold ${quote && quote.priceImpactBps > 100 ? "text-yellow-400" : "text-neon"}`}>
+                {quote ? `${(quote.priceImpactBps / 100).toFixed(2)}%` : "—"}
+              </div>
+            </div>
+            <div className="px-3 py-3 text-center">
+              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Est. Gas</div>
+              <div className="text-xs font-bold text-zinc-300">~0.0002 XNT</div>
+            </div>
+            <div className="px-3 py-3 text-center">
+              <div className="text-[10px] text-zinc-500 mb-1.5 uppercase tracking-wider">Slippage</div>
+              <div className="text-sm font-bold text-zinc-300">{slippage}%</div>
+            </div>
+          </div>
+          {quote && (
+            <div className="border-t border-zinc-800 px-4 py-2 flex items-center justify-between text-xs text-zinc-500">
+              <span>Platform fee (1.0%)</span>
+              <span className="text-zinc-400 font-mono">{fmtTokens(quote.ourFee, inDecimals, 4)} {inSymbol}</span>
             </div>
           )}
         </div>
@@ -714,32 +714,6 @@ export default function SwapPage() {
                   <span className="font-mono text-neon/50">{Number(quote.gigaHits).toLocaleString()}</span>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Wallets */}
-          <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl p-4">
-            <div className="text-sm font-bold text-zinc-300 mb-3">Supported Wallets</div>
-            <div className="grid grid-cols-3 gap-2">
-              <a href="https://chromewebstore.google.com/detail/x1-wallet/kcfmcpdmlchhbikbogddmgopmjbflnae"
-                target="_blank" rel="noopener"
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center hover:border-neon/30 transition group">
-                <div className="text-xl mb-1">🔷</div>
-                <div className="text-xs font-bold text-zinc-300 group-hover:text-neon">X1 Wallet</div>
-                <div className="text-[10px] text-zinc-600 mt-0.5">Native X1</div>
-              </a>
-              <a href="https://backpack.exchange" target="_blank" rel="noopener"
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center hover:border-orange-400/30 transition group">
-                <div className="text-xl mb-1">🎒</div>
-                <div className="text-xs font-bold text-zinc-300 group-hover:text-orange-400">Backpack</div>
-                <div className="text-[10px] text-zinc-600 mt-0.5">Desktop + Mobile</div>
-              </a>
-              <a href="https://phantom.app" target="_blank" rel="noopener"
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center hover:border-purple-400/30 transition group">
-                <div className="text-xl mb-1">👻</div>
-                <div className="text-xs font-bold text-zinc-300 group-hover:text-purple-400">Phantom</div>
-                <div className="text-[10px] text-zinc-600 mt-0.5">+ custom RPC</div>
-              </a>
             </div>
           </div>
 

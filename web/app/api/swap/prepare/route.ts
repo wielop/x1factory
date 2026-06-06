@@ -45,6 +45,7 @@ function buildSwapIx(params: {
   userOutput: PublicKey;
   treasuryInput: PublicKey;
   rewardPoolInput: PublicKey;
+  rewardPoolOutput: PublicKey;
   inputMint: PublicKey;
   outputMint: PublicKey;
   inputVault: PublicKey;
@@ -58,26 +59,29 @@ function buildSwapIx(params: {
   data.writeBigUInt64LE(params.minAmountOut, 16);
 
   const keys: AccountMeta[] = [
-    { pubkey: CONFIG_PDA,              isSigner: false, isWritable: true  },
-    { pubkey: REWARD_POOL_PDA,         isSigner: false, isWritable: false },
-    { pubkey: params.user,             isSigner: true,  isWritable: false },
-    { pubkey: params.userInput,        isSigner: false, isWritable: true  },
-    { pubkey: params.userOutput,       isSigner: false, isWritable: true  },
-    { pubkey: params.treasuryInput,    isSigner: false, isWritable: true  },
-    { pubkey: params.rewardPoolInput,  isSigner: false, isWritable: true  },
-    { pubkey: TOKEN_PROGRAM_ID,        isSigner: false, isWritable: false },
-    { pubkey: XDEX_AUTHORITY,          isSigner: false, isWritable: false },
-    { pubkey: AMM_CONFIG,              isSigner: false, isWritable: false },
-    { pubkey: POOL_STATE,              isSigner: false, isWritable: true  },
-    { pubkey: params.inputVault,       isSigner: false, isWritable: true  },
-    { pubkey: params.outputVault,      isSigner: false, isWritable: true  },
-    { pubkey: TOKEN_PROGRAM_ID,        isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID,        isSigner: false, isWritable: false },
-    { pubkey: params.inputMint,        isSigner: false, isWritable: false },
-    { pubkey: params.outputMint,       isSigner: false, isWritable: false },
-    { pubkey: OBSERVATION_STATE,       isSigner: false, isWritable: true  },
-    // X1 requires invoked programs to appear in the transaction's accounts list
-    { pubkey: XDEX_PROGRAM_ID,         isSigner: false, isWritable: false },
+    { pubkey: CONFIG_PDA,               isSigner: false, isWritable: true  },
+    { pubkey: REWARD_POOL_PDA,          isSigner: false, isWritable: false },
+    { pubkey: params.user,              isSigner: true,  isWritable: false },
+    { pubkey: params.userInput,         isSigner: false, isWritable: true  },
+    { pubkey: params.userOutput,        isSigner: false, isWritable: true  },
+    { pubkey: params.treasuryInput,     isSigner: false, isWritable: true  },
+    { pubkey: params.rewardPoolInput,   isSigner: false, isWritable: true  },
+    { pubkey: TOKEN_PROGRAM_ID,         isSigner: false, isWritable: false },
+    // remaining_accounts[0..9]: xdex accounts
+    { pubkey: XDEX_AUTHORITY,           isSigner: false, isWritable: false },
+    { pubkey: AMM_CONFIG,               isSigner: false, isWritable: false },
+    { pubkey: POOL_STATE,               isSigner: false, isWritable: true  },
+    { pubkey: params.inputVault,        isSigner: false, isWritable: true  },
+    { pubkey: params.outputVault,       isSigner: false, isWritable: true  },
+    { pubkey: TOKEN_PROGRAM_ID,         isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_ID,         isSigner: false, isWritable: false },
+    { pubkey: params.inputMint,         isSigner: false, isWritable: false },
+    { pubkey: params.outputMint,        isSigner: false, isWritable: false },
+    { pubkey: OBSERVATION_STATE,        isSigner: false, isWritable: true  },
+    // remaining_accounts[10]: X1 CPI requirement
+    { pubkey: XDEX_PROGRAM_ID,          isSigner: false, isWritable: false },
+    // remaining_accounts[11]: reward pool output ATA (GigaSwap payout for output token)
+    { pubkey: params.rewardPoolOutput,  isSigner: false, isWritable: true  },
   ];
 
   return new TransactionInstruction({ programId: PROGRAM_ID, keys, data });
@@ -132,11 +136,12 @@ export async function POST(req: NextRequest) {
     const inputVault = isMindToXnt ? MIND_VAULT : XNT_VAULT;
     const outputVault = isMindToXnt ? XNT_VAULT : MIND_VAULT;
 
-    const [userInput, userOutput, treasuryInput, rewardPoolInput] = await Promise.all([
+    const [userInput, userOutput, treasuryInput, rewardPoolInput, rewardPoolOutput] = await Promise.all([
       ensureAta(conn, createAtaIxs, user, user, inputMint),
       ensureAta(conn, createAtaIxs, user, user, outputMint),
       ensureAta(conn, createAtaIxs, user, TREASURY, inputMint),
       ensureAta(conn, createAtaIxs, user, REWARD_POOL_PDA, inputMint),
+      ensureAta(conn, createAtaIxs, user, REWARD_POOL_PDA, outputMint),
     ]);
 
     const TOKEN_AMOUNT_OFFSET = 64;
@@ -155,7 +160,7 @@ export async function POST(req: NextRequest) {
     const minAmountOut = (estimatedOut * BigInt(10_000 - slippageBps)) / 10_000n;
 
     const swapIx = buildSwapIx({
-      user, userInput, userOutput, treasuryInput, rewardPoolInput,
+      user, userInput, userOutput, treasuryInput, rewardPoolInput, rewardPoolOutput,
       inputMint, outputMint, inputVault, outputVault,
       amountIn, minAmountOut,
     });

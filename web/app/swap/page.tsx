@@ -21,6 +21,9 @@ interface Quote {
   poolXnt: string;
   poolMind: string;
   mindPerXnt?: string;
+  gigaQualified?: boolean;
+  usdCents?: string;
+  xntUsdCents?: string;
 }
 
 function fmtTokens(raw: string | bigint, decimals: number, dp = 4): string {
@@ -483,6 +486,43 @@ export default function SwapPage() {
               <span className="text-zinc-400 font-mono">{fmtTokens(quote.ourFee, inDecimals, 4)} {inSymbol}</span>
             </div>
           )}
+        </div>
+
+        {/* GigaSwap Indicator */}
+        <div className={`mb-3 rounded-2xl px-4 py-3 flex items-center justify-between transition-all duration-500 ${
+          quote?.gigaQualified
+            ? "bg-neon/10 border border-neon/40 shadow-[0_0_20px_rgba(34,242,255,0.15)]"
+            : "bg-zinc-900/60 border border-zinc-800"
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className={`text-lg font-black tracking-widest transition-all ${
+              quote?.gigaQualified
+                ? "text-neon animate-pulse drop-shadow-[0_0_8px_rgba(34,242,255,0.8)]"
+                : "text-zinc-600"
+            }`}>
+              ⚡ GIGA SWAP
+            </span>
+            {quote?.gigaQualified && (
+              <span className="text-[10px] font-bold text-neon/70 bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5 animate-pulse">
+                ACTIVE
+              </span>
+            )}
+          </div>
+          <div className="text-right">
+            {quote?.gigaQualified ? (
+              <div>
+                <div className="text-xs font-bold text-neon">Eligible!</div>
+                <div className="text-[10px] text-neon/60">Up to 40% win chance</div>
+              </div>
+            ) : (
+              <div>
+                <div className="text-xs text-zinc-600">
+                  {quote ? "< $5 swap" : "Enter amount"}
+                </div>
+                <div className="text-[10px] text-zinc-700">Need ≥ $5 to activate</div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Route */}

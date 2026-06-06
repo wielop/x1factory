@@ -28,12 +28,14 @@ const XNT_USDC_USDC_VAULT: Pubkey =
 const FEE_BPS: u64 = 40;
 const BPS_DENOM: u64 = 10_000;
 
-/// Minimum swap value in USD cents to qualify for giga swap ($5.00)
+/// Minimum swap value in USD cents to qualify for GigaSwap ($5.00)
 const GIGA_MIN_USD_CENTS: u64 = 500;
 
-/// Giga swap base probability denominator (1 in N chance)
+/// Probability denominator: giga_probability() returns numerator out of this
 const GIGA_BASE_DENOM: u64 = 100;
 
+/// Payout = GIGA_PAYOUT_PCT % of dominant token pool × multiplier
+const GIGA_PAYOUT_PCT: u64 = 5;
 
 const CONFIG_SEED: &[u8] = b"router_config";
 const REWARD_POOL_SEED: &[u8] = b"reward_pool";
@@ -58,6 +60,7 @@ pub mod swap_router {
         cfg.swap_counter = 0;
         cfg.giga_hits = 0;
         cfg.reward_pool_mind_balance = 0;
+        cfg.reward_pool_xnt_balance = 0;
         cfg.bump = *ctx.bumps.get("config").unwrap();
         cfg.reward_pool_bump = *ctx.bumps.get("reward_pool_mind").unwrap();
         Ok(())
@@ -93,85 +96,22 @@ pub mod swap_router {
     ///   0.2% → treasury wallet
     ///   0.2% → reward_pool PDA
     /// Remaining 99.6% sent to xdex via CPI.
+    /// GigaSwap: if swap value ≥ $5, random bonus paid from dominant pool token.
     pub fn swap_base_input<'info>(
         ctx: Context<'_, '_, '_, 'info, SwapBaseInput<'info>>,
         amount_in: u64,
         minimum_amount_out: u64,
     ) -> Result<()> {
         require!(amount_in > 0, RouterError::ZeroAmount);
-        let fee_total = amount_in.checked_mul(FEE_BPS).unwrap().checked_div(BPS_DENOM).unwrap();
-        let treasury_fee = fee_total / 2;
-        let pool_fee = fee_total - treasury_fee;
-        let swap_amount = amount_in - fee_total;
-
-        cpi_transfer_fee(
-            ctx.accounts.token_program.to_account_info(),
-            ctx.accounts.user_input_account.to_account_info(),
-            ctx.accounts.treasury_input_account.to_account_info(),
-            ctx.accounts.user.to_account_info(),
-            treasury_fee,
-        )?;
-        cpi_transfer_fee(
-            ctx.accounts.token_program.to_account_info(),
-            ctx.accounts.user_input_account.to_account_info(),
-            ctx.accounts.reward_pool_input_account.to_account_info(),
-            ctx.accounts.user.to_account_info(),
-            pool_fee,
-        )?;
-
-        if ctx.accounts.user_input_account.mint == MIND_MINT {
-            ctx.accounts.config.reward_pool_mind_balance =
-                ctx.accounts.config.reward_pool_mind_balance.saturating_add(pool_fee);
-        }
-
-        cpi_xdex_swap(
-            ctx.accounts.user.to_account_info(),
-            ctx.accounts.user_input_account.to_account_info(),
-            ctx.accounts.user_output_account.to_account_info(),
-            ctx.remaining_accounts,
-            swap_amount,
-            minimum_amount_out,
-        )?;
-
-        ctx.accounts.config.swap_counter =
-            ctx.accounts.config.swap_counter.checked_add(1).unwrap();
-
-        let usd_value = compute_usd_cents(
-            swap_amount,
-            ctx.accounts.user_input_account.mint,
-            ctx.accounts.config.xnt_usd_cents,
-        );
-
-        let (giga_payout, giga_mult) = process_giga_swap(&ctx, usd_value)?;
-        if giga_payout > 0 {
-            ctx.accounts.config.reward_pool_mind_balance =
-                ctx.accounts.config.reward_pool_mind_balance.saturating_sub(giga_payout);
-            ctx.accounts.config.giga_hits += 1;
-            emit!(GigaSwapEvent {
-                user: ctx.accounts.user.key(),
-                swap_counter: ctx.accounts.config.swap_counter,
-                usd_cents: usd_value,
-                multiplier: giga_mult,
-                payout: giga_payout,
-            });
-        }
-
-        emit!(SwapRouterEvent {
-            user: ctx.accounts.user.key(),
-            amount_in,
-            swap_amount,
-            fee_total,
-            swap_counter: ctx.accounts.config.swap_counter,
-            usd_cents: usd_value,
-        });
-
-        Ok(())
+        do_swap(ctx, amount_in, minimum_amount_out)
     }
 
     /// Authority withdraws from reward pool (admin function).
+    /// token_is_mind: true = withdraw MIND, false = withdraw XNT (WXNT)
     pub fn withdraw_reward_pool(
         ctx: Context<WithdrawRewardPool>,
         amount: u64,
+        token_is_mind: bool,
     ) -> Result<()> {
         require!(
             ctx.accounts.authority.key() == TREASURY,
@@ -195,11 +135,13 @@ pub mod swap_router {
             ),
             amount,
         )?;
-        ctx.accounts.config.reward_pool_mind_balance = ctx
-            .accounts
-            .config
-            .reward_pool_mind_balance
-            .saturating_sub(amount);
+        if token_is_mind {
+            ctx.accounts.config.reward_pool_mind_balance = ctx
+                .accounts.config.reward_pool_mind_balance.saturating_sub(amount);
+        } else {
+            ctx.accounts.config.reward_pool_xnt_balance = ctx
+                .accounts.config.reward_pool_xnt_balance.saturating_sub(amount);
+        }
         Ok(())
     }
 }
@@ -217,7 +159,7 @@ pub struct Initialize<'info> {
     )]
     pub config: Account<'info, RouterConfig>,
 
-    /// PDA that owns the reward pool token account
+    /// PDA that owns the reward pool token accounts
     #[account(
         seeds = [REWARD_POOL_SEED, config.key().as_ref()],
         bump,
@@ -255,7 +197,7 @@ pub struct SwapBaseInput<'info> {
     #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, RouterConfig>,
 
-    /// PDA owning the reward pool ATA
+    /// PDA owning both reward pool ATAs
     #[account(
         seeds = [REWARD_POOL_SEED, config.key().as_ref()],
         bump = config.reward_pool_bump,
@@ -277,7 +219,7 @@ pub struct SwapBaseInput<'info> {
     #[account(mut)]
     pub treasury_input_account: Account<'info, TokenAccount>,
 
-    /// Reward pool ATA for input token (receives 0.2%), owned by reward_pool_mind PDA
+    /// Reward pool ATA for input token (receives 0.2% fee)
     #[account(mut)]
     pub reward_pool_input_account: Account<'info, TokenAccount>,
 
@@ -287,6 +229,8 @@ pub struct SwapBaseInput<'info> {
     // [3] input_vault (mut), [4] output_vault (mut),
     // [5] input_token_program, [6] output_token_program,
     // [7] input_mint, [8] output_mint, [9] observation_state (mut)
+    // [10] xdex_program_id (X1 CPI requirement)
+    // [11] reward_pool_output_account (mut) — GigaSwap payout for output token
 }
 
 #[derive(Accounts)]
@@ -313,19 +257,21 @@ pub struct WithdrawRewardPool<'info> {
 pub struct RouterConfig {
     pub authority: Pubkey,
     pub treasury: Pubkey,
-    /// XNT price in USD cents (e.g. 50 = $0.50). Updated by authority.
+    /// XNT price in USD cents (e.g. 50 = $0.50). Auto-updated via refresh_price.
     pub xnt_usd_cents: u64,
     pub swap_counter: u64,
     pub giga_hits: u64,
-    /// Tracks accumulated MIND in reward pool (for UI display)
+    /// Accumulated MIND lamports in reward pool (tracked for UI + GigaSwap)
     pub reward_pool_mind_balance: u64,
+    /// Accumulated WXNT lamports in reward pool
+    pub reward_pool_xnt_balance: u64,
     pub bump: u8,
     pub reward_pool_bump: u8,
 }
 
 impl RouterConfig {
-    // 2 pubkeys + 5 u64s + 2 u8s
-    const SIZE: usize = 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 64; // 64 padding
+    // 2 pubkeys (64) + 6 u64s (48) + 2 u8s (2) + 50 padding = 164
+    const SIZE: usize = 64 + 48 + 2 + 50;
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -347,6 +293,7 @@ pub struct GigaSwapEvent {
     pub usd_cents: u64,
     pub multiplier: u64,
     pub payout: u64,
+    pub paid_mind: bool,
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -363,12 +310,149 @@ pub enum RouterError {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Read `amount` (u64 at offset 64) from a raw SPL token account.
-/// Identical layout for Token and Token-2022 base accounts.
+/// Read token amount (u64 at offset 64) from a raw SPL token account (UncheckedAccount).
 fn token_account_amount(account: &UncheckedAccount) -> Result<u64> {
     let data = account.try_borrow_data()?;
     require!(data.len() >= 72, RouterError::ZeroAmount);
     Ok(u64::from_le_bytes(data[64..72].try_into().unwrap()))
+}
+
+/// Swap logic extracted to its own #[inline(never)] frame to stay within BPF stack limit.
+#[inline(never)]
+fn do_swap<'info>(
+    ctx: Context<'_, '_, '_, 'info, SwapBaseInput<'info>>,
+    amount_in: u64,
+    minimum_amount_out: u64,
+) -> Result<()> {
+    let fee_total = amount_in.checked_mul(FEE_BPS).unwrap().checked_div(BPS_DENOM).unwrap();
+    let treasury_fee = fee_total / 2;
+    let pool_fee = fee_total - treasury_fee;
+    let swap_amount = amount_in - fee_total;
+
+    cpi_transfer_fee(
+        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.user_input_account.to_account_info(),
+        ctx.accounts.treasury_input_account.to_account_info(),
+        ctx.accounts.user.to_account_info(),
+        treasury_fee,
+    )?;
+    cpi_transfer_fee(
+        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.user_input_account.to_account_info(),
+        ctx.accounts.reward_pool_input_account.to_account_info(),
+        ctx.accounts.user.to_account_info(),
+        pool_fee,
+    )?;
+
+    let input_is_mind = ctx.accounts.user_input_account.mint == MIND_MINT;
+    if input_is_mind {
+        ctx.accounts.config.reward_pool_mind_balance =
+            ctx.accounts.config.reward_pool_mind_balance.saturating_add(pool_fee);
+    } else {
+        ctx.accounts.config.reward_pool_xnt_balance =
+            ctx.accounts.config.reward_pool_xnt_balance.saturating_add(pool_fee);
+    }
+
+    let r = ctx.remaining_accounts;
+    require!(r.len() >= 10, RouterError::ZeroAmount);
+    let input_vault_raw = read_account_amount(&r[3]);
+    let output_vault_raw = read_account_amount(&r[4]);
+
+    let (xnt_vault_raw, mind_vault_raw) = if input_is_mind {
+        (output_vault_raw, input_vault_raw)
+    } else {
+        (input_vault_raw, output_vault_raw)
+    };
+
+    let usd_value = compute_swap_usd(
+        swap_amount,
+        input_is_mind,
+        ctx.accounts.config.xnt_usd_cents,
+        xnt_vault_raw,
+        mind_vault_raw,
+    );
+
+    cpi_xdex_swap(
+        ctx.accounts.user.to_account_info(),
+        ctx.accounts.user_input_account.to_account_info(),
+        ctx.accounts.user_output_account.to_account_info(),
+        r,
+        swap_amount,
+        minimum_amount_out,
+    )?;
+
+    ctx.accounts.config.swap_counter =
+        ctx.accounts.config.swap_counter.checked_add(1).unwrap();
+
+    let giga_result = process_giga_swap(
+        &ctx,
+        usd_value,
+        xnt_vault_raw,
+        mind_vault_raw,
+        input_is_mind,
+    )?;
+
+    if giga_result.payout > 0 {
+        if giga_result.paid_mind {
+            ctx.accounts.config.reward_pool_mind_balance =
+                ctx.accounts.config.reward_pool_mind_balance.saturating_sub(giga_result.payout);
+        } else {
+            ctx.accounts.config.reward_pool_xnt_balance =
+                ctx.accounts.config.reward_pool_xnt_balance.saturating_sub(giga_result.payout);
+        }
+        ctx.accounts.config.giga_hits += 1;
+        emit!(GigaSwapEvent {
+            user: ctx.accounts.user.key(),
+            swap_counter: ctx.accounts.config.swap_counter,
+            usd_cents: usd_value,
+            multiplier: giga_result.multiplier,
+            payout: giga_result.payout,
+            paid_mind: giga_result.paid_mind,
+        });
+    }
+
+    emit!(SwapRouterEvent {
+        user: ctx.accounts.user.key(),
+        amount_in,
+        swap_amount,
+        fee_total,
+        swap_counter: ctx.accounts.config.swap_counter,
+        usd_cents: usd_value,
+    });
+
+    Ok(())
+}
+
+/// USD value of swap_amount in cents, derived from pool vault ratio + XNT/USD price.
+#[inline(never)]
+fn compute_swap_usd(
+    swap_amount: u64,
+    input_is_mind: bool,
+    xnt_usd_cents: u64,
+    xnt_vault_raw: u64,
+    mind_vault_raw: u64,
+) -> u64 {
+    if input_is_mind {
+        if mind_vault_raw == 0 { return 0; }
+        ((swap_amount as u128)
+            .saturating_mul(xnt_usd_cents as u128)
+            .saturating_mul(xnt_vault_raw as u128)
+            / (mind_vault_raw as u128)
+            / 1_000_000_000) as u64
+    } else {
+        ((swap_amount as u128).saturating_mul(xnt_usd_cents as u128) / 1_000_000_000) as u64
+    }
+}
+
+/// Read token amount from a generic AccountInfo (for remaining_accounts).
+fn read_account_amount(info: &AccountInfo) -> u64 {
+    let data = info.try_borrow_data().ok();
+    if let Some(d) = data {
+        if d.len() >= 72 {
+            return u64::from_le_bytes(d[64..72].try_into().unwrap_or([0u8; 8]));
+        }
+    }
+    0
 }
 
 #[inline(never)]
@@ -388,35 +472,88 @@ fn cpi_transfer_fee<'info>(
     )
 }
 
-/// Returns (payout, multiplier) if giga swap triggered, else (0, 0).
-/// State mutations applied by caller to keep config borrowing simple.
+struct GigaResult {
+    payout: u64,
+    multiplier: u64,
+    paid_mind: bool,
+}
+
+/// GigaSwap: if swap qualifies (≥ $5 USD), random chance to win bonus from
+/// whichever reward pool token has more USD value. Payout = GIGA_PAYOUT_PCT%
+/// of dominant pool × multiplier.
+/// remaining[11] = reward_pool_output_account (mut)
 #[inline(never)]
-fn process_giga_swap(ctx: &Context<SwapBaseInput>, usd_value: u64) -> Result<(u64, u64)> {
+fn process_giga_swap<'info>(
+    ctx: &Context<'_, '_, '_, 'info, SwapBaseInput<'info>>,
+    usd_value: u64,
+    xnt_vault_raw: u64,
+    mind_vault_raw: u64,
+    input_is_mind: bool,
+) -> Result<GigaResult> {
+    let no_win = GigaResult { payout: 0, multiplier: 0, paid_mind: false };
+
     if usd_value < GIGA_MIN_USD_CENTS {
-        return Ok((0, 0));
+        return Ok(no_win);
     }
+
     let rng = pseudo_random(&ctx.accounts.user.key(), ctx.accounts.config.swap_counter);
     let probability = giga_probability(usd_value);
     if rng % GIGA_BASE_DENOM >= probability {
-        return Ok((0, 0));
+        return Ok(no_win);
     }
 
     let multiplier = pick_multiplier(rng);
-    let pool_bal = ctx.accounts.config.reward_pool_mind_balance;
-    let payout = ((pool_bal / 20) * multiplier).min(pool_bal);
+    let xnt_usd = ctx.accounts.config.xnt_usd_cents;
+    let mind_bal = ctx.accounts.config.reward_pool_mind_balance;
+    let xnt_bal = ctx.accounts.config.reward_pool_xnt_balance;
+
+    let xnt_pool_usd = (xnt_bal as u128).saturating_mul(xnt_usd as u128) / 1_000_000_000;
+    let mind_pool_usd = if mind_vault_raw > 0 {
+        (mind_bal as u128)
+            .saturating_mul(xnt_usd as u128)
+            .saturating_mul(xnt_vault_raw as u128)
+            / (mind_vault_raw as u128)
+            / 1_000_000_000
+    } else {
+        0
+    };
+
+    let dominant_is_mind = mind_pool_usd > xnt_pool_usd;
+    let dominant_bal = if dominant_is_mind { mind_bal } else { xnt_bal };
+
+    if dominant_bal == 0 {
+        return Ok(no_win);
+    }
+
+    let base = dominant_bal * GIGA_PAYOUT_PCT / 100;
+    let payout = (base * multiplier).min(dominant_bal);
     if payout == 0 {
-        return Ok((0, 0));
+        return Ok(no_win);
     }
 
     let config_key = ctx.accounts.config.key();
     let bump = ctx.accounts.config.reward_pool_bump;
     let seeds: &[&[u8]] = &[REWARD_POOL_SEED, config_key.as_ref(), &[bump]];
+
+    // dominant_is_mind == input_is_mind → same-side token: pool_input → user_input
+    // dominant_is_mind != input_is_mind → cross-side: pool_output (remaining[11]) → user_output
+    let r = ctx.remaining_accounts;
+    let (from_ata, to_ata) = if dominant_is_mind == input_is_mind {
+        (
+            ctx.accounts.reward_pool_input_account.to_account_info(),
+            ctx.accounts.user_input_account.to_account_info(),
+        )
+    } else {
+        require!(r.len() >= 12, RouterError::ZeroAmount);
+        (r[11].clone(), ctx.accounts.user_output_account.to_account_info())
+    };
+
     token::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
-                from: ctx.accounts.reward_pool_input_account.to_account_info(),
-                to: ctx.accounts.user_output_account.to_account_info(),
+                from: from_ata,
+                to: to_ata,
                 authority: ctx.accounts.reward_pool_mind.to_account_info(),
             },
             &[seeds],
@@ -424,7 +561,7 @@ fn process_giga_swap(ctx: &Context<SwapBaseInput>, usd_value: u64) -> Result<(u6
         payout,
     )?;
 
-    Ok((payout, multiplier))
+    Ok(GigaResult { payout, multiplier, paid_mind: dominant_is_mind })
 }
 
 /// CPI to xdex swapBaseInput.
@@ -471,36 +608,18 @@ fn cpi_xdex_swap<'info>(
         &ix,
         &[
             user,
-            r[0].clone(),
-            r[1].clone(),
-            r[2].clone(),
-            user_input,
-            user_output,
-            r[3].clone(),
-            r[4].clone(),
-            r[5].clone(),
-            r[6].clone(),
-            r[7].clone(),
-            r[8].clone(),
-            r[9].clone(),
+            r[0].clone(), r[1].clone(), r[2].clone(),
+            user_input, user_output,
+            r[3].clone(), r[4].clone(),
+            r[5].clone(), r[6].clone(),
+            r[7].clone(), r[8].clone(), r[9].clone(),
         ],
     )?;
+
     Ok(())
 }
 
-/// Computes approximate USD cents value of `amount` tokens.
-/// If mint == MIND_MINT we'd need MIND price too; for now only XNT price is tracked.
-/// For MIND input swaps: approximate using XNT price as reference (TODO: add MIND oracle).
-fn compute_usd_cents(amount: u64, _mint: Pubkey, xnt_usd_cents: u64) -> u64 {
-    // XNT has 9 decimals (like SOL). MIND decimals assumed 9.
-    // usd_cents = amount * price / 10^9
-    // To avoid overflow: amount / 10^7 * price / 100
-    let units = amount / 10_000_000; // amount in units of 0.01 token
-    units.saturating_mul(xnt_usd_cents) / 100
-}
-
-/// Pseudo-random u64 from slot hashes sysvar + user key + counter.
-/// Not cryptographically secure — acceptable for gaming context.
+/// Pseudo-random u64 from user key + swap counter + current slot + timestamp.
 fn pseudo_random(user: &Pubkey, counter: u64) -> u64 {
     let clock = Clock::get().unwrap();
     let mixed = hashv(&[
@@ -512,26 +631,25 @@ fn pseudo_random(user: &Pubkey, counter: u64) -> u64 {
     u64::from_le_bytes(mixed.to_bytes()[..8].try_into().unwrap())
 }
 
-/// Returns probability numerator (out of GIGA_BASE_DENOM=100).
-/// Higher USD value → higher chance.
+/// Probability numerator (out of GIGA_BASE_DENOM=100).
+/// Increased chances vs v1 to encourage swapping.
 fn giga_probability(usd_cents: u64) -> u64 {
     match usd_cents {
-        0..=499 => 0,           // below $5 — no chance
-        500..=1_999 => 1,       // $5–$19.99 → 1%
-        2_000..=9_999 => 3,     // $20–$99.99 → 3%
-        10_000..=49_999 => 7,   // $100–$499.99 → 7%
-        _ => 15,                // $500+ → 15%
+        0..=499        => 0,  // below $5 — no GigaSwap
+        500..=1_999    => 5,  // $5–$20   → 5%
+        2_000..=9_999  => 12, // $20–$100 → 12%
+        10_000..=49_999 => 22, // $100–$500 → 22%
+        _              => 40, // $500+    → 40%
     }
 }
 
-/// Maps rng to a giga multiplier: 1.5x/2x/3x/5x/10x (encoded as integer×10).
-/// Returned as integer multiplier (reward = base * mult).
+/// Maps rng to a payout multiplier applied to GIGA_PAYOUT_PCT% of dominant pool.
 fn pick_multiplier(rng: u64) -> u64 {
     match rng % 100 {
-        0..=39  => 1,   // 40% → no extra (1x, just pool base)
-        40..=69 => 2,   // 30% → 2x
-        70..=87 => 3,   // 18% → 3x
-        88..=96 => 5,   // 9% → 5x
-        _        => 10, // 3% → 10x
+        0..=54  => 1, // 55%: 1× base
+        55..=79 => 2, // 25%: 2× base
+        80..=91 => 3, // 12%: 3× base
+        92..=97 => 5, //  6%: 5× base
+        _        => 8, //  2%: 8× jackpot
     }
 }

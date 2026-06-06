@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   Connection,
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
   AccountMeta,
@@ -9,6 +10,8 @@ import {
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
+  createCloseAccountInstruction,
+  createSyncNativeInstruction,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { createHash } from "node:crypto";
@@ -165,9 +168,28 @@ export async function POST(req: NextRequest) {
       amountIn, minAmountOut,
     });
 
+    // Wrap / unwrap native XNT so the user always pays/receives native XNT (not WXNT)
+    const wrapIxs: TransactionInstruction[] = [];
+    const postSwapIxs: TransactionInstruction[] = [];
+
+    if (!isMindToXnt) {
+      // XNT→MIND: fund userInput (WXNT ATA) with native XNT lamports, then sync
+      wrapIxs.push(
+        SystemProgram.transfer({ fromPubkey: user, toPubkey: userInput, lamports: amountIn }),
+        createSyncNativeInstruction(userInput, TOKEN_PROGRAM_ID),
+      );
+      // Close WXNT ATA after swap to return any remaining lamports + rent to user
+      postSwapIxs.push(createCloseAccountInstruction(userInput, user, user, [], TOKEN_PROGRAM_ID));
+    } else {
+      // MIND→XNT: close WXNT output ATA after swap → user receives native XNT
+      postSwapIxs.push(createCloseAccountInstruction(userOutput, user, user, [], TOKEN_PROGRAM_ID));
+    }
+
     const tx = new Transaction();
     for (const ix of createAtaIxs) tx.add(ix);
+    for (const ix of wrapIxs) tx.add(ix);
     tx.add(swapIx);
+    for (const ix of postSwapIxs) tx.add(ix);
 
     const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
     tx.recentBlockhash = blockhash;

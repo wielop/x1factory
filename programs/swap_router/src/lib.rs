@@ -145,11 +145,8 @@ pub mod swap_router {
             RouterError::Unauthorized
         );
         let config_key = ctx.accounts.config.key();
-        let seeds = &[
-            REWARD_POOL_SEED,
-            config_key.as_ref(),
-            &[ctx.accounts.config.reward_pool_bump],
-        ];
+        let bump = *ctx.bumps.get("reward_pool_mind").unwrap();
+        let seeds = &[REWARD_POOL_SEED, config_key.as_ref(), &[bump]];
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -201,7 +198,7 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct UpdatePrice<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, RouterConfig>,
     #[account(address = TREASURY)]
     pub authority: Signer<'info>,
@@ -209,7 +206,7 @@ pub struct UpdatePrice<'info> {
 
 #[derive(Accounts)]
 pub struct RefreshPrice<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, RouterConfig>,
     /// CHECK: XNT/USDC pool XNT vault — address constrained to XNT_USDC_XNT_VAULT constant.
     #[account(address = XNT_USDC_XNT_VAULT)]
@@ -221,13 +218,13 @@ pub struct RefreshPrice<'info> {
 
 #[derive(Accounts)]
 pub struct SwapBaseInput<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, RouterConfig>,
 
     /// PDA owning both reward pool ATAs
     #[account(
         seeds = [REWARD_POOL_SEED, config.key().as_ref()],
-        bump = config.reward_pool_bump,
+        bump,
     )]
     pub reward_pool_mind: SystemAccount<'info>,
 
@@ -262,11 +259,11 @@ pub struct SwapBaseInput<'info> {
 
 #[derive(Accounts)]
 pub struct WithdrawRewardPool<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, RouterConfig>,
     #[account(
         seeds = [REWARD_POOL_SEED, config.key().as_ref()],
-        bump = config.reward_pool_bump,
+        bump,
     )]
     pub reward_pool_mind: SystemAccount<'info>,
     #[account(mut)]
@@ -280,7 +277,7 @@ pub struct WithdrawRewardPool<'info> {
 
 #[derive(Accounts)]
 pub struct DepositRewardPool<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, RouterConfig>,
     /// Source token account (depositor's MIND or WXNT ATA)
     #[account(mut)]
@@ -577,7 +574,7 @@ fn process_giga_swap<'info>(
     }
 
     let config_key = ctx.accounts.config.key();
-    let bump = ctx.accounts.config.reward_pool_bump;
+    let bump = *ctx.bumps.get("reward_pool_mind").unwrap();
     let seeds: &[&[u8]] = &[REWARD_POOL_SEED, config_key.as_ref(), &[bump]];
 
     // dominant_is_mind == input_is_mind → same-side token: pool_input → user_input

@@ -258,8 +258,24 @@ export default function SwapPage() {
     return "0%";
   }
 
-  const inUsd = quote?.usdCents ? `≈ $${(Number(quote.usdCents) / 100).toFixed(2)}` : "—";
-  const outUsd = "—";
+  const inUsd = quote?.usdCents ? `$${(Number(quote.usdCents) / 100).toFixed(2)}` : "—";
+
+  const outUsdValue = (() => {
+    if (!quote?.estimatedOut || !quote?.xntUsdCents) return null;
+    const out = BigInt(quote.estimatedOut);
+    const xntUsdCents = BigInt(quote.xntUsdCents);
+    const DECIMALS = 1_000_000_000n;
+    let cents: bigint;
+    if (direction === "xnt_to_mind") {
+      const pXnt = BigInt(quote.poolXnt ?? "0");
+      const pMind = BigInt(quote.poolMind ?? "1");
+      cents = pMind > 0n ? (out * xntUsdCents * pXnt) / (pMind * DECIMALS) : 0n;
+    } else {
+      cents = (out * xntUsdCents) / DECIMALS;
+    }
+    return Number(cents) / 100;
+  })();
+  const outUsd = outUsdValue && outUsdValue > 0 ? `$${outUsdValue.toFixed(2)}` : "—";
 
   return (
     <div className="min-h-screen bg-[#07090e] text-zinc-100 font-sans">
@@ -285,12 +301,12 @@ export default function SwapPage() {
                 </span>
                 <span className="text-zinc-700">|</span>
                 <span className="text-neon/80">
-                  ≈ <span className="font-bold text-neon">${(Number(quote!.rewardPoolUsdCents!) / 100).toFixed(1)}</span> w nagrodach
+                  ≈ <span className="font-bold text-neon">${(Number(quote!.rewardPoolUsdCents!) / 100).toFixed(1)}</span> in prizes
                 </span>
               </>
             ) : (
               <span className="text-zinc-600">
-                {quote ? "Pula w trakcie zasilania…" : "Swap ≥$5 → GigaSwap aktywny"}
+                {quote ? "Pool loading…" : "Swap ≥$5 → GigaSwap active"}
               </span>
             )}
           </div>
@@ -543,25 +559,25 @@ export default function SwapPage() {
               {quote?.gigaQualified ? (
                 <div>
                   <div className="text-xs font-bold text-neon">
-                    {gigaWinPct(Number(quote.usdCents ?? 0))} szans!
+                    {gigaWinPct(Number(quote.usdCents ?? 0))} win chance!
                   </div>
-                  <div className="text-[10px] text-neon/60">fee × mult + bonus z puli</div>
+                  <div className="text-[10px] text-neon/60">fee × mult + pool bonus</div>
                 </div>
               ) : (
                 <div>
                   <div className="text-xs text-zinc-600">
-                    {quote ? `${swapUsdStr} — za mało` : "Wprowadź kwotę"}
+                    {quote ? `${swapUsdStr} — too low` : "Enter amount"}
                   </div>
-                  <div className="text-[10px] text-zinc-700">Wymagane ≥ $5</div>
+                  <div className="text-[10px] text-zinc-700">Required ≥ $5</div>
                 </div>
               )}
             </div>
           </div>
           {quote?.gigaQualified && rewardPoolActive && (
             <div className="mt-2 pt-2 border-t border-neon/20 flex items-center justify-between text-[10px] text-neon/50">
-              <span>Pula nagród aktywna</span>
+              <span>Reward pool active</span>
               <span className="font-bold text-neon/70">
-                ≈ ${(Number(quote.rewardPoolUsdCents!) / 100).toFixed(1)} dostępne
+                ≈ ${(Number(quote.rewardPoolUsdCents!) / 100).toFixed(1)} available
               </span>
             </div>
           )}
@@ -642,13 +658,13 @@ export default function SwapPage() {
               <span className="text-sm font-bold text-neon">Pool Rewards</span>
               {rewardPoolActive && quote?.rewardPoolUsdCents && (
                 <span className="ml-auto text-xs font-bold text-neon bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5">
-                  ${(Number(quote.rewardPoolUsdCents) / 100).toFixed(1)} dostępne
+                  ${(Number(quote.rewardPoolUsdCents) / 100).toFixed(1)} available
                 </span>
               )}
             </div>
             <div className="space-y-2 text-sm text-zinc-400">
               <div className="flex justify-between">
-                <span>Opłata protokołu</span>
+                <span>Protocol fee</span>
                 <span className="text-zinc-300 font-mono">1.0%</span>
               </div>
               <div className="flex justify-between">
@@ -656,50 +672,50 @@ export default function SwapPage() {
                 <span className="text-zinc-300 font-mono">0.5%</span>
               </div>
               <div className="flex justify-between pl-4 text-xs text-zinc-600">
-                <span>operacje & buy-back</span>
+                <span>operations & buy-back</span>
               </div>
               <div className="flex justify-between">
-                <span>Pula nagród</span>
+                <span>Reward Pool</span>
                 <span className="text-zinc-300 font-mono">0.5%</span>
               </div>
               <div className="flex justify-between pl-4 text-xs text-zinc-600">
-                <span>nagrody GigaSwap dla userów</span>
+                <span>GigaSwap prizes for users</span>
               </div>
               <div className="mt-3 pt-3 border-t border-zinc-800/60">
-                <div className="text-xs text-neon/80 font-bold mb-2">⚡ GigaSwap — jak to działa?</div>
+                <div className="text-xs text-neon/80 font-bold mb-2">⚡ GigaSwap — how it works?</div>
                 <div className="space-y-1.5 text-xs text-zinc-500">
                   <div className="flex justify-between">
-                    <span>Kwalifikacja</span>
+                    <span>Qualification</span>
                     <span className="text-zinc-300">swap ≥ $5</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Szansa wygranej</span>
-                    <span className="text-zinc-300">38–68% w zależności od kwoty</span>
+                    <span>Win chance</span>
+                    <span className="text-zinc-300">38–68% based on swap value</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Nagroda</span>
-                    <span className="text-zinc-300">fee × mnożnik + bonus z puli</span>
+                    <span>Payout</span>
+                    <span className="text-zinc-300">fee × multiplier + pool bonus</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Mnożnik</span>
+                    <span>Multiplier</span>
                     <span className="text-zinc-300">1× / 2× / 3× / 5× / 8× / 15×</span>
                   </div>
                 </div>
                 {!rewardPoolActive && (
                   <div className="mt-2 text-[10px] text-zinc-600 italic">
-                    Podstawowe nagrody (z fee) zawsze dostępne. Duże nagrody gdy właściciel zasila pulę.
+                    Base rewards (from fee) always available. Big prizes when owner funds the pool.
                   </div>
                 )}
               </div>
               {quote?.swapCounter && (
                 <div className="mt-2 pt-2 border-t border-zinc-800/60 flex justify-between text-xs text-zinc-600">
-                  <span>Łącznie swapów</span>
+                  <span>Total swaps</span>
                   <span className="font-mono">{Number(quote.swapCounter).toLocaleString()}</span>
                 </div>
               )}
               {quote?.gigaHits && Number(quote.gigaHits) > 0 && (
                 <div className="flex justify-between text-xs text-zinc-600">
-                  <span>GigaSwap wygranych</span>
+                  <span>GigaSwap wins</span>
                   <span className="font-mono text-neon/50">{Number(quote.gigaHits).toLocaleString()}</span>
                 </div>
               )}

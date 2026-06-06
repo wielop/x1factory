@@ -103,8 +103,8 @@ function computeBadges(params: {
   const { isGenesis, hasPioneer, hasBigClaim, allTimeStats, allSeasons } = params;
 
   const badges: Badge[] = [];
-  if (isGenesis)    badges.push({ key: 'genesis',         icon: '🌟', label: 'Genesis',      desc: 'Pierwsi 100 użytkowników',  colorClass: 'badge-lvl-genesis'   });
-  if (hasPioneer)   badges.push({ key: 'pioneer',         icon: '🛸', label: 'Pioneer',       desc: 'Portfel + pierwszy check-in', colorClass: 'badge-lvl-platinum' });
+  if (isGenesis)    badges.push({ key: 'genesis',         icon: '🌟', label: 'Genesis',      desc: 'First 100 users',           colorClass: 'badge-lvl-genesis'   });
+  if (hasPioneer)   badges.push({ key: 'pioneer',         icon: '🛸', label: 'Pioneer',       desc: 'Wallet + first check-in',   colorClass: 'badge-lvl-platinum' });
   if (hasBigClaim)  badges.push({ key: 'first_big_claim', icon: '⚡', label: 'Big Claimer',   desc: 'Claim ≥ 500 MIND',          colorClass: 'badge-lvl-gold'      });
 
   const trophies: TrophyBadge[] = [];

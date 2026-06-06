@@ -254,7 +254,7 @@
 
         <!-- ── Daily header ── -->
         <div class="ms-section-head">
-          <span class="ms-section-title">⚡ Misje dzienne</span>
+          <span class="ms-section-title">⚡ Daily Missions</span>
           <span class="ms-section-date" id="ms-today"></span>
         </div>
 
@@ -264,7 +264,7 @@
             <span class="ms-icon ms-icon-energy">⚡</span>
             <div class="ms-card-body">
               <div class="ms-card-name">Daily Check-in</div>
-              <div class="ms-card-desc">Raz dziennie — resetuje się o północy UTC</div>
+              <div class="ms-card-desc">Once per day — resets at midnight UTC</div>
             </div>
             <div class="ms-card-badge cyan" id="ms-checkin-badge">+10</div>
           </div>
@@ -278,7 +278,7 @@
             <span class="ms-icon">💎</span>
             <div class="ms-card-body">
               <div class="ms-card-name">Claim MIND</div>
-              <div class="ms-card-desc">Odbieraj tokeny MIND na X1Factory każdego dnia</div>
+              <div class="ms-card-desc">Claim MIND tokens on X1Factory every day</div>
             </div>
             <div class="ms-card-badge" id="ms-claim-badge">+5–150</div>
           </div>
@@ -293,47 +293,47 @@
 
         <!-- ── Streak header ── -->
         <div class="ms-section-head" style="margin-top:4px">
-          <span class="ms-section-title">🔥 Seria (Streak)</span>
-          <span class="ms-streak-pill hidden" id="ms-streak-pill">0 dni</span>
+          <span class="ms-section-title">🔥 Streak</span>
+          <span class="ms-streak-pill hidden" id="ms-streak-pill">0 days</span>
         </div>
 
         <div class="ms-streak-card card">
           <div class="ms-streak-hero">
             <span class="ms-streak-big" id="ms-streak-big">0</span>
             <div class="ms-streak-meta">
-              <div class="ms-streak-label-big">dni z rzędu</div>
-              <div class="ms-streak-hint" id="ms-streak-hint">Zacznij check-in już dziś</div>
+              <div class="ms-streak-label-big">days in a row</div>
+              <div class="ms-streak-hint" id="ms-streak-hint">Start checking in today</div>
             </div>
           </div>
           <div class="ms-milestones" id="ms-milestones">
             <div class="ms-milestone" data-days="3">
               <span class="ms-ms-icon">🔥</span>
-              <span class="ms-ms-label">3 dni z rzędu</span>
+              <span class="ms-ms-label">3 days in a row</span>
               <span class="ms-ms-pts">+50 pts</span>
             </div>
             <div class="ms-milestone" data-days="7">
               <span class="ms-ms-icon">🔥</span>
-              <span class="ms-ms-label">7 dni z rzędu</span>
+              <span class="ms-ms-label">7 days in a row</span>
               <span class="ms-ms-pts">+150 pts</span>
             </div>
             <div class="ms-milestone" data-days="14">
               <span class="ms-ms-icon">🔥</span>
-              <span class="ms-ms-label">14 dni z rzędu</span>
+              <span class="ms-ms-label">14 days in a row</span>
               <span class="ms-ms-pts">+350 pts</span>
             </div>
             <div class="ms-milestone" data-days="21">
               <span class="ms-ms-icon">🔥</span>
-              <span class="ms-ms-label">21 dni z rzędu</span>
+              <span class="ms-ms-label">21 days in a row</span>
               <span class="ms-ms-pts">+700 pts</span>
             </div>
           </div>
-          <div class="ms-streak-tip">Pominięcie dnia zeruje serię do 0.</div>
+          <div class="ms-streak-tip">Missing a day resets your streak to 0.</div>
         </div>
 
         <!-- ── Passive rewards header ── -->
         <div class="ms-section-head" style="margin-top:4px">
-          <span class="ms-section-title">🤖 Nagrody automatyczne</span>
-          <span class="ms-auto-tag">co dobę · bez akcji</span>
+          <span class="ms-section-title">🤖 Automatic Rewards</span>
+          <span class="ms-auto-tag">daily · no action needed</span>
         </div>
 
         <div class="ms-passive-card card">
@@ -374,27 +374,27 @@
           <div class="season-dates" id="season-dates"></div>
         </div>
 
-        <div class="section-header"><span>Jak zdobywać punkty</span></div>
+        <div class="section-header"><span>How to Earn Points</span></div>
         <div class="earn-list">
 
           <div class="earn-group">
-            <div class="earn-group-head">⚡ Daily Check-in <span class="earn-tag">raz/dzień</span></div>
-            <div class="earn-note">Kliknij "Check In" w zakładce Missions każdego dnia — reset o północy UTC</div>
-            <div class="earn-row"><span>Check-in dziennie</span><b class="emerald">+10</b></div>
+            <div class="earn-group-head">⚡ Daily Check-in <span class="earn-tag">once/day</span></div>
+            <div class="earn-note">Click "Check In" in the Missions tab every day — resets at midnight UTC</div>
+            <div class="earn-row"><span>Daily check-in</span><b class="emerald">+10</b></div>
           </div>
 
           <div class="earn-group">
-            <div class="earn-group-head">🔥 Seria dni (Streak) <span class="earn-tag">bonus jednorazowy</span></div>
-            <div class="earn-note">Rób check-in każdego dnia — bonus za osiągnięcie milestona</div>
-            <div class="earn-row"><span>3 dni z rzędu</span><b class="amber">+50</b></div>
-            <div class="earn-row"><span>7 dni z rzędu</span><b class="amber">+150</b></div>
-            <div class="earn-row"><span>14 dni z rzędu</span><b class="amber">+350</b></div>
-            <div class="earn-row"><span>21 dni z rzędu</span><b class="amber">+700</b></div>
+            <div class="earn-group-head">🔥 Streak <span class="earn-tag">one-time bonus</span></div>
+            <div class="earn-note">Check in every day — bonus awarded at each milestone</div>
+            <div class="earn-row"><span>3 days in a row</span><b class="amber">+50</b></div>
+            <div class="earn-row"><span>7 days in a row</span><b class="amber">+150</b></div>
+            <div class="earn-row"><span>14 days in a row</span><b class="amber">+350</b></div>
+            <div class="earn-row"><span>21 days in a row</span><b class="amber">+700</b></div>
           </div>
 
           <div class="earn-group">
-            <div class="earn-group-head">💎 Claim MIND <span class="earn-tag">dziennie</span></div>
-            <div class="earn-note">Odbieraj tokeny MIND na X1Factory — wykrywane automatycznie</div>
+            <div class="earn-group-head">💎 Claim MIND <span class="earn-tag">daily</span></div>
+            <div class="earn-note">Claim MIND tokens on X1Factory — detected automatically</div>
             <div class="earn-row"><span>≥ 1 MIND</span><b class="cyan">+5</b></div>
             <div class="earn-row"><span>≥ 50 MIND</span><b class="cyan">+15</b></div>
             <div class="earn-row"><span>≥ 100 MIND</span><b class="cyan">+30</b></div>
@@ -403,22 +403,22 @@
           </div>
 
           <div class="earn-group">
-            <div class="earn-group-head">🏭 Active Rig <span class="earn-tag">dziennie</span></div>
-            <div class="earn-note">Punkty za aktywny rig — automatycznie co dobę</div>
+            <div class="earn-group-head">🏭 Active Rig <span class="earn-tag">daily</span></div>
+            <div class="earn-note">Points for active rig — automatically every day</div>
             <div class="earn-row"><span>Starter rig online</span><b class="emerald">+2</b></div>
             <div class="earn-row"><span>Pro rig online</span><b class="emerald">+8</b></div>
             <div class="earn-row"><span>Industrial rig online</span><b class="emerald">+20</b></div>
           </div>
 
           <div class="earn-group">
-            <div class="earn-group-head">🏭 Zakup rига <span class="earn-tag">jednorazowo</span></div>
+            <div class="earn-group-head">🏭 Rig Purchase <span class="earn-tag">one-time</span></div>
             <div class="earn-row"><span>Starter rig</span><b class="cyan">+20</b></div>
             <div class="earn-row"><span>Pro rig</span><b class="cyan">+75</b></div>
             <div class="earn-row"><span>Industrial rig</span><b class="cyan">+150</b></div>
           </div>
 
           <div class="earn-group">
-            <div class="earn-group-head">🔄 Odnowienie rига <span class="earn-tag">za każde odnowienie</span></div>
+            <div class="earn-group-head">🔄 Rig Renewal <span class="earn-tag">per renewal</span></div>
             <div class="earn-row"><span>Starter renewal</span><b class="cyan">+10</b></div>
             <div class="earn-row"><span>Pro renewal</span><b class="cyan">+40</b></div>
             <div class="earn-row"><span>Industrial renewal</span><b class="cyan">+80</b></div>
@@ -426,7 +426,7 @@
 
           <div class="earn-group">
             <div class="earn-group-head">🔒 Staking XNT <span class="earn-tag">snapshot</span></div>
-            <div class="earn-note">Punkty za ilość stakowanych tokenów — wykrywane automatycznie</div>
+            <div class="earn-note">Points based on staked tokens — detected automatically</div>
             <div class="earn-row"><span>≥ 100 XNT</span><b class="cyan">+25</b></div>
             <div class="earn-row"><span>≥ 500 XNT</span><b class="cyan">+100</b></div>
             <div class="earn-row"><span>≥ 1,000 XNT</span><b class="cyan">+250</b></div>
@@ -435,8 +435,8 @@
           </div>
 
           <div class="earn-group">
-            <div class="earn-group-head">🔑 Rejestracja</div>
-            <div class="earn-row"><span>Podłączenie walleta</span><b class="cyan">+50</b></div>
+            <div class="earn-group-head">🔑 Registration</div>
+            <div class="earn-row"><span>Wallet connection</span><b class="cyan">+50</b></div>
           </div>
 
         </div>

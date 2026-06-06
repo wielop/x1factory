@@ -24,6 +24,11 @@ interface Quote {
   gigaQualified?: boolean;
   usdCents?: string;
   xntUsdCents?: string;
+  rewardPoolMind?: string;
+  rewardPoolXnt?: string;
+  rewardPoolUsdCents?: string;
+  swapCounter?: string;
+  gigaHits?: string;
 }
 
 function fmtTokens(raw: string | bigint, decimals: number, dp = 4): string {
@@ -238,7 +243,22 @@ export default function SwapPage() {
     ? Number(poolMind) / Number(poolXnt)
     : 0;
 
-  const inUsd = "—";
+  const rewardPoolActive = !!(quote?.rewardPoolMind && BigInt(quote.rewardPoolMind) > 0n);
+
+  // Swap USD value for display
+  const swapUsdStr = quote?.usdCents
+    ? `≈ $${(Number(quote.usdCents) / 100).toFixed(2)}`
+    : "—";
+
+  // GigaSwap win probability display based on swap USD value
+  function gigaWinPct(usdCents: number): string {
+    if (usdCents >= 10_000) return "68%";
+    if (usdCents >= 2_000)  return "55%";
+    if (usdCents >= 500)    return "38%";
+    return "0%";
+  }
+
+  const inUsd = quote?.usdCents ? `≈ $${(Number(quote.usdCents) / 100).toFixed(2)}` : "—";
   const outUsd = "—";
 
   return (
@@ -248,21 +268,31 @@ export default function SwapPage() {
       <div className="w-full border-b border-zinc-800/60 bg-[#0a0d14]">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-neon animate-pulse" />
+            <div className={`w-2 h-2 rounded-full ${rewardPoolActive ? "bg-neon animate-pulse" : "bg-zinc-600"}`} />
             <span className="text-xs font-bold text-neon tracking-wide">REWARD POOL</span>
           </div>
-          <div className="flex items-center gap-6 text-xs text-zinc-400">
-            {poolMind > 0n ? (
+          <div className="flex items-center gap-4 text-xs text-zinc-400 flex-wrap">
+            {rewardPoolActive ? (
               <>
-                <span><span className="text-zinc-500">Pool MIND:</span> <span className="text-zinc-200 font-mono">{fmtShort(poolMind, MIND_DECIMALS)}</span></span>
+                <span>
+                  <span className="text-zinc-500">MIND:</span>{" "}
+                  <span className="text-zinc-200 font-mono">{fmtShort(BigInt(quote!.rewardPoolMind!), MIND_DECIMALS)}</span>
+                </span>
                 <span className="text-zinc-700">|</span>
-                <span><span className="text-zinc-500">Pool XNT:</span> <span className="text-zinc-200 font-mono">{fmtShort(poolXnt, XNT_DECIMALS)}</span></span>
+                <span>
+                  <span className="text-zinc-500">XNT:</span>{" "}
+                  <span className="text-zinc-200 font-mono">{fmtShort(BigInt(quote!.rewardPoolXnt!), XNT_DECIMALS)}</span>
+                </span>
                 <span className="text-zinc-700">|</span>
+                <span className="text-neon/80">
+                  ≈ <span className="font-bold text-neon">${(Number(quote!.rewardPoolUsdCents!) / 100).toFixed(1)}</span> w nagrodach
+                </span>
               </>
-            ) : null}
-            <span className="text-neon/70">
-              <span className="text-zinc-500">GigaSwap:</span> swap &gt;$5 → win up to <span className="text-neon font-bold">15%</span> bonus
-            </span>
+            ) : (
+              <span className="text-zinc-600">
+                {quote ? "Pula w trakcie zasilania…" : "Swap ≥$5 → GigaSwap aktywny"}
+              </span>
+            )}
           </div>
           <Link href="/" className="text-xs text-zinc-600 hover:text-zinc-400 transition hidden sm:block">← X1Factory</Link>
         </div>
@@ -489,40 +519,52 @@ export default function SwapPage() {
         </div>
 
         {/* GigaSwap Indicator */}
-        <div className={`mb-3 rounded-2xl px-4 py-3 flex items-center justify-between transition-all duration-500 ${
+        <div className={`mb-3 rounded-2xl px-4 py-3 transition-all duration-500 ${
           quote?.gigaQualified
             ? "bg-neon/10 border border-neon/40 shadow-[0_0_20px_rgba(34,242,255,0.15)]"
             : "bg-zinc-900/60 border border-zinc-800"
         }`}>
-          <div className="flex items-center gap-2">
-            <span className={`text-lg font-black tracking-widest transition-all ${
-              quote?.gigaQualified
-                ? "text-neon animate-pulse drop-shadow-[0_0_8px_rgba(34,242,255,0.8)]"
-                : "text-zinc-600"
-            }`}>
-              ⚡ GIGA SWAP
-            </span>
-            {quote?.gigaQualified && (
-              <span className="text-[10px] font-bold text-neon/70 bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5 animate-pulse">
-                ACTIVE
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`text-lg font-black tracking-widest transition-all ${
+                quote?.gigaQualified
+                  ? "text-neon animate-pulse drop-shadow-[0_0_8px_rgba(34,242,255,0.8)]"
+                  : "text-zinc-600"
+              }`}>
+                ⚡ GIGA SWAP
               </span>
-            )}
-          </div>
-          <div className="text-right">
-            {quote?.gigaQualified ? (
-              <div>
-                <div className="text-xs font-bold text-neon">Eligible!</div>
-                <div className="text-[10px] text-neon/60">Up to 40% win chance</div>
-              </div>
-            ) : (
-              <div>
-                <div className="text-xs text-zinc-600">
-                  {quote ? "< $5 swap" : "Enter amount"}
+              {quote?.gigaQualified && (
+                <span className="text-[10px] font-bold text-neon/70 bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5 animate-pulse">
+                  ACTIVE
+                </span>
+              )}
+            </div>
+            <div className="text-right">
+              {quote?.gigaQualified ? (
+                <div>
+                  <div className="text-xs font-bold text-neon">
+                    {gigaWinPct(Number(quote.usdCents ?? 0))} szans!
+                  </div>
+                  <div className="text-[10px] text-neon/60">fee × mult + bonus z puli</div>
                 </div>
-                <div className="text-[10px] text-zinc-700">Need ≥ $5 to activate</div>
-              </div>
-            )}
+              ) : (
+                <div>
+                  <div className="text-xs text-zinc-600">
+                    {quote ? `${swapUsdStr} — za mało` : "Wprowadź kwotę"}
+                  </div>
+                  <div className="text-[10px] text-zinc-700">Wymagane ≥ $5</div>
+                </div>
+              )}
+            </div>
           </div>
+          {quote?.gigaQualified && rewardPoolActive && (
+            <div className="mt-2 pt-2 border-t border-neon/20 flex items-center justify-between text-[10px] text-neon/50">
+              <span>Pula nagród aktywna</span>
+              <span className="font-bold text-neon/70">
+                ≈ ${(Number(quote.rewardPoolUsdCents!) / 100).toFixed(1)} dostępne
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Route */}
@@ -596,28 +638,65 @@ export default function SwapPage() {
           {/* Pool rewards info */}
           <div className="bg-[#0d1117] border border-neon/20 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 rounded-full bg-neon animate-pulse" />
+              <div className={`w-2 h-2 rounded-full ${rewardPoolActive ? "bg-neon animate-pulse" : "bg-zinc-600"}`} />
               <span className="text-sm font-bold text-neon">Pool Rewards</span>
+              {rewardPoolActive && quote?.rewardPoolUsdCents && (
+                <span className="ml-auto text-xs font-bold text-neon bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5">
+                  ${(Number(quote.rewardPoolUsdCents) / 100).toFixed(1)} dostępne
+                </span>
+              )}
             </div>
             <div className="space-y-2 text-sm text-zinc-400">
               <div className="flex justify-between">
-                <span>Protocol fee</span>
+                <span>Opłata protokołu</span>
                 <span className="text-zinc-300 font-mono">1.0%</span>
               </div>
               <div className="flex justify-between">
-                <span>Treasury (0.2%)</span>
-                <span className="text-zinc-500 text-xs">buy-back & operations</span>
+                <span>Treasury (0.5%)</span>
+                <span className="text-zinc-500 text-xs">operacje & buy-back</span>
               </div>
               <div className="flex justify-between">
-                <span>Reward Pool (0.2%)</span>
-                <span className="text-zinc-500 text-xs">GigaSwap prizes</span>
+                <span>Pula nagród (0.5%)</span>
+                <span className="text-zinc-500 text-xs">nagrody GigaSwap</span>
               </div>
               <div className="mt-3 pt-3 border-t border-zinc-800/60">
-                <div className="text-xs text-neon/80 font-bold mb-1">GigaSwap</div>
-                <div className="text-xs text-zinc-500">
-                  Swap over $5 → <span className="text-neon">1-15% chance</span> to win up to <span className="text-neon font-bold">15% bonus</span> from the reward pool
+                <div className="text-xs text-neon/80 font-bold mb-2">⚡ GigaSwap — jak to działa?</div>
+                <div className="space-y-1.5 text-xs text-zinc-500">
+                  <div className="flex justify-between">
+                    <span>Kwalifikacja</span>
+                    <span className="text-zinc-300">swap ≥ $5</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Szansa wygranej</span>
+                    <span className="text-zinc-300">38–68% w zależności od kwoty</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Nagroda</span>
+                    <span className="text-zinc-300">fee × mnożnik + bonus z puli</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Mnożnik</span>
+                    <span className="text-zinc-300">1× / 2× / 3× / 5× / 8× / 15×</span>
+                  </div>
                 </div>
+                {!rewardPoolActive && (
+                  <div className="mt-2 text-[10px] text-zinc-600 italic">
+                    Podstawowe nagrody (z fee) zawsze dostępne. Duże nagrody gdy właściciel zasila pulę.
+                  </div>
+                )}
               </div>
+              {quote?.swapCounter && (
+                <div className="mt-2 pt-2 border-t border-zinc-800/60 flex justify-between text-xs text-zinc-600">
+                  <span>Łącznie swapów</span>
+                  <span className="font-mono">{Number(quote.swapCounter).toLocaleString()}</span>
+                </div>
+              )}
+              {quote?.gigaHits && Number(quote.gigaHits) > 0 && (
+                <div className="flex justify-between text-xs text-zinc-600">
+                  <span>GigaSwap wygranych</span>
+                  <span className="font-mono text-neon/50">{Number(quote.gigaHits).toLocaleString()}</span>
+                </div>
+              )}
             </div>
           </div>
 

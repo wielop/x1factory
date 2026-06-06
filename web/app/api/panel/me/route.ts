@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { prisma } from "@/lib/prisma";
 import { parseTelegramWebAppAuth } from "@/lib/webAppAuth";
+
+const RPC = "https://rpc.mainnet.x1.xyz";
+const CONFIG_PDA = new PublicKey("2jphFVpP8M7yPC9syAis7sN28aTWBU4MssmXiQGxrZb6");
+const CONFIG_XNT_USD_OFFSET     = 72;
+const CONFIG_REWARD_MIND_OFFSET  = 96;
+const CONFIG_REWARD_XNT_OFFSET   = 104;
+const CONFIG_SWAP_COUNTER_OFFSET = 80;
+const CONFIG_GIGA_HITS_OFFSET    = 88;
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -145,6 +154,34 @@ export async function GET(req: NextRequest) {
     const todayUtcStart = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
 
     const botToken = process.env.BOT_TOKEN ?? "";
+
+    // Fetch reward pool info from chain (non-blocking — fallback to null on error)
+    const gigaPoolPromise = (async () => {
+      try {
+        const conn = new Connection(RPC, "confirmed");
+        const info = await conn.getAccountInfo(CONFIG_PDA);
+        if (!info || info.data.length < CONFIG_REWARD_XNT_OFFSET + 8) return null;
+        const xntUsdCents   = info.data.readBigUInt64LE(CONFIG_XNT_USD_OFFSET);
+        const mindBal       = info.data.readBigUInt64LE(CONFIG_REWARD_MIND_OFFSET);
+        const xntBal        = info.data.readBigUInt64LE(CONFIG_REWARD_XNT_OFFSET);
+        const swapCounter   = info.data.readBigUInt64LE(CONFIG_SWAP_COUNTER_OFFSET);
+        const gigaHits      = info.data.readBigUInt64LE(CONFIG_GIGA_HITS_OFFSET);
+        const xntUsd = Number(xntUsdCents) / 100;
+        const mindUsd = xntUsd / 21; // approximate MIND price
+        const poolUsd = (Number(mindBal) / 1e9) * mindUsd + (Number(xntBal) / 1e9) * xntUsd;
+        return {
+          mindBalance: mindBal.toString(),
+          xntBalance: xntBal.toString(),
+          poolUsd: Math.round(poolUsd * 100) / 100,
+          xntUsdCents: xntUsdCents.toString(),
+          swapCounter: swapCounter.toString(),
+          gigaHits: gigaHits.toString(),
+          active: poolUsd > 0.01,
+        };
+      } catch {
+        return null;
+      }
+    })();
 
     // Parallel: current season, wallet, all seasons, all-time stats, event categories, photo
     const [season, wallet, allSeasons, allTimeStatsList, eventCategoryRows, photoUrl, hasBigClaimRow] = await Promise.all([
@@ -314,6 +351,9 @@ export async function GET(req: NextRequest) {
         }
       : null;
 
+    // Await pool info (was kicked off in parallel)
+    const gigaPool = await gigaPoolPromise;
+
     // Season days
     const totalDays = season
       ? Math.max(1, Math.ceil((season.endsAt.getTime() - season.startsAt.getTime()) / 86400000))
@@ -371,6 +411,7 @@ export async function GET(req: NextRequest) {
       nearbyRanks,
       dailyMissions,
       prizePool,
+      gigaPool,
       syncedAt: new Date().toISOString(),
       recentEvents: recentPoints.map((p) => ({
         points: p.points,

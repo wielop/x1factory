@@ -181,10 +181,10 @@ pub struct UpdatePrice<'info> {
 pub struct RefreshPrice<'info> {
     #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, RouterConfig>,
-    /// XNT/USDC pool XNT vault (token_0, 9 dec). UncheckedAccount = works for Token-2022 too.
+    /// CHECK: XNT/USDC pool XNT vault — address constrained to XNT_USDC_XNT_VAULT constant.
     #[account(address = XNT_USDC_XNT_VAULT)]
     pub xnt_vault: UncheckedAccount<'info>,
-    /// XNT/USDC pool USDC vault (token_1, 6 dec, Token-2022)
+    /// CHECK: XNT/USDC pool USDC vault — address constrained to XNT_USDC_USDC_VAULT constant.
     #[account(address = XNT_USDC_USDC_VAULT)]
     pub usdc_vault: UncheckedAccount<'info>,
 }
@@ -524,8 +524,10 @@ fn process_giga_swap<'info>(
         return Ok(no_win);
     }
 
-    // Payout = fee_total × multiplier, capped by pool. Bot-proof: E[win] < fee paid.
-    let payout = (fee_total.saturating_mul(multiplier)).min(dominant_bal);
+    // Formula B: base = fee × mult; bonus = 0.2% of pool (max 4× fee); capped by pool.
+    let base_payout = fee_total.saturating_mul(multiplier);
+    let pool_bonus  = (dominant_bal / 500).min(fee_total.saturating_mul(4));
+    let payout = base_payout.saturating_add(pool_bonus).min(dominant_bal);
     if payout == 0 {
         return Ok(no_win);
     }
@@ -631,26 +633,26 @@ fn pseudo_random(user: &Pubkey, counter: u64) -> u64 {
 }
 
 /// Probability numerator (out of GIGA_BASE_DENOM=100).
-/// Lower than v2 to slow down bots; legit players still win often enough.
+/// HIGH preset — generous win rates to reward all users.
 fn giga_probability(usd_cents: u64) -> u64 {
     match usd_cents {
-        0..=499         => 0,  // below $5 — no GigaSwap
-        500..=1_999     => 3,  // $5–$20   → 3%
-        2_000..=9_999   => 7,  // $20–$100 → 7%
-        10_000..=49_999 => 15, // $100–$500 → 15%
-        _               => 20, // $500+    → 20%
+        0..=99          => 0,  // below $1  — no GigaSwap
+        100..=199       => 18, // $1–$2     → 18%
+        200..=499       => 28, // $2–$5     → 28%
+        500..=1_999     => 38, // $5–$20    → 38%
+        2_000..=9_999   => 55, // $20–$100  → 55%
+        _               => 68, // $100+     → 68%
     }
 }
 
-/// Maps rng to payout multiplier. 1× has smaller share; higher multipliers more likely.
-/// Payout = fee_total × multiplier, so multipliers directly express "how many times fee".
+/// Maps rng to payout multiplier (calibrated from simulation).
 fn pick_multiplier(rng: u64) -> u64 {
     match rng % 100 {
-        0..=29  => 1,  // 30%: 1× fee back
-        30..=59 => 2,  // 30%: 2× fee
-        60..=79 => 3,  // 20%: 3× fee
-        80..=92 => 5,  // 13%: 5× fee
-        93..=98 => 8,  //  6%: 8× fee
-        _        => 15, //  1%: 15× jackpot
+        0..=34  => 1,  // 35%: 1×
+        35..=59 => 2,  // 25%: 2×
+        60..=76 => 3,  // 17%: 3×
+        77..=88 => 5,  // 12%: 5×
+        89..=95 => 8,  //  7%: 8×
+        _        => 15, //  5%: 15× jackpot
     }
 }

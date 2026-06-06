@@ -15,14 +15,14 @@ export const POINT_VALUES = {
 } as const;
 
 export const SWAP_THRESHOLDS = [
-  { minUsdCents: 20_000, points: 25.0 }, // $200+
-  { minUsdCents: 15_000, points: 15.0 }, // $150–$199
-  { minUsdCents: 12_500, points:  7.0 }, // $125–$149
-  { minUsdCents: 10_000, points:  3.0 }, // $100–$124
-  { minUsdCents:  7_500, points:  1.5 }, // $75–$99
-  { minUsdCents:  5_000, points:  0.7 }, // $50–$74
-  { minUsdCents:  2_500, points:  0.3 }, // $25–$49
-  { minUsdCents:    500, points:  0.1 }, // $5–$24
+  { minUsdCents: 20_000, points: 5.0 }, // $200+
+  { minUsdCents: 15_000, points: 4.0 }, // $150–$199
+  { minUsdCents: 12_500, points: 3.0 }, // $125–$149
+  { minUsdCents: 10_000, points: 2.5 }, // $100–$124
+  { minUsdCents:  7_500, points: 2.0 }, // $75–$99
+  { minUsdCents:  5_000, points: 1.5 }, // $50–$74
+  { minUsdCents:  2_500, points: 1.2 }, // $25–$49
+  { minUsdCents:    500, points: 1.0 }, // $5–$24
 ] as const;
 
 export const SWAP_DAILY_CAP = 250;

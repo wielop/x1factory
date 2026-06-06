@@ -111,7 +111,21 @@ export default function SwapPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [poolInfo, setPoolInfo] = useState<{ rewardPoolMind: string; rewardPoolXnt: string; rewardPoolUsdCents: string } | null>(null);
+  const [gigaWin, setGigaWin] = useState<{ payout: bigint; multiplier: number; paidMind: boolean } | null>(null);
   const quoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // GigaSwapEvent discriminator: sha256("event:GigaSwapEvent")[..8] = 7a31e873d069b9c1
+  const GIGA_DISC = [0x7a,0x31,0xe8,0x73,0xd0,0x69,0xb9,0xc1];
+  function parseGigaEvent(b64: string): { payout: bigint; multiplier: number; paidMind: boolean } | null {
+    try {
+      const buf = Buffer.from(b64, "base64");
+      if (buf.length < 73) return null;
+      for (let i = 0; i < 8; i++) if (buf[i] !== GIGA_DISC[i]) return null;
+      const payout = buf.readBigUInt64LE(64);
+      if (payout === 0n) return null;
+      return { payout, multiplier: Number(buf.readBigUInt64LE(56)), paidMind: buf[72] !== 0 };
+    } catch { return null; }
+  }
 
   const inDecimals = direction === "xnt_to_mind" ? XNT_DECIMALS : MIND_DECIMALS;
   const outDecimals = direction === "xnt_to_mind" ? MIND_DECIMALS : XNT_DECIMALS;
@@ -221,6 +235,15 @@ export default function SwapPage() {
       setAmountIn("");
       setQuote(null);
       setTimeout(() => loadBalances(), 2000);
+
+      // Parse GigaSwap win from transaction logs
+      try {
+        const txInfo = await connection.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+        for (const log of txInfo?.meta?.logMessages ?? []) {
+          const m = log.match(/^Program data: (.+)$/);
+          if (m) { const win = parseGigaEvent(m[1]); if (win) { setGigaWin(win); break; } }
+        }
+      } catch { /* ignore */ }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Swap failed";
       setStatus({ type: "error", msg: msg.includes("rejected") ? "Transaction rejected by wallet." : msg });
@@ -787,6 +810,73 @@ export default function SwapPage() {
 
         </div>
       </div>
+      {/* GigaSwap Win Overlay */}
+      {gigaWin && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setGigaWin(null)}
+        >
+          <div
+            className="relative mx-4 w-full max-w-sm rounded-2xl bg-neon/10 border border-neon/40 shadow-[0_0_60px_rgba(34,242,255,0.3)] p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-5">
+              <span className="text-3xl font-black tracking-widest text-neon animate-pulse drop-shadow-[0_0_12px_rgba(34,242,255,0.9)]">
+                ⚡ GIGA SWAP
+              </span>
+              <span className="text-[11px] font-bold text-neon/70 bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5 animate-pulse">
+                WIN!
+              </span>
+            </div>
+
+            {/* Payout */}
+            <div className="bg-neon/5 border border-neon/20 rounded-xl px-5 py-4 mb-4 text-center">
+              <div className="text-[11px] text-neon/50 uppercase tracking-widest mb-1">You won</div>
+              <div className="text-4xl font-black text-neon drop-shadow-[0_0_16px_rgba(34,242,255,0.7)]">
+                {fmtTokens(gigaWin.payout, 9, 4)}
+              </div>
+              <div className="text-lg font-bold text-neon/70 mt-0.5">
+                {gigaWin.paidMind ? "MIND" : "XNT"}
+              </div>
+            </div>
+
+            {/* Multiplier */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Multiplier</div>
+                <div className="text-2xl font-black text-neon">{gigaWin.multiplier}×</div>
+              </div>
+              <div className="w-px h-10 bg-neon/20" />
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Pool bonus</div>
+                <div className="text-sm font-bold text-neon/70">included</div>
+              </div>
+              <div className="w-px h-10 bg-neon/20" />
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Token</div>
+                <div className="text-sm font-bold text-neon/70">{gigaWin.paidMind ? "MIND" : "XNT"}</div>
+              </div>
+            </div>
+
+            {/* Multiplier odds row */}
+            <div className="flex items-center justify-between text-[9px] text-neon/30 px-1 mb-5">
+              {([1,2,3,5,8,15] as const).map(m => (
+                <span key={m} className={m === gigaWin.multiplier ? "text-neon font-black text-[11px]" : ""}>
+                  {m}×
+                </span>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setGigaWin(null)}
+              className="w-full py-3 rounded-xl font-bold text-sm border border-neon/30 text-neon hover:bg-neon/10 transition"
+            >
+              Claim & Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

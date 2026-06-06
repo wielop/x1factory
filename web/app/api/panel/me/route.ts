@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { parseTelegramWebAppAuth } from "@/lib/webAppAuth";
 
 const RPC = "https://rpc.mainnet.x1.xyz";
-const CONFIG_PDA = new PublicKey("2jphFVpP8M7yPC9syAis7sN28aTWBU4MssmXiQGxrZb6");
+const PROGRAM_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
+const [CONFIG_PDA] = PublicKey.findProgramAddressSync([Buffer.from("router_config")], PROGRAM_ID);
 const CONFIG_XNT_USD_OFFSET     = 72;
 const CONFIG_REWARD_MIND_OFFSET  = 96;
 const CONFIG_REWARD_XNT_OFFSET   = 104;

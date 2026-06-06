@@ -24,9 +24,17 @@ export const runtime = "nodejs";
 // ── Constants ────────────────────────────────────────────────────────────────
 const RPC = "https://rpc.mainnet.x1.xyz";
 const PROGRAM_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
-const CONFIG_PDA = new PublicKey("2jphFVpP8M7yPC9syAis7sN28aTWBU4MssmXiQGxrZb6");
-const REWARD_POOL_PDA = new PublicKey("91NeymGDdHYyLsMU9ULhha3cQ89qvXRPMX5o2L92BxLu");
 const TREASURY = new PublicKey("AHrSKaFPWxt2YMZ7Q3xxpuC4wb622C3jUhER2p1V6VZS");
+
+// Derive PDAs from seeds — must always match on-chain Anchor seeds
+const [CONFIG_PDA] = PublicKey.findProgramAddressSync(
+  [Buffer.from("router_config")],
+  PROGRAM_ID
+);
+const [REWARD_POOL_PDA] = PublicKey.findProgramAddressSync(
+  [Buffer.from("reward_pool"), CONFIG_PDA.toBuffer()],
+  PROGRAM_ID
+);
 const MIND_MINT = new PublicKey("DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT");
 const WXNT_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 

@@ -8,7 +8,11 @@ const RPC = "https://rpc.mainnet.x1.xyz";
 const MIND_XNT_POOL = new PublicKey("FAVw1iDioK69epJf1YY3Z1oakSCUYtmfUpVBxR14BGpm");
 const XNT_VAULT = new PublicKey("AGy9mSe6pmmHzVTuagfSHzJBe4hn2FpYq3hrsoF5i2ys");
 const MIND_VAULT = new PublicKey("94F7JppAqiJkkwy31CqvfLd1a8BcT3AzESE8j533zGjg");
-const CONFIG_PDA = new PublicKey("2jphFVpP8M7yPC9syAis7sN28aTWBU4MssmXiQGxrZb6");
+const PROGRAM_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
+const [CONFIG_PDA] = PublicKey.findProgramAddressSync(
+  [Buffer.from("router_config")],
+  PROGRAM_ID
+);
 
 // RouterConfig layout offsets (all after 8-byte discriminator):
 // authority(32) + treasury(32) + xnt_usd_cents(8) + swap_counter(8) + giga_hits(8)

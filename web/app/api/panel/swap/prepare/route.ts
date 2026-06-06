@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
     if (!isMindToXnt) {
       // If the WXNT ATA already has a balance from a previous tx, drain it first so
       // the swap consumes exactly amountIn — not amountIn + leftover.
-      const leftoverWxnt = wxntAtaInfo?.data?.length >= 72
+      const leftoverWxnt = wxntAtaInfo && wxntAtaInfo.data.length >= 72
         ? wxntAtaInfo.data.readBigUInt64LE(64)
         : 0n;
       if (leftoverWxnt > 0n) {

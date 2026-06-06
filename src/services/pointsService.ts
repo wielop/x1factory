@@ -5,6 +5,8 @@ import {
   POINT_VALUES,
   STAKE_THRESHOLDS,
   STREAK_BONUSES,
+  SWAP_DAILY_CAP,
+  SWAP_THRESHOLDS,
   type SupportedEventType
 } from "../config/points.js";
 import type { Prisma } from "@prisma/client";
@@ -309,6 +311,11 @@ export async function processEvent(
     return processStakeSnapshot(userId, seasonId, stakedMindAmount);
   }
 
+  if (eventType === "swap_mind_xnt") {
+    const usdCents = Number(metadata?.usdCents ?? 0);
+    return processSwap(userId, seasonId, usdCents);
+  }
+
   throw new Error(`Unsupported event type: ${eventType}`);
 }
 
@@ -505,6 +512,41 @@ export async function processStakeSnapshot(
   }
 
   return result;
+}
+
+export async function processSwap(
+  userId: number,
+  seasonId: number,
+  usdCents: number,
+  date?: string | Date
+): Promise<AddPointsResult> {
+  const tier = SWAP_THRESHOLDS.find(t => usdCents >= t.minUsdCents);
+  const tierPoints = tier?.points ?? 0;
+
+  if (tierPoints === 0) {
+    return { created: false, points: 0, totalPoints: 0, rank: null };
+  }
+
+  const normalizedDate = normalizeDate(date);
+  const dayStart = startOfUtcDay(normalizedDate);
+  const dayEnd = addUtcDays(dayStart, 1);
+
+  const existing = await prisma.seasonPoint.aggregate({
+    where: { userId, seasonId, category: "swap_mind_xnt", createdAt: { gte: dayStart, lt: dayEnd } },
+    _sum: { points: true },
+  });
+
+  const alreadyAwarded = existing._sum.points ?? 0;
+  const pointsToAward = Math.max(0, Math.min(tierPoints, SWAP_DAILY_CAP - alreadyAwarded));
+
+  return addPoints(
+    userId,
+    seasonId,
+    pointsToAward,
+    "swap_mind_xnt",
+    `Swap $${(usdCents / 100).toFixed(2)}`,
+    { usdCents, tierPoints, suppressDefaultNotification: true }
+  );
 }
 
 export async function processDailyCheckin(

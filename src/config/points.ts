@@ -12,8 +12,20 @@ export const POINT_VALUES = {
   daily_checkin: 10,
   energy_tap: 2,
   weekly_checkin_5: 200,
-  swap_mind_xnt: 5,
 } as const;
+
+export const SWAP_THRESHOLDS = [
+  { minUsdCents: 100_000, points: 25.0 }, // $1000+
+  { minUsdCents:  60_000, points: 15.0 }, // $600–$999
+  { minUsdCents:  30_000, points:  7.0 }, // $300–$599
+  { minUsdCents:  12_000, points:  3.0 }, // $120–$299
+  { minUsdCents:   6_000, points:  1.5 }, // $60–$119
+  { minUsdCents:   3_000, points:  0.7 }, // $30–$59
+  { minUsdCents:   1_500, points:  0.3 }, // $15–$29
+  { minUsdCents:     500, points:  0.1 }, // $5–$14
+] as const;
+
+export const SWAP_DAILY_CAP = 250;
 
 export const CLAIM_MIND_DAILY_THRESHOLDS = [
   { minAmount: 500, points: 150 },
@@ -48,6 +60,7 @@ export const SUPPORTED_EVENT_TYPES = [
   "stake_snapshot",
   "streak_bonus",
   "weekly_mission_checkin",
+  "swap_mind_xnt",
 ] as const;
 
 export type SupportedEventType = (typeof SUPPORTED_EVENT_TYPES)[number];

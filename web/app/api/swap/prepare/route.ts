@@ -27,6 +27,7 @@ const TREASURY = new PublicKey("AHrSKaFPWxt2YMZ7Q3xxpuC4wb622C3jUhER2p1V6VZS");
 const MIND_MINT = new PublicKey("DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT");
 const WXNT_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
+const XDEX_PROGRAM_ID = new PublicKey("sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN");
 const XDEX_AUTHORITY = new PublicKey("9Dpjw2pB5kXJr6ZTHiqzEMfJPic3om9jgNacnwpLCoaU");
 const AMM_CONFIG = new PublicKey("2eFPWosizV6nSAGeSvi5tRgXLoqhjnSesra23ALA248c");
 const POOL_STATE = new PublicKey("FAVw1iDioK69epJf1YY3Z1oakSCUYtmfUpVBxR14BGpm");
@@ -75,6 +76,8 @@ function buildSwapIx(params: {
     { pubkey: params.inputMint,        isSigner: false, isWritable: false },
     { pubkey: params.outputMint,       isSigner: false, isWritable: false },
     { pubkey: OBSERVATION_STATE,       isSigner: false, isWritable: true  },
+    // X1 requires invoked programs to appear in the transaction's accounts list
+    { pubkey: XDEX_PROGRAM_ID,         isSigner: false, isWritable: false },
   ];
 
   return new TransactionInstruction({ programId: PROGRAM_ID, keys, data });

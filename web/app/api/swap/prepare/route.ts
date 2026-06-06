@@ -24,7 +24,7 @@ const TREASURY = new PublicKey("AHrSKaFPWxt2YMZ7Q3xxpuC4wb622C3jUhER2p1V6VZS");
 const MIND_MINT = new PublicKey("DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT");
 const WXNT_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 
-const XDEX_AUTHORITY = new PublicKey("GcjQWtbVQfgD4KSucTHun1CBSy9wgSSimK9tHMtRCC1n");
+const XDEX_AUTHORITY = new PublicKey("9Dpjw2pB5kXJr6ZTHiqzEMfJPic3om9jgNacnwpLCoaU");
 const AMM_CONFIG = new PublicKey("2eFPWosizV6nSAGeSvi5tRgXLoqhjnSesra23ALA248c");
 const POOL_STATE = new PublicKey("FAVw1iDioK69epJf1YY3Z1oakSCUYtmfUpVBxR14BGpm");
 const XNT_VAULT = new PublicKey("AGy9mSe6pmmHzVTuagfSHzJBe4hn2FpYq3hrsoF5i2ys");

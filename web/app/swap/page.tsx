@@ -617,14 +617,15 @@ export default function SwapPage() {
                   <div className="text-[9px] text-neon/60">≈ ${gigaPrize.maxUsd.toFixed(2)}</div>
                 </div>
               </div>
-              {/* Pool tier odds row */}
-              <div className="flex items-center justify-between text-[9px] text-neon/30 px-1">
-                <span>1% <span className="text-zinc-700">35%</span></span>
-                <span>2.5% <span className="text-zinc-700">25%</span></span>
-                <span>5% <span className="text-zinc-700">17%</span></span>
-                <span>9% <span className="text-zinc-700">12%</span></span>
-                <span>15% <span className="text-zinc-700">7%</span></span>
-                <span className="text-neon/60">25% <span className="text-neon/40">5%</span></span>
+              {/* Pool tier odds — by swap size */}
+              <div className="text-[9px] text-neon/30 px-1 space-y-0.5">
+                <div className="flex justify-between text-zinc-700 mb-0.5">
+                  <span>Swap size</span><span>max tier</span>
+                </div>
+                <div className="flex justify-between"><span>$5–$29</span><span className="text-neon/40">max 9% of pool</span></div>
+                <div className="flex justify-between"><span>$30–$99</span><span className="text-neon/40">max 25% · jackpot 1%</span></div>
+                <div className="flex justify-between"><span>$100–$299</span><span className="text-neon/50">max 25% · jackpot 6%</span></div>
+                <div className="flex justify-between"><span className="text-neon/50">$300+</span><span className="text-neon/60">max 25% · jackpot 15%</span></div>
               </div>
               {rewardPoolActive && (
                 <div className="flex items-center justify-between text-[10px] text-neon/40 pt-1 border-t border-neon/10">
@@ -841,15 +842,38 @@ export default function SwapPage() {
                   </div>
 
                   <div>
-                    <div className="text-zinc-300 font-semibold mb-1.5">Pool reward tiers (draw probability):</div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[["1%","35%"],["2.5%","25%"],["5%","17%"],["9%","12%"],["15%","7%"],["25%","5%"]].map(([m,p]) => (
-                        <div key={m} className="bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 text-center">
-                          <div className="text-neon font-bold font-mono">{m}</div>
-                          <div className="text-zinc-600 text-[10px]">{p}</div>
-                        </div>
-                      ))}
+                    <div className="text-zinc-300 font-semibold mb-1.5">Pool reward tiers — odds by swap size:</div>
+                    <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/60">
+                            <th className="text-left py-1.5 px-2">Tier</th>
+                            <th className="text-right py-1.5 px-2">$5–$29</th>
+                            <th className="text-right py-1.5 px-2">$30–$99</th>
+                            <th className="text-right py-1.5 px-2">$100–$299</th>
+                            <th className="text-right py-1.5 px-2">$300+</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {([
+                            ["1%",   "60%", "35%", "20%", "10%"],
+                            ["2.5%", "25%", "25%", "20%", "15%"],
+                            ["5%",   "12%", "22%", "22%", "20%"],
+                            ["9%",    "3%", "12%", "20%", "20%"],
+                            ["15%",   "—",   "5%", "12%", "20%"],
+                            ["25%",   "—",   "1%",  "6%", "15%"],
+                          ] as const).map(([tier, ...odds]) => (
+                            <tr key={tier} className="border-b border-zinc-800/40 last:border-0">
+                              <td className="py-1.5 px-2 font-mono font-bold text-neon">{tier}</td>
+                              {odds.map((o, i) => (
+                                <td key={i} className={`text-right py-1.5 px-2 ${o === "—" ? "text-zinc-700" : "text-zinc-400"}`}>{o}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
+                    <p className="text-zinc-600 text-[10px] mt-1.5">Większy swap → realna szansa na jackpot (25% puli). Małe swapy wygrywają max 9%.</p>
                   </div>
 
                   <div>
@@ -964,7 +988,7 @@ export default function SwapPage() {
                   </div>
                   <div className="flex justify-between">
                     <span>Pool tier</span>
-                    <span className="text-zinc-300">1% / 2.5% / 5% / 9% / 15% / 25%</span>
+                    <span className="text-zinc-300">1%–25% (zależy od kwoty)</span>
                   </div>
                 </div>
                 {!rewardPoolActive && (

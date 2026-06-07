@@ -591,9 +591,8 @@ fn process_giga_swap<'info>(
 
     // Formula C: payout = % of dominant pool balance (pool-based, not fee-based).
     // pick_pool_pct returns basis points (out of 10_000).
-    // Use upper bits (rng >> 16) for tier selection so it is independent of
-    // the win-probability check (rng % 100), avoiding always-minimum-tier bias.
-    let pool_pct = pick_pool_pct(rng >> 16);
+    // Tier distribution shifts toward higher tiers as swap USD value grows.
+    let pool_pct = pick_pool_pct(rng, usd_value);
     let payout = ((dominant_bal as u128)
         .saturating_mul(pool_pct as u128)
         / 10_000u128) as u64;
@@ -720,15 +719,45 @@ fn giga_probability(usd_cents: u64) -> u64 {
     }
 }
 
-/// Maps rng to pool payout in basis points (out of 10_000).
-/// E.g. 100 = 1% of dominant pool balance.
-fn pick_pool_pct(rng: u64) -> u64 {
-    match rng % 100 {
-        0..=34  =>  100, // 35%:  1% of pool
-        35..=59 =>  250, // 25%:  2.5% of pool
-        60..=76 =>  500, // 17%:  5% of pool
-        77..=88 =>  900, // 12%:  9% of pool
-        89..=95 => 1500, //  7%: 15% of pool
-        _        => 2500, //  5%: 25% of pool (jackpot, capped at 33%)
+/// Maps rng + swap USD value to pool payout in basis points (out of 10_000).
+/// Higher swap value shifts the distribution toward larger tiers.
+/// Uses rng >> 16 so tier draw is independent of win-probability check (rng % 100).
+fn pick_pool_pct(rng: u64, usd_cents: u64) -> u64 {
+    let r = (rng >> 16) % 100;
+    match usd_cents {
+        // $5 – $29: small swap — max tier 9%
+        500..=2_999 => match r {
+            0..=59  =>  100, // 60%: 1%
+            60..=84 =>  250, // 25%: 2.5%
+            85..=96 =>  500, // 12%: 5%
+            _        =>  900, //  3%: 9%
+        },
+        // $30 – $99: medium swap
+        3_000..=9_999 => match r {
+            0..=34  =>  100, // 35%: 1%
+            35..=59 =>  250, // 25%: 2.5%
+            60..=81 =>  500, // 22%: 5%
+            82..=93 =>  900, // 12%: 9%
+            94..=98 => 1500, //  5%: 15%
+            _        => 2500, //  1%: 25%
+        },
+        // $100 – $299: large swap
+        10_000..=29_999 => match r {
+            0..=19  =>  100, // 20%: 1%
+            20..=39 =>  250, // 20%: 2.5%
+            40..=61 =>  500, // 22%: 5%
+            62..=81 =>  900, // 20%: 9%
+            82..=93 => 1500, // 12%: 15%
+            _        => 2500, //  6%: 25%
+        },
+        // $300+: whale swap — high jackpot odds
+        _ => match r {
+            0..=9   =>  100, // 10%: 1%
+            10..=24 =>  250, // 15%: 2.5%
+            25..=44 =>  500, // 20%: 5%
+            45..=64 =>  900, // 20%: 9%
+            65..=84 => 1500, // 20%: 15%
+            _        => 2500, // 15%: 25%
+        },
     }
 }

@@ -793,12 +793,15 @@ async function loadSwapLeaderboard(mode) {
       podium.innerHTML = displayOrder.map((entryIdx, slotPos) => {
         const e = top3[entryIdx];
         if (!e) return '<div></div>';
+        const winStr = e.totalWinXnt > 0
+          ? 'Win: ' + e.totalWinXnt.toLocaleString('en-US', {maximumFractionDigits:2}) + ' XNT'
+          : 'Win: —';
         return `
           <div class="slb-podium-card ${slotClass[slotPos]}">
             <div class="slb-podium-medal">${slotMedal[slotPos]}</div>
             <div class="slb-podium-name">${esc(e.name)}</div>
-            <div class="slb-podium-vol">$${fmtNum(Math.round(e.volumeUsd))}</div>
-            <div class="slb-podium-sub">${e.swapCount} swaps${e.gigaWins > 0 ? ' · ⚡' + e.gigaWins : ''}</div>
+            <div class="slb-podium-vol">Volume: $${fmtNum(Math.round(e.volumeUsd))}</div>
+            <div class="slb-podium-sub">${winStr}</div>
           </div>`;
       }).join('');
       podium.classList.remove('hidden');
@@ -810,17 +813,16 @@ async function loadSwapLeaderboard(mode) {
 
     if (list) list.innerHTML = restEntries.map(e => {
       const isMe = e.userId === S.user?.id;
-      const winBadge = e.gigaWins > 0 ? `<span class="slb-win-badge">⚡${e.gigaWins}</span>` : '';
+      const winStr = e.totalWinXnt > 0
+        ? `<span class="slb-win-badge">Win: ${e.totalWinXnt.toLocaleString('en-US',{maximumFractionDigits:2})} XNT</span>`
+        : '';
       return `
         <div class="slb-row${isMe ? ' is-me' : ''}">
           <div class="slb-row-rank">${e.rank}</div>
-          <div class="slb-row-body">
-            <div class="slb-row-name">${esc(e.name)}</div>
-            <div class="slb-row-bar-wrap"><div class="slb-row-bar" style="width:${e.volPct}%"></div></div>
-          </div>
+          <div class="slb-row-name">${esc(e.name)}</div>
           <div class="slb-row-right">
             <div class="slb-row-vol">$${fmtNum(Math.round(e.volumeUsd))}</div>
-            <div class="slb-row-meta">${e.swapCount} swaps ${winBadge}</div>
+            <div class="slb-row-meta">${e.swapCount} swaps ${winStr}</div>
           </div>
         </div>`;
     }).join('');

@@ -21,7 +21,7 @@ export async function GET(req: Request) {
       swapCount: bigint;
       volumeCents: bigint;
       gigaWins: bigint;
-      bestPayoutLamports: bigint;
+      totalWinLamports: bigint;
     };
 
     let rows: SwapRow[];
@@ -36,14 +36,14 @@ export async function GET(req: Request) {
           COALESCE(SUM(CASE WHEN sp.category = 'swap_mind_xnt'
             THEN (sp.metadata->>'usdCents')::bigint ELSE 0 END), 0)                  AS "volumeCents",
           COUNT(CASE WHEN sp.category = 'giga_swap_win' THEN 1 END)                  AS "gigaWins",
-          COALESCE(MAX(CASE WHEN sp.category = 'giga_swap_win'
-            THEN (sp.metadata->>'payout')::bigint ELSE 0 END), 0)                    AS "bestPayoutLamports"
+          COALESCE(SUM(CASE WHEN sp.category = 'giga_swap_win'
+            THEN (sp.metadata->>'payout')::bigint ELSE 0 END), 0)                    AS "totalWinLamports"
         FROM "User" u
         JOIN "SeasonPoint" sp ON sp."userId" = u.id AND sp."seasonId" = ${activeSeason.id}
         GROUP BY u.id, u.username, u."firstName"
         HAVING COUNT(CASE WHEN sp.category = 'swap_mind_xnt' THEN 1 END) > 0
         ORDER BY "volumeCents" DESC
-        LIMIT 50
+        LIMIT 20
       `;
     } else {
       rows = await prisma.$queryRaw<SwapRow[]>`
@@ -55,14 +55,14 @@ export async function GET(req: Request) {
           COALESCE(SUM(CASE WHEN sp.category = 'swap_mind_xnt'
             THEN (sp.metadata->>'usdCents')::bigint ELSE 0 END), 0)                  AS "volumeCents",
           COUNT(CASE WHEN sp.category = 'giga_swap_win' THEN 1 END)                  AS "gigaWins",
-          COALESCE(MAX(CASE WHEN sp.category = 'giga_swap_win'
-            THEN (sp.metadata->>'payout')::bigint ELSE 0 END), 0)                    AS "bestPayoutLamports"
+          COALESCE(SUM(CASE WHEN sp.category = 'giga_swap_win'
+            THEN (sp.metadata->>'payout')::bigint ELSE 0 END), 0)                    AS "totalWinLamports"
         FROM "User" u
         JOIN "SeasonPoint" sp ON sp."userId" = u.id
         GROUP BY u.id, u.username, u."firstName"
         HAVING COUNT(CASE WHEN sp.category = 'swap_mind_xnt' THEN 1 END) > 0
         ORDER BY "volumeCents" DESC
-        LIMIT 50
+        LIMIT 20
       `;
     }
 
@@ -75,7 +75,7 @@ export async function GET(req: Request) {
       swapCount: Number(r.swapCount),
       volumeUsd: Number(r.volumeCents) / 100,
       gigaWins: Number(r.gigaWins),
-      bestPayoutXnt: Number(r.bestPayoutLamports) / 1e9,
+      totalWinXnt: Number(r.totalWinLamports) / 1e9,
       volPct: maxVol > 0 ? Math.round((Number(r.volumeCents) / maxVol) * 100) : 0,
       winRate: Number(r.swapCount) > 0
         ? Math.round((Number(r.gigaWins) / Number(r.swapCount)) * 100)

@@ -111,21 +111,27 @@ export default function SwapPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [poolInfo, setPoolInfo] = useState<{ rewardPoolMind: string; rewardPoolXnt: string; rewardPoolUsdCents: string } | null>(null);
-  const [gigaWin, setGigaWin] = useState<{ payout: bigint; multiplier: number; paidMind: boolean } | null>(null);
+  const [gigaWin, setGigaWin] = useState<{ payout: bigint; poolPct: number; paidMind: boolean } | null>(null);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const quoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // GigaSwapEvent discriminator: sha256("event:GigaSwapEvent")[..8] = 7a31e873d069b9c1
   const GIGA_DISC = [0x7a,0x31,0xe8,0x73,0xd0,0x69,0xb9,0xc1];
-  function parseGigaEvent(b64: string): { payout: bigint; multiplier: number; paidMind: boolean } | null {
+  function parseGigaEvent(b64: string): { payout: bigint; poolPct: number; paidMind: boolean } | null {
     try {
       const buf = Buffer.from(b64, "base64");
       if (buf.length < 73) return null;
       for (let i = 0; i < 8; i++) if (buf[i] !== GIGA_DISC[i]) return null;
       const payout = buf.readBigUInt64LE(64);
       if (payout === 0n) return null;
-      return { payout, multiplier: Number(buf.readBigUInt64LE(56)), paidMind: buf[72] !== 0 };
+      // multiplier field (offset 56) stores pool_pct in basis points (100=1%, 250=2.5%, …)
+      return { payout, poolPct: Number(buf.readBigUInt64LE(56)), paidMind: buf[72] !== 0 };
     } catch { return null; }
+  }
+  // Convert pool_pct basis points to display string: 100→"1%", 250→"2.5%", 2500→"25%"
+  function fmtPoolPct(pct: number): string {
+    const v = pct / 100;
+    return (Number.isInteger(v) ? v.toString() : v.toFixed(1)) + "%";
   }
 
   const inDecimals = direction === "xnt_to_mind" ? XNT_DECIMALS : MIND_DECIMALS;
@@ -602,8 +608,8 @@ export default function SwapPage() {
                   <div className="text-[9px] text-neon/40">≈ ${gigaPrize.minUsd.toFixed(2)}</div>
                 </div>
                 <div className="flex flex-col items-center justify-center text-neon/30 text-xs px-1">
-                  <span>1×→15×</span>
-                  <span className="text-[8px] mt-0.5">mult</span>
+                  <span>1%→25%</span>
+                  <span className="text-[8px] mt-0.5">pool</span>
                 </div>
                 <div className="flex-1 bg-neon/10 border border-neon/40 rounded-xl px-3 py-2 text-center shadow-[0_0_12px_rgba(34,242,255,0.1)]">
                   <div className="text-[9px] text-neon/60 uppercase tracking-wider mb-0.5">🎰 Jackpot</div>
@@ -611,14 +617,14 @@ export default function SwapPage() {
                   <div className="text-[9px] text-neon/60">≈ ${gigaPrize.maxUsd.toFixed(2)}</div>
                 </div>
               </div>
-              {/* Multiplier odds row */}
+              {/* Pool tier odds row */}
               <div className="flex items-center justify-between text-[9px] text-neon/30 px-1">
-                <span>1× <span className="text-zinc-700">35%</span></span>
-                <span>2× <span className="text-zinc-700">25%</span></span>
-                <span>3× <span className="text-zinc-700">17%</span></span>
-                <span>5× <span className="text-zinc-700">12%</span></span>
-                <span>8× <span className="text-zinc-700">7%</span></span>
-                <span className="text-neon/60">15× <span className="text-neon/40">5%</span></span>
+                <span>1% <span className="text-zinc-700">35%</span></span>
+                <span>2.5% <span className="text-zinc-700">25%</span></span>
+                <span>5% <span className="text-zinc-700">17%</span></span>
+                <span>9% <span className="text-zinc-700">12%</span></span>
+                <span>15% <span className="text-zinc-700">7%</span></span>
+                <span className="text-neon/60">25% <span className="text-neon/40">5%</span></span>
               </div>
               {rewardPoolActive && (
                 <div className="flex items-center justify-between text-[10px] text-neon/40 pt-1 border-t border-neon/10">
@@ -827,17 +833,17 @@ export default function SwapPage() {
                   <div>
                     <div className="text-zinc-300 font-semibold mb-1.5">Payout formula:</div>
                     <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 font-mono text-neon text-[11px]">
-                      payout = fee × multiplier + pool bonus
+                      payout = pool_tier% × dominant_pool_balance
                     </div>
                     <p className="text-zinc-500 mt-1.5 leading-relaxed">
-                      <span className="text-zinc-400">fee</span> = your 0.5% protocol fee in tokens · <span className="text-zinc-400">multiplier</span> = random draw · <span className="text-zinc-400">pool bonus</span> = up to 4× your fee taken from the funded reward pool
+                      A random tier (1%–25%) is drawn and applied to whichever token the pool holds more of. The larger the pool, the bigger the prize.
                     </p>
                   </div>
 
                   <div>
-                    <div className="text-zinc-300 font-semibold mb-1.5">Multipliers (draw probability):</div>
+                    <div className="text-zinc-300 font-semibold mb-1.5">Pool reward tiers (draw probability):</div>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {[["1×","35%"],["2×","25%"],["3×","17%"],["5×","12%"],["8×","7%"],["15×","5%"]].map(([m,p]) => (
+                      {[["1%","35%"],["2.5%","25%"],["5%","17%"],["9%","12%"],["15%","7%"],["25%","5%"]].map(([m,p]) => (
                         <div key={m} className="bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 text-center">
                           <div className="text-neon font-bold font-mono">{m}</div>
                           <div className="text-zinc-600 text-[10px]">{p}</div>
@@ -849,14 +855,7 @@ export default function SwapPage() {
                   <div>
                     <div className="text-zinc-300 font-semibold mb-1">Payout token:</div>
                     <p className="text-zinc-500 leading-relaxed">
-                      Prize is paid in whichever token the Reward Pool holds more of at that moment — XNT or MIND. The dominant token balance is always shown at the top of the page.
-                    </p>
-                  </div>
-
-                  <div>
-                    <div className="text-zinc-300 font-semibold mb-1">Even without the reward pool:</div>
-                    <p className="text-zinc-500 leading-relaxed">
-                      Base GigaSwap (fee × multiplier) is always active as long as the pool exists on-chain. The pool bonus on top of that requires the pool to be funded by the operator.
+                      Prize is paid in whichever token the Reward Pool holds more of (by USD value) at that moment — XNT or MIND. The dominant token balance is always shown at the top of the page.
                     </p>
                   </div>
                 </div>
@@ -961,11 +960,11 @@ export default function SwapPage() {
                   </div>
                   <div className="flex justify-between">
                     <span>Payout</span>
-                    <span className="text-zinc-300">fee × multiplier + pool bonus</span>
+                    <span className="text-zinc-300">pool tier% × dominant pool</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Multiplier</span>
-                    <span className="text-zinc-300">1× / 2× / 3× / 5× / 8× / 15×</span>
+                    <span>Pool tier</span>
+                    <span className="text-zinc-300">1% / 2.5% / 5% / 9% / 15% / 25%</span>
                   </div>
                 </div>
                 {!rewardPoolActive && (
@@ -1033,16 +1032,16 @@ export default function SwapPage() {
               </div>
             </div>
 
-            {/* Multiplier */}
+            {/* Pool tier */}
             <div className="flex items-center justify-between mb-5">
               <div className="text-center flex-1">
-                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Multiplier</div>
-                <div className="text-2xl font-black text-neon">{gigaWin.multiplier}×</div>
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Pool tier</div>
+                <div className="text-2xl font-black text-neon">{fmtPoolPct(gigaWin.poolPct)}</div>
               </div>
               <div className="w-px h-10 bg-neon/20" />
               <div className="text-center flex-1">
-                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Pool bonus</div>
-                <div className="text-sm font-bold text-neon/70">included</div>
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Of pool</div>
+                <div className="text-sm font-bold text-neon/70">dominant</div>
               </div>
               <div className="w-px h-10 bg-neon/20" />
               <div className="text-center flex-1">
@@ -1051,11 +1050,11 @@ export default function SwapPage() {
               </div>
             </div>
 
-            {/* Multiplier odds row */}
+            {/* Pool tier odds row */}
             <div className="flex items-center justify-between text-[9px] text-neon/30 px-1 mb-5">
-              {([1,2,3,5,8,15] as const).map(m => (
-                <span key={m} className={m === gigaWin.multiplier ? "text-neon font-black text-[11px]" : ""}>
-                  {m}×
+              {([100,250,500,900,1500,2500] as const).map(pct => (
+                <span key={pct} className={pct === gigaWin.poolPct ? "text-neon font-black text-[11px]" : ""}>
+                  {fmtPoolPct(pct)}
                 </span>
               ))}
             </div>

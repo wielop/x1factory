@@ -542,7 +542,6 @@ fn process_giga_swap<'info>(
         return Ok(no_win);
     }
 
-    let multiplier = pick_multiplier(rng);
     let xnt_usd = ctx.accounts.config.xnt_usd_cents;
     let mind_bal = ctx.accounts.config.reward_pool_mind_balance;
     let xnt_bal = ctx.accounts.config.reward_pool_xnt_balance;
@@ -590,13 +589,21 @@ fn process_giga_swap<'info>(
         }
     };
 
-    // Formula B: base = fee × mult; bonus = 0.2% of pool (max 4× fee); capped by pool.
-    let base_payout = fee_normalized.saturating_mul(multiplier);
-    let pool_bonus  = (dominant_bal / 500).min(fee_normalized.saturating_mul(4));
-    let payout = base_payout.saturating_add(pool_bonus).min(dominant_bal);
+    // Formula C: payout = % of dominant pool balance (pool-based, not fee-based).
+    // pick_pool_pct returns basis points (out of 10_000).
+    // Use upper bits (rng >> 16) for tier selection so it is independent of
+    // the win-probability check (rng % 100), avoiding always-minimum-tier bias.
+    let pool_pct = pick_pool_pct(rng >> 16);
+    let payout = ((dominant_bal as u128)
+        .saturating_mul(pool_pct as u128)
+        / 10_000u128) as u64;
+    // Safety cap: never drain more than 33% of pool in a single win.
+    let payout = payout.min(dominant_bal / 3);
     if payout == 0 {
         return Ok(no_win);
     }
+    // Reuse multiplier field to carry pool_pct for event emission.
+    let multiplier = pool_pct;
 
     let config_key = ctx.accounts.config.key();
     let bump = *ctx.bumps.get("reward_pool_mind").unwrap();
@@ -713,14 +720,15 @@ fn giga_probability(usd_cents: u64) -> u64 {
     }
 }
 
-/// Maps rng to payout multiplier (calibrated from simulation).
-fn pick_multiplier(rng: u64) -> u64 {
+/// Maps rng to pool payout in basis points (out of 10_000).
+/// E.g. 100 = 1% of dominant pool balance.
+fn pick_pool_pct(rng: u64) -> u64 {
     match rng % 100 {
-        0..=34  => 1,  // 35%: 1×
-        35..=59 => 2,  // 25%: 2×
-        60..=76 => 3,  // 17%: 3×
-        77..=88 => 5,  // 12%: 5×
-        89..=95 => 8,  //  7%: 8×
-        _        => 15, //  5%: 15× jackpot
+        0..=34  =>  100, // 35%:  1% of pool
+        35..=59 =>  250, // 25%:  2.5% of pool
+        60..=76 =>  500, // 17%:  5% of pool
+        77..=88 =>  900, // 12%:  9% of pool
+        89..=95 => 1500, //  7%: 15% of pool
+        _        => 2500, //  5%: 25% of pool (jackpot, capped at 33%)
     }
 }

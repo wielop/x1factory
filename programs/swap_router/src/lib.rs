@@ -565,9 +565,34 @@ fn process_giga_swap<'info>(
         return Ok(no_win);
     }
 
+    // Normalize fee to dominant-token lamports so XNT↔MIND swaps of equal USD value
+    // produce equal prize ranges. Uses live xDEX vault ratio as the price reference.
+    let fee_normalized: u64 = if dominant_is_mind == input_is_mind {
+        // fee already denominated in dominant token — no conversion needed
+        fee_total
+    } else if dominant_is_mind {
+        // fee is in XNT lamports, dominant is MIND → multiply by mind_vault/xnt_vault
+        if xnt_vault_raw > 0 {
+            ((fee_total as u128)
+                .saturating_mul(mind_vault_raw as u128)
+                / xnt_vault_raw as u128) as u64
+        } else {
+            fee_total
+        }
+    } else {
+        // fee is in MIND lamports, dominant is XNT → multiply by xnt_vault/mind_vault
+        if mind_vault_raw > 0 {
+            ((fee_total as u128)
+                .saturating_mul(xnt_vault_raw as u128)
+                / mind_vault_raw as u128) as u64
+        } else {
+            fee_total
+        }
+    };
+
     // Formula B: base = fee × mult; bonus = 0.2% of pool (max 4× fee); capped by pool.
-    let base_payout = fee_total.saturating_mul(multiplier);
-    let pool_bonus  = (dominant_bal / 500).min(fee_total.saturating_mul(4));
+    let base_payout = fee_normalized.saturating_mul(multiplier);
+    let pool_bonus  = (dominant_bal / 500).min(fee_normalized.saturating_mul(4));
     let payout = base_payout.saturating_add(pool_bonus).min(dominant_bal);
     if payout == 0 {
         return Ok(no_win);

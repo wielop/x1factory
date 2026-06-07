@@ -308,11 +308,25 @@ export default function SwapPage() {
   // GigaSwap prize range: payout = fee × mult + min(pool/500, fee×4), capped by dominant pool
   const gigaPrize = (() => {
     if (!quote?.gigaQualified || !quote.ourFee) return null;
-    const fee = BigInt(quote.ourFee);
+    const feeRaw = BigInt(quote.ourFee);
     const rPoolMind = BigInt(quote.rewardPoolMind ?? "0");
     const rPoolXnt  = BigInt(quote.rewardPoolXnt  ?? "0");
     const dominantBal = rPoolMind >= rPoolXnt ? rPoolMind : rPoolXnt;
     const isDominantMind = rPoolMind >= rPoolXnt;
+    const isMindInput = direction === "mind_to_xnt";
+
+    // Mirror on-chain normalization: convert fee to dominant-token lamports using vault ratio
+    const vaultXnt  = BigInt(quote.poolXnt  ?? "1");
+    const vaultMind = BigInt(quote.poolMind ?? "1");
+    let fee = feeRaw;
+    if (isDominantMind !== isMindInput) {
+      if (isDominantMind && vaultXnt > 0n) {
+        fee = (feeRaw * vaultMind) / vaultXnt; // XNT fee → MIND
+      } else if (!isDominantMind && vaultMind > 0n) {
+        fee = (feeRaw * vaultXnt) / vaultMind; // MIND fee → XNT
+      }
+    }
+
     const poolBonus = dominantBal > 0n ? (dominantBal / 500n < fee * 4n ? dominantBal / 500n : fee * 4n) : 0n;
     const cap = (v: bigint) => dominantBal > 0n && v > dominantBal ? dominantBal : v;
     const minWin = cap(fee + poolBonus);

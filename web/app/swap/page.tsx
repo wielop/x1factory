@@ -112,6 +112,7 @@ export default function SwapPage() {
   const [copied, setCopied] = useState(false);
   const [poolInfo, setPoolInfo] = useState<{ rewardPoolMind: string; rewardPoolXnt: string; rewardPoolUsdCents: string } | null>(null);
   const [gigaWin, setGigaWin] = useState<{ payout: bigint; multiplier: number; paidMind: boolean } | null>(null);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const quoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // GigaSwapEvent discriminator: sha256("event:GigaSwapEvent")[..8] = 7a31e873d069b9c1
@@ -727,8 +728,179 @@ export default function SwapPage() {
           </div>
         )}
 
+        {/* How it works */}
+        <div className="mt-6">
+          <button
+            onClick={() => setHowItWorksOpen(o => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-neon/5 border border-neon/20 hover:bg-neon/10 hover:border-neon/40 transition text-sm font-bold text-neon tracking-widest"
+          >
+            <span>⚡ HOW IT WORKS</span>
+            <span className="text-neon/60 text-xs transition-transform duration-200" style={{ display: "inline-block", transform: howItWorksOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
+          </button>
+
+          {howItWorksOpen && (
+            <div className="mt-2 bg-[#0d1117] border border-neon/20 rounded-2xl p-5 space-y-5 text-sm">
+
+              {/* Overview */}
+              <div>
+                <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">What is this?</div>
+                <p className="text-zinc-400 text-xs leading-relaxed">
+                  X1Factory Swap is a MIND ↔ XNT exchange built on X1 blockchain. Every swap goes through xDEX liquidity pools and automatically participates in <span className="text-neon font-semibold">GigaSwap</span> — a randomized reward system that can multiply your protocol fee back to you instantly.
+                </p>
+              </div>
+
+              {/* How to swap */}
+              <div>
+                <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">How to swap</div>
+                <div className="space-y-1.5 text-xs text-zinc-400">
+                  {[
+                    ["1", "Install X1 Wallet or Backpack and connect it above"],
+                    ["2", "Choose direction: XNT → MIND or MIND → XNT"],
+                    ["3", "Enter the amount you want to swap"],
+                    ["4", "Review the rate, price impact and gas estimate"],
+                    ["5", "Click Swap and confirm the transaction in your wallet"],
+                    ["6", "Tokens arrive in your wallet within seconds"],
+                  ].map(([n, t]) => (
+                    <div key={n} className="flex gap-2.5">
+                      <span className="text-neon font-bold shrink-0">{n}.</span>
+                      <span>{t}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fee structure */}
+              <div>
+                <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">Fee structure</div>
+                <div className="space-y-1.5 text-xs text-zinc-500">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Protocol fee</span>
+                    <span className="text-zinc-300 font-mono font-bold">1.0%</span>
+                  </div>
+                  <div className="flex justify-between pl-3 border-l border-zinc-800">
+                    <span>Treasury (operations & buy-back)</span>
+                    <span className="font-mono">0.5%</span>
+                  </div>
+                  <div className="flex justify-between pl-3 border-l border-zinc-800">
+                    <span>Reward Pool (GigaSwap prizes)</span>
+                    <span className="font-mono">0.5%</span>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-zinc-400">xDEX pool fee</span>
+                    <span className="text-zinc-300 font-mono font-bold">0.25%</span>
+                  </div>
+                  <p className="text-zinc-600 leading-relaxed pt-1">
+                    Total cost per swap is approximately 1.25% + price impact. The xDEX fee goes to liquidity providers, protocol fee is split between treasury and reward pool.
+                  </p>
+                </div>
+              </div>
+
+              {/* GigaSwap */}
+              <div>
+                <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">⚡ GigaSwap — win rewards</div>
+                <div className="space-y-3 text-xs text-zinc-400">
+                  <p className="leading-relaxed">
+                    Every swap worth <span className="text-neon font-semibold">$5 or more</span> automatically enters GigaSwap. A provably fair on-chain random roll determines if you win. No extra action required.
+                  </p>
+
+                  <div>
+                    <div className="text-zinc-300 font-semibold mb-1.5">Win chance by swap value:</div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                      {[
+                        ["$5 – $15","38%"],["$16 – $29","40%"],["$30 – $46","42%"],
+                        ["$47 – $65","44%"],["$66 – $86","46%"],["$87 – $110","48%"],["$111+","50%"],
+                      ].map(([r,p]) => (
+                        <div key={r} className="flex justify-between gap-2">
+                          <span className="text-zinc-500">{r}</span>
+                          <span className="text-neon">{p}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-zinc-300 font-semibold mb-1.5">Payout formula:</div>
+                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 font-mono text-neon text-[11px]">
+                      payout = fee × multiplier + pool bonus
+                    </div>
+                    <p className="text-zinc-500 mt-1.5 leading-relaxed">
+                      <span className="text-zinc-400">fee</span> = your 0.5% protocol fee in tokens · <span className="text-zinc-400">multiplier</span> = random draw · <span className="text-zinc-400">pool bonus</span> = up to 4× your fee taken from the funded reward pool
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="text-zinc-300 font-semibold mb-1.5">Multipliers (draw probability):</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[["1×","35%"],["2×","25%"],["3×","17%"],["5×","12%"],["8×","7%"],["15×","5%"]].map(([m,p]) => (
+                        <div key={m} className="bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 text-center">
+                          <div className="text-neon font-bold font-mono">{m}</div>
+                          <div className="text-zinc-600 text-[10px]">{p}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-zinc-300 font-semibold mb-1">Payout token:</div>
+                    <p className="text-zinc-500 leading-relaxed">
+                      Prize is paid in whichever token the Reward Pool holds more of at that moment — XNT or MIND. The dominant token balance is always shown at the top of the page.
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="text-zinc-300 font-semibold mb-1">Even without the reward pool:</div>
+                    <p className="text-zinc-500 leading-relaxed">
+                      Base GigaSwap (fee × multiplier) is always active as long as the pool exists on-chain. The pool bonus on top of that requires the pool to be funded by the operator.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Season points */}
+              <div>
+                <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">Season Points for swapping</div>
+                <div className="space-y-1 text-xs">
+                  <p className="text-zinc-500 mb-2 leading-relaxed">Swap points are detected automatically by the X1Factory scanner within minutes of your transaction confirming.</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                    {[
+                      ["$5 – $24","1.0 pt"],["$25 – $49","1.2 pt"],["$50 – $74","1.5 pt"],["$75 – $99","2.0 pt"],
+                      ["$100 – $124","2.5 pt"],["$125 – $149","3.0 pt"],["$150 – $199","4.0 pt"],["$200+","5.0 pt"],
+                    ].map(([r,p]) => (
+                      <div key={r} className="flex justify-between gap-2">
+                        <span className="text-zinc-500">{r}</span>
+                        <span className="text-zinc-300">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-zinc-600 pt-1">Daily cap: 250 pts from swaps.</p>
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div>
+                <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">Tips to maximise rewards</div>
+                <div className="space-y-1.5 text-xs text-zinc-500">
+                  {[
+                    "Swap ≥ $111 per transaction to unlock the 50% win chance tier",
+                    "Multiple smaller swaps spread risk — you get multiple rolls",
+                    "A bigger funded reward pool = bigger pool bonus per win",
+                    "XNT → MIND and MIND → XNT both qualify equally",
+                    "Connect the same wallet registered in X1Factory bot to earn season points automatically",
+                  ].map((t, i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="text-neon/50 shrink-0">›</span>
+                      <span>{t}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+
         {/* Info cards */}
-        <div className="mt-8 space-y-3">
+        <div className="mt-4 space-y-3">
 
           {/* Pool rewards info */}
           <div className="bg-[#0d1117] border border-neon/20 rounded-2xl p-4">

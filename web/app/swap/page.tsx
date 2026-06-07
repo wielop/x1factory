@@ -227,10 +227,16 @@ export default function SwapPage() {
       const sig = await sendTransaction(tx, connection, { skipPreflight: false });
 
       setStatus({ type: "loading", msg: "Confirming…" });
-      await connection.confirmTransaction(
-        { signature: sig, lastValidBlockHeight: data.lastValidBlockHeight, blockhash: tx.recentBlockhash! },
-        "confirmed"
-      );
+      // Poll manually — confirmTransaction crashes with "Cannot read property 'err' of undefined"
+      // when X1 RPC returns null for blockhash status
+      for (let i = 0; i < 40; i++) {
+        const status = await connection.getSignatureStatus(sig, { searchTransactionHistory: true });
+        const val = status?.value;
+        if (val?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(val.err)}`);
+        if (val?.confirmationStatus === "confirmed" || val?.confirmationStatus === "finalized") break;
+        if (i === 39) throw new Error("Confirmation timeout — check explorer for tx status.");
+        await new Promise(r => setTimeout(r, 1500));
+      }
 
       setStatus({ type: "success", msg: `Swapped! ${fmtTokens(data.estimatedOut, outDecimals)} ${outSymbol} received.` });
       setAmountIn("");

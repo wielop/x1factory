@@ -486,10 +486,11 @@ function parseGigaSwapEventFromLogs(logs: string[]): GigaSwapEventData | null {
     if (raw.length < 8) continue;
     if (raw.subarray(0, 8).toString("hex") !== GIGA_SWAP_DISC) continue;
     // GigaSwapEvent layout after discriminator (8):
-    // user: Pubkey (32), payout: u64 (8), paid_mind: bool (1)
-    if (raw.length < 8 + 32 + 9) continue;
-    const payout   = raw.readBigUInt64LE(8 + 32);
-    const paidMind = raw[8 + 32 + 8] !== 0;
+    // user: Pubkey (32), swap_counter: u64 (8), usd_cents: u64 (8),
+    // multiplier: u64 (8), payout: u64 (8), paid_mind: bool (1)
+    if (raw.length < 73) continue;
+    const payout   = raw.readBigUInt64LE(8 + 32 + 8 + 8 + 8); // offset 64
+    const paidMind = raw[72] !== 0;
     return { payout, paidMind };
   }
   return null;

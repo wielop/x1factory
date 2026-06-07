@@ -471,7 +471,7 @@ function renderMissionsTab() {
   // Date header
   const dateEl = q('#ms-today');
   if (dateEl) {
-    dateEl.textContent = new Date().toLocaleDateString('pl-PL', { weekday:'long', day:'numeric', month:'short' });
+    dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday:'long', day:'numeric', month:'short' });
   }
 
   // ── Check-in button ──

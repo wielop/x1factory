@@ -21,7 +21,7 @@ export async function GET(req: Request) {
       swapCount: bigint;
       volumeCents: bigint;
       gigaWins: bigint;
-      totalWinLamports: bigint;
+      totalWinCents: bigint;
     };
 
     let rows: SwapRow[];
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
             THEN (sp.metadata->>'usdCents')::bigint ELSE 0 END), 0)                  AS "volumeCents",
           COUNT(CASE WHEN sp.category = 'giga_swap_win' THEN 1 END)                  AS "gigaWins",
           COALESCE(SUM(CASE WHEN sp.category = 'giga_swap_win'
-            THEN (sp.metadata->>'payout')::bigint ELSE 0 END), 0)                    AS "totalWinLamports"
+            THEN (sp.metadata->>'payoutUsdCents')::bigint ELSE 0 END), 0)            AS "totalWinCents"
         FROM "User" u
         JOIN "SeasonPoint" sp ON sp."userId" = u.id AND sp."seasonId" = ${activeSeason.id}
         GROUP BY u.id, u.username, u."firstName"
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
             THEN (sp.metadata->>'usdCents')::bigint ELSE 0 END), 0)                  AS "volumeCents",
           COUNT(CASE WHEN sp.category = 'giga_swap_win' THEN 1 END)                  AS "gigaWins",
           COALESCE(SUM(CASE WHEN sp.category = 'giga_swap_win'
-            THEN (sp.metadata->>'payout')::bigint ELSE 0 END), 0)                    AS "totalWinLamports"
+            THEN (sp.metadata->>'payoutUsdCents')::bigint ELSE 0 END), 0)            AS "totalWinCents"
         FROM "User" u
         JOIN "SeasonPoint" sp ON sp."userId" = u.id
         GROUP BY u.id, u.username, u."firstName"
@@ -65,8 +65,6 @@ export async function GET(req: Request) {
         LIMIT 20
       `;
     }
-
-    const XNT_USD = 0.50;
 
     const maxVol = rows.length > 0 ? Number(rows[0].volumeCents) : 1;
 
@@ -77,7 +75,7 @@ export async function GET(req: Request) {
       swapCount: Number(r.swapCount),
       volumeUsd: Number(r.volumeCents) / 100,
       gigaWins: Number(r.gigaWins),
-      totalWinUsd: (Number(r.totalWinLamports) / 1e9) * XNT_USD,
+      totalWinUsd: Number(r.totalWinCents) / 100,
       volPct: maxVol > 0 ? Math.round((Number(r.volumeCents) / maxVol) * 100) : 0,
     }));
 

@@ -461,8 +461,9 @@ async function checkRewardPoolDeposit(): Promise<void> {
 
 // ── Swap Router scanner ───────────────────────────────────────────────────────
 
-const SWAP_ROUTER_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
+const SWAP_ROUTER_ID   = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
 const SWAP_ROUTER_DISC = createHash("sha256").update("event:SwapRouterEvent").digest().subarray(0, 8).toString("hex");
+const GIGA_SWAP_DISC   = createHash("sha256").update("event:GigaSwapEvent").digest().subarray(0, 8).toString("hex");
 const swapConn = new Connection(env.x1RpcUrl ?? "https://rpc.mainnet.x1.xyz", "confirmed");
 
 type SwapRouterEventData = {
@@ -475,6 +476,24 @@ type SwapRouterEventData = {
   swapCounter: bigint;
   usdCents: bigint;
 };
+
+type GigaSwapEventData = { payout: bigint; paidMind: boolean };
+
+function parseGigaSwapEventFromLogs(logs: string[]): GigaSwapEventData | null {
+  for (const log of logs) {
+    if (!log.startsWith("Program data: ")) continue;
+    const raw = Buffer.from(log.slice("Program data: ".length), "base64");
+    if (raw.length < 8) continue;
+    if (raw.subarray(0, 8).toString("hex") !== GIGA_SWAP_DISC) continue;
+    // GigaSwapEvent layout after discriminator (8):
+    // user: Pubkey (32), payout: u64 (8), paid_mind: bool (1)
+    if (raw.length < 8 + 32 + 9) continue;
+    const payout   = raw.readBigUInt64LE(8 + 32);
+    const paidMind = raw[8 + 32 + 8] !== 0;
+    return { payout, paidMind };
+  }
+  return null;
+}
 
 function parseSwapRouterEventFromLogs(logs: string[]): Pick<SwapRouterEventData, "amountIn" | "swapAmount" | "feeTotalLamports" | "swapCounter" | "usdCents"> | null {
   for (const log of logs) {
@@ -496,6 +515,20 @@ function parseSwapRouterEventFromLogs(logs: string[]): Pick<SwapRouterEventData,
     };
   }
   return null;
+}
+
+const MIND_USD = 0.026;
+
+async function getPoolXntUsd(): Promise<number> {
+  try {
+    const [mindInfo, xntInfo] = await swapConn.getMultipleAccountsInfo([POOL_MIND_ATA, POOL_XNT_ATA]);
+    const poolMind = mindInfo && mindInfo.data.length >= 72 ? Number(mindInfo.data.readBigUInt64LE(64)) : 0;
+    const poolXnt  = xntInfo  && xntInfo.data.length  >= 72 ? Number(xntInfo.data.readBigUInt64LE(64))  : 0;
+    if (poolXnt > 0 && poolMind > 0) {
+      return MIND_USD * (poolMind / poolXnt);
+    }
+  } catch { /* ignore */ }
+  return 0.50;
 }
 
 async function scanSwapEventsForWallet(params: {
@@ -523,6 +556,8 @@ async function scanSwapEventsForWallet(params: {
       filtered.map(s => s.signature),
       { maxSupportedTransactionVersion: 0, commitment: "confirmed" }
     );
+
+    let xntUsd: number | null = null;
 
     for (let i = 0; i < filtered.length; i++) {
       const sig = filtered[i];
@@ -559,6 +594,25 @@ async function scanSwapEventsForWallet(params: {
       if (result.created) {
         pointsAwarded += result.points;
         eventsDetected += 1;
+      }
+
+      // Check if this tx also contains a GigaSwap win event
+      const giga = parseGigaSwapEventFromLogs(tx.meta.logMessages);
+      if (giga && giga.payout > 0n) {
+        if (xntUsd === null) xntUsd = await getPoolXntUsd();
+        const tokenUsd  = giga.paidMind ? MIND_USD : xntUsd;
+        const payoutUsdCents = Math.round((Number(giga.payout) / 1e9) * tokenUsd * 100);
+
+        const gigaKey = `giga:${sig.signature}`;
+        await processEvent(params.userId, params.seasonId, "giga_swap_win", {
+          txHash: gigaKey,
+          originalTxHash: sig.signature,
+          blockTime: blockTime.toISOString(),
+          slot: sig.slot,
+          payout: giga.payout.toString(),
+          paidMind: giga.paidMind,
+          payoutUsdCents,
+        });
       }
     }
   } catch (err) {

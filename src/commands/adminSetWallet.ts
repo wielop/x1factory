@@ -41,7 +41,6 @@ export function registerAdminSetWalletCommand(bot: BotInstance): void {
         language_code: user.languageCode ?? undefined
       },
       walletAddress,
-      allowWalletChange: true
     });
 
     await ctx.reply(

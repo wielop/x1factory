@@ -291,6 +291,10 @@ export async function processEvent(
     return processSwap(userId, seasonId, usdCents);
   }
 
+  if (eventType === "giga_swap_win") {
+    return processGigaSwapWin(userId, seasonId, metadata ?? {});
+  }
+
   throw new Error(`Unsupported event type: ${eventType}`);
 }
 
@@ -522,6 +526,45 @@ export async function processSwap(
     `Swap $${(usdCents / 100).toFixed(2)}`,
     { usdCents, tierPoints, suppressDefaultNotification: true }
   );
+}
+
+export async function processGigaSwapWin(
+  userId: number,
+  seasonId: number,
+  metadata: PointsMetadata
+): Promise<AddPointsResult> {
+  const txHash = typeof metadata.txHash === "string" ? metadata.txHash : undefined;
+
+  const existingStats = await prisma.userSeasonStats.findUnique({
+    where: { userId_seasonId: { userId, seasonId } },
+    select: { totalPoints: true, rank: true },
+  });
+
+  if (txHash) {
+    const existing = await prisma.seasonPoint.findFirst({
+      where: { userId, seasonId, category: "giga_swap_win", reason: txHash },
+    });
+    if (existing) {
+      return { created: false, points: 0, totalPoints: existingStats?.totalPoints ?? 0, rank: existingStats?.rank ?? null };
+    }
+  }
+
+  const payoutUsdCents = Number(metadata.payoutUsdCents ?? 0);
+  const payoutXnt = Number(metadata.payout ?? 0) / 1e9;
+
+  await prisma.seasonPoint.create({
+    data: {
+      userId,
+      seasonId,
+      points: 0,
+      category: "giga_swap_win",
+      source: "EVENT",
+      reason: txHash ?? "GigaSwap win",
+      metadata: metadata as Prisma.InputJsonValue,
+    },
+  });
+
+  return { created: true, points: 0, totalPoints: existingStats?.totalPoints ?? 0, rank: existingStats?.rank ?? null };
 }
 
 export async function processDailyCheckin(

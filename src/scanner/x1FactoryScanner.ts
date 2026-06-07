@@ -392,20 +392,56 @@ function findAta(mint: PublicKey, owner: PublicKey): PublicKey {
 const POOL_MIND_ATA = findAta(MIND_MINT, POOL_PDA);
 const POOL_XNT_ATA  = findAta(WXNT_MINT, POOL_PDA);
 
-let lastPoolMind = 0n;
-let lastPoolXnt  = 0n;
+// discriminator for deposit_reward_pool instruction
+const DEPOSIT_DISC = createHash("sha256").update("global:deposit_reward_pool").digest().subarray(0, 8).toString("hex");
+
+let lastSeenDepositSig: string | null = null;
 
 async function checkRewardPoolDeposit(): Promise<void> {
   try {
-    const [mindInfo, xntInfo] = await swapConn.getMultipleAccountsInfo([POOL_MIND_ATA, POOL_XNT_ATA]);
-    const poolMind = mindInfo && mindInfo.data.length >= 72 ? mindInfo.data.readBigUInt64LE(64) : 0n;
-    const poolXnt  = xntInfo  && xntInfo.data.length  >= 72 ? xntInfo.data.readBigUInt64LE(64)  : 0n;
+    // Watch for new deposit_reward_pool instructions on the pool PDA
+    const sigs = await swapConn.getSignaturesForAddress(POOL_PDA, { limit: 5 });
+    if (!sigs.length) return;
 
-    const mindGrew = poolMind > lastPoolMind + 1_000_000_000n; // >1 MIND increase
-    const xntGrew  = poolXnt  > lastPoolXnt  + 1_000_000_000n; // >1 XNT increase
+    // Init cursor on first run — don't broadcast old deposits
+    if (lastSeenDepositSig === null) {
+      lastSeenDepositSig = sigs[0].signature;
+      return;
+    }
 
-    if ((mindGrew || xntGrew) && (lastPoolMind > 0n || lastPoolXnt > 0n)) {
-      logger.info({ poolMind: poolMind.toString(), poolXnt: poolXnt.toString() }, "[pool] deposit detected, broadcasting");
+    // Collect only new signatures (newer than last seen)
+    const newSigs: string[] = [];
+    for (const s of sigs) {
+      if (s.signature === lastSeenDepositSig) break;
+      newSigs.push(s.signature);
+    }
+    if (!newSigs.length) return;
+
+    lastSeenDepositSig = sigs[0].signature;
+
+    // Check each new tx for deposit_reward_pool instruction discriminator
+    for (const sig of newSigs) {
+      const tx = await swapConn.getTransaction(sig, { maxSupportedTransactionVersion: 0 });
+      if (!tx) continue;
+
+      const isDeposit = (tx.transaction.message as { instructions?: Array<{ data?: string }> })
+        .instructions?.some(ix => {
+          if (!("data" in ix) || typeof ix.data !== "string") return false;
+          try {
+            const buf = Buffer.from(ix.data, "base64");
+            return buf.length >= 8 && buf.subarray(0, 8).toString("hex") === DEPOSIT_DISC;
+          } catch { return false; }
+        });
+
+      if (!isDeposit) continue;
+
+      // Read current pool balances
+      const [mindInfo, xntInfo] = await swapConn.getMultipleAccountsInfo([POOL_MIND_ATA, POOL_XNT_ATA]);
+      const poolMind = mindInfo && mindInfo.data.length >= 72 ? mindInfo.data.readBigUInt64LE(64) : 0n;
+      const poolXnt  = xntInfo  && xntInfo.data.length  >= 72 ? xntInfo.data.readBigUInt64LE(64)  : 0n;
+
+      logger.info({ sig, poolMind: poolMind.toString(), poolXnt: poolXnt.toString() }, "[pool] admin deposit detected, broadcasting");
+
       const MIND_USD = 0.026;
       const XNT_USD  = 0.50;
       const poolUsdCents = Math.round(
@@ -416,10 +452,8 @@ async function checkRewardPoolDeposit(): Promise<void> {
         poolXnt:      (Number(poolXnt)  / 1e9).toFixed(2),
         poolUsdCents,
       });
+      break; // one broadcast per scan cycle
     }
-
-    lastPoolMind = poolMind;
-    lastPoolXnt  = poolXnt;
   } catch (err) {
     logger.warn({ err }, "[pool] reward pool check failed");
   }

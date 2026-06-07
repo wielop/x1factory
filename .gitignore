@@ -32,3 +32,15 @@ Cargo.lock.*
 ## Next.js
 .next/
 out/
+
+## Vercel build output (NEVER commit — Vercel uses it as pre-built output, bypassing Next.js build)
+.vercel/
+
+## TypeScript compiled output
+dist/
+tsconfig.tsbuildinfo
+web/tsconfig.tsbuildinfo
+
+## Yarn
+web/.yarn/install-state.gz
+web/.yarnrc.yml

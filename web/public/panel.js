@@ -793,8 +793,8 @@ async function loadSwapLeaderboard(mode) {
       podium.innerHTML = displayOrder.map((entryIdx, slotPos) => {
         const e = top3[entryIdx];
         if (!e) return '<div></div>';
-        const winStr = e.totalWinXnt > 0
-          ? 'Win: ' + e.totalWinXnt.toLocaleString('en-US', {maximumFractionDigits:2}) + ' XNT'
+        const winStr = e.totalWinUsd > 0
+          ? 'Win: $' + e.totalWinUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
           : 'Win: —';
         return `
           <div class="slb-podium-card ${slotClass[slotPos]}">
@@ -813,8 +813,8 @@ async function loadSwapLeaderboard(mode) {
 
     if (list) list.innerHTML = restEntries.map(e => {
       const isMe = e.userId === S.user?.id;
-      const winStr = e.totalWinXnt > 0
-        ? `<span class="slb-win-badge">Win: ${e.totalWinXnt.toLocaleString('en-US',{maximumFractionDigits:2})} XNT</span>`
+      const winStr = e.totalWinUsd > 0
+        ? `<span class="slb-win-badge">Win: $${e.totalWinUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
         : '';
       return `
         <div class="slb-row${isMe ? ' is-me' : ''}">

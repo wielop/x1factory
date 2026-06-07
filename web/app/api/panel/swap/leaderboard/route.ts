@@ -66,6 +66,8 @@ export async function GET(req: Request) {
       `;
     }
 
+    const XNT_USD = 0.50;
+
     const maxVol = rows.length > 0 ? Number(rows[0].volumeCents) : 1;
 
     const entries = rows.map((r, i) => ({
@@ -75,11 +77,8 @@ export async function GET(req: Request) {
       swapCount: Number(r.swapCount),
       volumeUsd: Number(r.volumeCents) / 100,
       gigaWins: Number(r.gigaWins),
-      totalWinXnt: Number(r.totalWinLamports) / 1e9,
+      totalWinUsd: (Number(r.totalWinLamports) / 1e9) * XNT_USD,
       volPct: maxVol > 0 ? Math.round((Number(r.volumeCents) / maxVol) * 100) : 0,
-      winRate: Number(r.swapCount) > 0
-        ? Math.round((Number(r.gigaWins) / Number(r.swapCount)) * 100)
-        : 0,
     }));
 
     return NextResponse.json({

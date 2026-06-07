@@ -2,12 +2,14 @@ import { createBot } from "./bot/createBot.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { startScanner } from "./scanner/index.js";
+import { startScheduler } from "./scheduler.js";
 import { startMiniAppServer } from "./web/server.js";
 
 async function main(): Promise<void> {
   const bot = createBot();
-  const stopScanner = env.x1ScannerEnabled ? startScanner(env.x1ScannerIntervalSeconds) : () => undefined;
-  const stopMiniApp = startMiniAppServer();
+  const stopScanner   = env.x1ScannerEnabled ? startScanner(env.x1ScannerIntervalSeconds) : () => undefined;
+  const stopScheduler = startScheduler();
+  const stopMiniApp   = startMiniAppServer();
 
   let botStarted = false;
 
@@ -27,6 +29,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down bot");
     stopScanner();
+    stopScheduler();
     stopMiniApp();
     if (botStarted) {
       await bot.stop(signal);

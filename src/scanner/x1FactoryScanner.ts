@@ -9,6 +9,7 @@ import { createDetectedEvent, findDetectedEvent } from "../db/eventRepository.js
 import { getWalletScannerCursor, upsertWalletScannerCursor } from "../db/scannerRepository.js";
 import { getActiveSeason, getActiveSeasonRegistrationsWithWallets } from "../db/seasonRepository.js";
 import { checkSeasonEndNotifications, processDailyClaim, processEvent, processStakeSnapshot } from "../services/pointsService.js";
+import { broadcastPoolFunded } from "../services/dailyNotificationService.js";
 
 import { RealX1FactoryAdapter } from "./realAdapter.js";
 import type {
@@ -372,6 +373,58 @@ async function applyWalletEvents(params: {
   };
 }
 
+// ── Reward pool monitor ───────────────────────────────────────────────────────
+
+const MIND_MINT    = new PublicKey("DohWBfvXER6qs8zFGtdZRDpgbHmm97ZZwgCUTCdtHQNT");
+const WXNT_MINT    = new PublicKey("So11111111111111111111111111111111111111112");
+const POOL_PDA     = new PublicKey("91NeymGDdHYyLsMU9ULhha3cQ89qvXRPMX5o2L92BxLu");
+const TOKEN_PROGRAM   = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ATA_PROGRAM     = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe8bXp");
+
+function findAta(mint: PublicKey, owner: PublicKey): PublicKey {
+  const [ata] = PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM.toBuffer(), mint.toBuffer()],
+    ATA_PROGRAM
+  );
+  return ata;
+}
+
+const POOL_MIND_ATA = findAta(MIND_MINT, POOL_PDA);
+const POOL_XNT_ATA  = findAta(WXNT_MINT, POOL_PDA);
+
+let lastPoolMind = 0n;
+let lastPoolXnt  = 0n;
+
+async function checkRewardPoolDeposit(): Promise<void> {
+  try {
+    const [mindInfo, xntInfo] = await swapConn.getMultipleAccountsInfo([POOL_MIND_ATA, POOL_XNT_ATA]);
+    const poolMind = mindInfo && mindInfo.data.length >= 72 ? mindInfo.data.readBigUInt64LE(64) : 0n;
+    const poolXnt  = xntInfo  && xntInfo.data.length  >= 72 ? xntInfo.data.readBigUInt64LE(64)  : 0n;
+
+    const mindGrew = poolMind > lastPoolMind + 1_000_000_000n; // >1 MIND increase
+    const xntGrew  = poolXnt  > lastPoolXnt  + 1_000_000_000n; // >1 XNT increase
+
+    if ((mindGrew || xntGrew) && (lastPoolMind > 0n || lastPoolXnt > 0n)) {
+      logger.info({ poolMind: poolMind.toString(), poolXnt: poolXnt.toString() }, "[pool] deposit detected, broadcasting");
+      const MIND_USD = 0.026;
+      const XNT_USD  = 0.50;
+      const poolUsdCents = Math.round(
+        (Number(poolMind) / 1e9 * MIND_USD + Number(poolXnt) / 1e9 * XNT_USD) * 100
+      );
+      await broadcastPoolFunded({
+        poolMind:     (Number(poolMind) / 1e9).toFixed(2),
+        poolXnt:      (Number(poolXnt)  / 1e9).toFixed(2),
+        poolUsdCents,
+      });
+    }
+
+    lastPoolMind = poolMind;
+    lastPoolXnt  = poolXnt;
+  } catch (err) {
+    logger.warn({ err }, "[pool] reward pool check failed");
+  }
+}
+
 // ── Swap Router scanner ───────────────────────────────────────────────────────
 
 const SWAP_ROUTER_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
@@ -703,6 +756,9 @@ export function startScanner(intervalSeconds: number): () => void {
     });
     void checkSeasonEndNotifications().catch((error) => {
       logger.warn({ error }, "Season end notification check failed");
+    });
+    void checkRewardPoolDeposit().catch((error) => {
+      logger.warn({ error }, "Reward pool deposit check failed");
     });
   }, intervalMs);
 

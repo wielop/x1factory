@@ -253,34 +253,9 @@ export async function addSeasonPoints(
     };
   });
 
-  if (result.created && !suppressDefaultNotification) {
+  if (result.created) {
     const rankImproved = result.rank !== null && (rankBefore === null || result.rank < rankBefore);
-    const rankLines: string[] = [];
-
-    if (rankImproved && result.rank !== null) {
-      if (rankBefore !== null) {
-        rankLines.push(`📈 Rank improved: #${rankBefore} → #${result.rank}`);
-      } else {
-        rankLines.push(`📈 Ranked for the first time: #${result.rank}`);
-      }
-    } else {
-      rankLines.push(`Operator rank: ${result.rank ? `#${result.rank}` : "unranked"}`);
-    }
-
-    await notifyTelegramUser(
-      user.telegramId,
-      [
-        factoryHeader("PRODUCTION LOG"),
-        "",
-        amount >= 0 ? `Factory output: +${amount} ${FACTORY_XP}` : `Factory correction: -${Math.abs(amount)} ${FACTORY_XP}`,
-        `Source: ${formatEventCategory(category)}`,
-        "",
-        `Season total: ${result.totalPoints} ${FACTORY_XP}`,
-        ...rankLines
-      ].join("\n")
-    );
-
-    // Notify the user who just got overtaken
+    // Notify the user who just got overtaken (always fires, regardless of suppress flag)
     if (rankImproved && result.rank !== null && rankBefore !== null && result.rank < rankBefore) {
       void notifyOvertakenUser(seasonId, result.rank + 1, userId).catch(() => undefined);
     }

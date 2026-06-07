@@ -12,14 +12,12 @@ import {
   Connection,
   Keypair,
   PublicKey,
-  SystemProgram,
   Transaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
-  createSyncNativeInstruction,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { createHash } from "crypto";
@@ -78,18 +76,6 @@ async function main() {
   console.log(`Depositing       : ${amountTokens} ${tokenArg.toUpperCase()} = ${amountLamports} lamports`);
 
   const tx = new Transaction();
-
-  // For XNT: wrap native → WXNT ATA first
-  if (!isMind) {
-    const depositorAtaInfo = await conn.getAccountInfo(depositorAta);
-    if (!depositorAtaInfo) {
-      console.log("Creating depositor WXNT ATA...");
-      tx.add(createAssociatedTokenAccountInstruction(payer.publicKey, depositorAta, payer.publicKey, WXNT_MINT));
-    }
-    console.log(`Wrapping ${amountTokens} XNT → WXNT...`);
-    tx.add(SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: depositorAta, lamports: amountLamports }));
-    tx.add(createSyncNativeInstruction(depositorAta, TOKEN_PROGRAM_ID));
-  }
 
   // Create reward pool ATA if it doesn't exist
   const poolAtaInfo = await conn.getAccountInfo(rewardPoolAta);

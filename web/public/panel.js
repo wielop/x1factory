@@ -784,18 +784,18 @@ async function loadSwapLeaderboard(mode) {
       return;
     }
 
-    // Podium top 3
+    // Podium top 3: left=2nd, center=1st, right=3rd
     if (podium && entries.length >= 1) {
-      const medals = ['🥇','🥈','🥉'];
-      const order  = [1, 0, 2]; // display: 2nd left, 1st center, 3rd right
-      const top3   = entries.slice(0, Math.min(3, entries.length));
-      const pClass = ['p2','p1','p3'];
-      podium.innerHTML = order.map(i => {
-        const e = top3[i];
+      const top3        = entries.slice(0, Math.min(3, entries.length));
+      const displayOrder = [1, 0, 2];   // which entry index goes in each slot
+      const slotClass    = ['p2','p1','p3']; // CSS class per slot (left, center, right)
+      const slotMedal    = ['🥈','🥇','🥉']; // medal per slot
+      podium.innerHTML = displayOrder.map((entryIdx, slotPos) => {
+        const e = top3[entryIdx];
         if (!e) return '<div></div>';
         return `
-          <div class="slb-podium-card ${pClass[i]}">
-            <div class="slb-podium-medal">${medals[i]}</div>
+          <div class="slb-podium-card ${slotClass[slotPos]}">
+            <div class="slb-podium-medal">${slotMedal[slotPos]}</div>
             <div class="slb-podium-name">${esc(e.name)}</div>
             <div class="slb-podium-vol">$${fmtNum(Math.round(e.volumeUsd))}</div>
             <div class="slb-podium-sub">${e.swapCount} swaps${e.gigaWins > 0 ? ' · ⚡' + e.gigaWins : ''}</div>

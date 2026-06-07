@@ -733,9 +733,101 @@ window.addEventListener('DOMContentLoaded',init);
 
 /* ── Swap Tab ────────────────────────────────────────────── */
 const SWAP_DECIMALS = 9;
+let slbMode = 'season';
+let slbLoaded = false;
 
 function initSwapTab() {
   loadSwapPoolStats();
+  if (!slbLoaded) loadSwapLeaderboard(slbMode);
+}
+
+function switchSwapLb(mode) {
+  slbMode = mode;
+  document.querySelectorAll('.slb-tab').forEach(t => t.classList.remove('active'));
+  const tab = q('#slb-tab-' + mode);
+  if (tab) tab.classList.add('active');
+  slbLoaded = false;
+  loadSwapLeaderboard(mode);
+}
+
+async function loadSwapLeaderboard(mode) {
+  const list = q('#slb-list');
+  const podium = q('#slb-podium');
+  const myRankEl = q('#slb-my-rank');
+  if (list) list.innerHTML = '<div class="empty-state">Loading...</div>';
+  if (podium) podium.classList.add('hidden');
+  if (myRankEl) myRankEl.classList.add('hidden');
+
+  try {
+    const data = await get('/api/panel/swap/leaderboard?mode=' + mode);
+    if (!data.ok) throw new Error(data.error || 'Failed');
+    slbLoaded = true;
+
+    const entries = data.entries || [];
+    const myEntry = entries.find(e => e.userId === S.user?.id);
+
+    // My rank banner (always visible if user is on the list)
+    if (myEntry && myRankEl) {
+      myRankEl.innerHTML = `
+        <span class="slb-my-rank-pos">#${myEntry.rank}</span>
+        <div class="slb-my-rank-info">
+          <div class="slb-my-rank-name">Your rank</div>
+          <div class="slb-my-rank-vol">$${fmtNum(Math.round(myEntry.volumeUsd))} volume · ${myEntry.swapCount} swaps</div>
+        </div>
+        <div class="slb-my-rank-stat">${myEntry.gigaWins > 0 ? '⚡ ' + myEntry.gigaWins + ' wins' : ''}</div>
+      `;
+      myRankEl.classList.remove('hidden');
+    }
+
+    if (!entries.length) {
+      if (list) list.innerHTML = '<div class="empty-state">No swap activity yet.</div>';
+      return;
+    }
+
+    // Podium top 3
+    if (podium && entries.length >= 1) {
+      const medals = ['🥇','🥈','🥉'];
+      const order  = [1, 0, 2]; // display: 2nd left, 1st center, 3rd right
+      const top3   = entries.slice(0, Math.min(3, entries.length));
+      const pClass = ['p2','p1','p3'];
+      podium.innerHTML = order.map(i => {
+        const e = top3[i];
+        if (!e) return '<div></div>';
+        return `
+          <div class="slb-podium-card ${pClass[i]}">
+            <div class="slb-podium-medal">${medals[i]}</div>
+            <div class="slb-podium-name">${esc(e.name)}</div>
+            <div class="slb-podium-vol">$${fmtNum(Math.round(e.volumeUsd))}</div>
+            <div class="slb-podium-sub">${e.swapCount} swaps${e.gigaWins > 0 ? ' · ⚡' + e.gigaWins : ''}</div>
+          </div>`;
+      }).join('');
+      podium.classList.remove('hidden');
+    }
+
+    // Ranked rows (rank 4+, or all if < 4 entries)
+    const restEntries = entries.length > 3 ? entries.slice(3) : entries;
+    if (!restEntries.length) { if (list) list.innerHTML = ''; return; }
+
+    if (list) list.innerHTML = restEntries.map(e => {
+      const isMe = e.userId === S.user?.id;
+      const winBadge = e.gigaWins > 0 ? `<span class="slb-win-badge">⚡${e.gigaWins}</span>` : '';
+      return `
+        <div class="slb-row${isMe ? ' is-me' : ''}">
+          <div class="slb-row-rank">${e.rank}</div>
+          <div class="slb-row-body">
+            <div class="slb-row-name">${esc(e.name)}</div>
+            <div class="slb-row-bar-wrap"><div class="slb-row-bar" style="width:${e.volPct}%"></div></div>
+          </div>
+          <div class="slb-row-right">
+            <div class="slb-row-vol">$${fmtNum(Math.round(e.volumeUsd))}</div>
+            <div class="slb-row-meta">${e.swapCount} swaps ${winBadge}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+  } catch(err) {
+    if (list) list.innerHTML = `<div class="empty-state">${esc(err.message)}</div>`;
+  }
 }
 
 async function loadSwapPoolStats() {

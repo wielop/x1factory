@@ -321,7 +321,7 @@ function renderBadges() {
   const badges = bd.badges || [];
   const trophies = bd.trophies || [];
   if (!badges.length && !trophies.length) {
-    grid.innerHTML = '<span class="no-badges muted">Wykonaj akcje aby odblokować odznaki.</span>';
+    grid.innerHTML = '<span class="no-badges muted">Complete actions to unlock badges.</span>';
     return;
   }
   let html = '';
@@ -479,7 +479,7 @@ function renderMissionsTab() {
   const btn = q('#ms-checkin-btn');
   if (btn) {
     btn.disabled = !!checkinDone;
-    btn.textContent = checkinDone ? '✅ Zrobione dziś' : '⚡ Check In  +10 pts';
+    btn.textContent = checkinDone ? '✅ Done today' : '⚡ Check In  +10 pts';
     btn.classList.toggle('ms-btn-done', !!checkinDone);
   }
 
@@ -522,7 +522,7 @@ function renderMissionsTab() {
 
   const pill = q('#ms-streak-pill');
   if (pill) {
-    if (streakCount > 0) { pill.textContent = streakCount + ' dni'; pill.classList.remove('hidden'); }
+    if (streakCount > 0) { pill.textContent = streakCount + (streakCount === 1 ? ' day' : ' days'); pill.classList.remove('hidden'); }
     else pill.classList.add('hidden');
   }
 
@@ -533,15 +533,16 @@ function renderMissionsTab() {
     const MILESTONES = [3,7,14,21];
     const next = MILESTONES.find(m => m > streakCount);
     if (checkinDoneToday && !claimDoneToday) {
-      hintEl.textContent = '💎 Odbierz MIND aby ukończyć serię!';
+      hintEl.textContent = '💎 Claim MIND to complete your streak!';
     } else if (claimDoneToday && !checkinDoneToday) {
-      hintEl.textContent = '⚡ Zrób check-in aby ukończyć serię!';
+      hintEl.textContent = '⚡ Check in to complete your streak!';
     } else if (streakCount === 0) {
-      hintEl.textContent = 'Zrób check-in + odbierz MIND aby zacząć serię';
+      hintEl.textContent = 'Check in + claim MIND to start your streak';
     } else if (next) {
-      hintEl.textContent = `Jeszcze ${next - streakCount} ${next - streakCount === 1 ? 'dzień' : 'dni'} do bonusu +${[50,150,350,700][[3,7,14,21].indexOf(next)]} pts`;
+      const left = next - streakCount;
+      hintEl.textContent = `${left} ${left === 1 ? 'day' : 'days'} left to +${[50,150,350,700][[3,7,14,21].indexOf(next)]} pts bonus`;
     } else {
-      hintEl.textContent = '🏆 Osiągnąłeś maksymalny milestone!';
+      hintEl.textContent = '🏆 Maximum milestone reached!';
     }
   }
 

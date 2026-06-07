@@ -291,6 +291,14 @@ export async function processEvent(
     return processSwap(userId, seasonId, usdCents);
   }
 
+  if (eventType === "giga_swap_win") {
+    // 0 pts — stored only for leaderboard stats
+    return addPoints(userId, seasonId, 0, "giga_swap_win", "GigaSwap win", {
+      ...metadata,
+      suppressDefaultNotification: true,
+    });
+  }
+
   throw new Error(`Unsupported event type: ${eventType}`);
 }
 

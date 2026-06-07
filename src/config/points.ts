@@ -61,6 +61,7 @@ export const SUPPORTED_EVENT_TYPES = [
   "streak_bonus",
   "weekly_mission_checkin",
   "swap_mind_xnt",
+  "giga_swap_win",
 ] as const;
 
 export type SupportedEventType = (typeof SUPPORTED_EVENT_TYPES)[number];

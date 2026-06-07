@@ -736,6 +736,96 @@ const SWAP_DECIMALS = 9;
 
 function initSwapTab() {
   loadSwapPoolStats();
+  loadSwapLeaderboard('season');
+}
+
+/* ── Swap Leaderboard ────────────────────────────────────── */
+let slbCurrentMode = 'season';
+
+function switchSwapLb(mode) {
+  slbCurrentMode = mode;
+  q('#slb-tab-season').classList.toggle('active', mode === 'season');
+  q('#slb-tab-alltime').classList.toggle('active', mode === 'alltime');
+  loadSwapLeaderboard(mode);
+}
+
+async function loadSwapLeaderboard(mode) {
+  const container = q('#slb-list');
+  if (container) container.innerHTML = '<div class="slb-empty muted">Loading...</div>';
+  const myRankEl = q('#slb-my-rank');
+  if (myRankEl) myRankEl.classList.add('hidden');
+
+  try {
+    const res  = await fetch(`/api/panel/swap/leaderboard?mode=${mode}`);
+    const data = await res.json();
+    if (!data.ok || !data.entries.length) {
+      if (container) container.innerHTML = '<div class="slb-empty muted">No swap activity yet. Be the first!</div>';
+      return;
+    }
+
+    const myUserId = S.user?.id;
+    const entries  = data.entries;
+    const maxVol   = entries[0]?.volumeCents || 1;
+
+    // My rank banner
+    const me = entries.find(e => e.userId === myUserId);
+    if (me && myRankEl) {
+      myRankEl.classList.remove('hidden');
+      myRankEl.innerHTML =
+        `<span class="slb-my-rank-label">Your rank</span>` +
+        `<span class="slb-my-rank-val">#${me.rank} · $${(me.volumeCents/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})} vol · ${me.gigaWins} ⚡ wins</span>`;
+    }
+
+    let html = '';
+
+    // Top-3 podium
+    const top3 = entries.slice(0, 3);
+    if (top3.length) {
+      const medals = ['🥇','🥈','🥉'];
+      const cls    = ['p1','p2','p3'];
+      html += '<div class="slb-podium">';
+      top3.forEach((e, i) => {
+        const isMe = e.userId === myUserId;
+        const vol  = '$' + (e.volumeCents/100).toLocaleString('en-US',{maximumFractionDigits:0});
+        const name = e.name.length > 10 ? e.name.slice(0,9)+'…' : e.name;
+        html += `<div class="slb-podium-card ${cls[i]}${isMe?' is-me':''}">
+          <span class="slb-medal">${medals[i]}</span>
+          <span class="slb-podium-name">${name}</span>
+          <span class="slb-podium-vol">${vol}</span>
+          <span class="slb-podium-sub">${e.swapCount} swap${e.swapCount!==1?'s':''}</span>
+          ${e.gigaWins > 0 ? `<span class="slb-podium-wins">⚡ ${e.gigaWins} wins</span>` : ''}
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    // Rows 4+
+    entries.slice(3).forEach(e => {
+      const isMe  = e.userId === myUserId;
+      const vol   = '$' + (e.volumeCents/100).toLocaleString('en-US',{maximumFractionDigits:0});
+      const barPct = Math.round((e.volumeCents / maxVol) * 100);
+      const rateStr = e.swapCount > 0 ? `${e.winRate}% win rate` : '';
+      html += `<div class="slb-row${isMe?' is-me':''}">
+        <span class="slb-row-rank">#${e.rank}</span>
+        <div class="slb-row-info">
+          <div class="slb-row-name${isMe?' is-me':''}">${e.name}</div>
+          <div class="slb-row-meta">
+            <span class="slb-row-vol">${vol} · ${e.swapCount} swaps</span>
+            ${e.gigaWins > 0 ? `<span class="slb-row-wins-badge">⚡ ${e.gigaWins}</span>` : ''}
+          </div>
+          <div class="slb-row-bar-wrap"><div class="slb-row-bar" style="width:${barPct}%"></div></div>
+        </div>
+        <div class="slb-row-right">
+          <span class="slb-row-pts${isMe?' is-me':''}">${vol}</span>
+          ${rateStr ? `<span class="slb-row-rate">${rateStr}</span>` : ''}
+        </div>
+      </div>`;
+    });
+
+    if (container) container.innerHTML = html;
+  } catch (err) {
+    if (container) container.innerHTML = '<div class="slb-empty muted">Failed to load.</div>';
+  }
 }
 
 async function loadSwapPoolStats() {

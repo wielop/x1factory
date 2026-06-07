@@ -508,6 +508,19 @@
           </div>
         </div>
 
+        <!-- Swap Leaderboard -->
+        <div class="slb-header">
+          <span class="slb-title">⚡ Swap Leaderboard</span>
+          <div class="slb-tabs">
+            <button class="slb-tab active" id="slb-tab-season" onclick="switchSwapLb('season')">Season</button>
+            <button class="slb-tab" id="slb-tab-alltime" onclick="switchSwapLb('alltime')">All‑time</button>
+          </div>
+        </div>
+        <div id="slb-my-rank" class="slb-my-rank hidden"></div>
+        <div id="slb-list" class="slb-list">
+          <div class="empty-state muted">Loading...</div>
+        </div>
+
       </section>
 
     </main>

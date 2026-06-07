@@ -463,6 +463,7 @@ async function checkRewardPoolDeposit(): Promise<void> {
 
 const SWAP_ROUTER_ID = new PublicKey("2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6");
 const SWAP_ROUTER_DISC = createHash("sha256").update("event:SwapRouterEvent").digest().subarray(0, 8).toString("hex");
+const GIGA_SWAP_DISC   = createHash("sha256").update("event:GigaSwapEvent").digest().subarray(0, 8).toString("hex");
 const swapConn = new Connection(env.x1RpcUrl ?? "https://rpc.mainnet.x1.xyz", "confirmed");
 
 type SwapRouterEventData = {
@@ -493,6 +494,24 @@ function parseSwapRouterEventFromLogs(logs: string[]): Pick<SwapRouterEventData,
       feeTotalLamports: raw.readBigUInt64LE((o += 8)),
       swapCounter: raw.readBigUInt64LE((o += 8)),
       usdCents: raw.readBigUInt64LE((o += 8)),
+    };
+  }
+  return null;
+}
+
+function parseGigaSwapEventFromLogs(logs: string[]): { payout: bigint; multiplier: bigint; paidMind: boolean } | null {
+  for (const log of logs) {
+    if (!log.startsWith("Program data: ")) continue;
+    const raw = Buffer.from(log.slice("Program data: ".length), "base64");
+    if (raw.length < 73) continue;
+    if (raw.subarray(0, 8).toString("hex") !== GIGA_SWAP_DISC) continue;
+    // GigaSwapEvent: disc(8) + user(32) + swap_counter(8) + usd_cents(8) + multiplier(8) + payout(8) + paid_mind(1)
+    const payout = raw.readBigUInt64LE(64);
+    if (payout === 0n) return null;
+    return {
+      payout,
+      multiplier: raw.readBigUInt64LE(56),
+      paidMind: raw[72] !== 0,
     };
   }
   return null;
@@ -559,6 +578,21 @@ async function scanSwapEventsForWallet(params: {
       if (result.created) {
         pointsAwarded += result.points;
         eventsDetected += 1;
+      }
+
+      // Track GigaSwap win (0 pts — pure stat tracking)
+      const gigaWin = parseGigaSwapEventFromLogs(tx.meta.logMessages);
+      if (gigaWin) {
+        const gigaKey = `giga:${sig.signature}`;
+        await processEvent(params.userId, params.seasonId, "giga_swap_win", {
+          txHash: gigaKey,
+          originalTxHash: sig.signature,
+          blockTime: blockTime.toISOString(),
+          payout: gigaWin.payout.toString(),
+          multiplier: gigaWin.multiplier.toString(),
+          paidMind: gigaWin.paidMind,
+          swapUsdCents: parsed.usdCents.toString(),
+        });
       }
     }
   } catch (err) {

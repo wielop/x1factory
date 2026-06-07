@@ -1275,3 +1275,42 @@ button{font-family:inherit;}
 .swap-stat{display:flex;flex-direction:column;gap:4px;}
 .swap-stat-label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;}
 .swap-stat-value{font-size:13px;font-weight:600;color:var(--text-1);font-family:'JetBrains Mono',monospace;}
+
+/* ── Swap Leaderboard ─────────────────────────────────────────────────────── */
+.slb-header{display:flex;align-items:center;justify-content:space-between;margin-top:20px;margin-bottom:8px;}
+.slb-title{font-size:13px;font-weight:800;color:var(--cyan);text-transform:uppercase;letter-spacing:.08em;}
+.slb-tabs{display:flex;gap:4px;background:var(--bg-card);border-radius:8px;padding:3px;}
+.slb-tab{padding:4px 12px;border-radius:6px;font-size:11px;font-weight:700;border:none;background:transparent;color:var(--text-3);cursor:pointer;transition:all .15s;}
+.slb-tab.active{background:var(--cyan);color:#000;}
+.slb-my-rank{background:rgba(34,242,255,.08);border:1px solid rgba(34,242,255,.25);border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;font-size:12px;}
+.slb-my-rank.hidden{display:none;}
+.slb-my-rank-label{color:var(--text-3);}
+.slb-my-rank-val{color:var(--cyan);font-weight:700;font-family:'JetBrains Mono',monospace;}
+.slb-list{display:flex;flex-direction:column;gap:3px;}
+.slb-podium{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:3px;}
+.slb-podium-card{border-radius:12px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;position:relative;overflow:hidden;}
+.slb-podium-card.p1{background:linear-gradient(145deg,rgba(252,211,77,.15),rgba(252,211,77,.05));border:1px solid rgba(252,211,77,.35);}
+.slb-podium-card.p2{background:linear-gradient(145deg,rgba(203,213,225,.1),rgba(203,213,225,.04));border:1px solid rgba(203,213,225,.2);}
+.slb-podium-card.p3{background:linear-gradient(145deg,rgba(217,119,6,.12),rgba(217,119,6,.04));border:1px solid rgba(217,119,6,.25);}
+.slb-podium-card.is-me{box-shadow:0 0 0 1px var(--cyan),inset 0 0 12px rgba(34,242,255,.08);}
+.slb-medal{font-size:22px;line-height:1;}
+.slb-podium-name{font-size:10px;font-weight:700;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;}
+.slb-podium-vol{font-size:11px;font-weight:800;color:var(--cyan);font-family:'JetBrains Mono',monospace;}
+.slb-podium-sub{font-size:9px;color:var(--text-3);}
+.slb-podium-wins{font-size:9px;font-weight:700;background:rgba(34,242,255,.12);border:1px solid rgba(34,242,255,.2);border-radius:4px;padding:1px 5px;color:var(--cyan);}
+.slb-row{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg-card);border-radius:10px;font-size:12px;transition:background .15s;}
+.slb-row.is-me{background:var(--cyan-dim);box-shadow:inset 0 0 0 1px rgba(34,242,255,.25);}
+.slb-row-rank{width:22px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--text-3);flex-shrink:0;}
+.slb-row-info{flex:1;min-width:0;}
+.slb-row-name{font-weight:600;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;}
+.slb-row-name.is-me{color:var(--cyan);}
+.slb-row-meta{display:flex;gap:8px;margin-top:2px;align-items:center;}
+.slb-row-vol{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-2);}
+.slb-row-wins-badge{font-size:9px;font-weight:700;background:rgba(34,242,255,.1);border:1px solid rgba(34,242,255,.18);border-radius:4px;padding:1px 5px;color:var(--cyan);}
+.slb-row-bar-wrap{margin-top:5px;height:2px;background:rgba(255,255,255,.06);border-radius:1px;overflow:hidden;}
+.slb-row-bar{height:100%;border-radius:1px;background:linear-gradient(90deg,var(--cyan) 0%,rgba(34,242,255,.4) 100%);transition:width .6s ease;}
+.slb-row-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;}
+.slb-row-pts{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--text-2);}
+.slb-row-pts.is-me{color:var(--cyan);}
+.slb-row-rate{font-size:9px;color:var(--text-3);}
+.slb-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px;}

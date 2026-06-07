@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MIND FACTORY // Reactor Tap</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <p class="eyebrow">MIND FACTORY</p>
+          <h1>Reactor Tap</h1>
+        </div>
+        <div class="topbar-meta">
+          <div id="seasonPill" class="pill">Season 0</div>
+          <button id="refresh" class="ghost-button" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="status-band">
+        <div class="status-card accent">
+          <p class="label">Claimable MIND</p>
+          <div id="claimable" class="big-number">0</div>
+          <p id="statusLine" class="status-line">Loading reactor state...</p>
+        </div>
+        <div class="status-card">
+          <div class="stat-row"><span>Operator level</span><strong id="operatorLevel">1</strong></div>
+          <div class="stat-row"><span>Streak</span><strong id="streakDays">0 days</strong></div>
+          <div class="stat-row"><span>Tap budget</span><strong id="tapsLeft">0 / 0</strong></div>
+          <div class="stat-row"><span>Tap power</span><strong id="tapPower">1 / 20 taps</strong></div>
+        </div>
+        <div class="status-card">
+          <div class="stat-row"><span>Claim price</span><strong id="claimPrice">0.050 XNT</strong></div>
+          <div class="stat-row"><span>Reference</span><strong id="referenceRate">0.075 XNT</strong></div>
+          <div class="stat-row"><span>Funding wallet</span><strong id="fundingWallet">not created</strong></div>
+          <div class="stat-row"><span>Payout wallet</span><strong id="payoutWallet">not set</strong></div>
+        </div>
+      </section>
+
+      <section class="reactor-stage">
+        <div class="reactor-copy">
+          <p class="eyebrow">Tap the core</p>
+          <h2>Charge the reactor. Build claimable MIND.</h2>
+          <p id="tapHint" class="tap-hint">Tap the core to generate MIND and push the season forward.</p>
+          <div class="mini-stats">
+            <div><span>Daily cap</span><strong id="dailyCap">0 taps</strong></div>
+            <div><span>Active boost</span><strong id="boostState">none</strong></div>
+            <div><span>Today</span><strong id="todayMind">0 MIND</strong></div>
+          </div>
+        </div>
+
+        <button id="tap" class="reactor-button" type="button" aria-label="Tap reactor core">
+          <span class="reactor-rings ring-a"></span>
+          <span class="reactor-rings ring-b"></span>
+          <span class="reactor-rings ring-c"></span>
+          <span class="reactor-core"></span>
+          <span class="tap-flash" aria-hidden="true"></span>
+          <span class="reactor-burst" aria-hidden="true"></span>
+          <span class="reactor-label">
+            <strong>RUN FACTORY</strong>
+            <small id="tapRewardLabel">+0.05 MIND</small>
+          </span>
+        </button>
+
+        <aside class="treasury-card">
+          <p class="eyebrow">Treasury</p>
+          <div class="stat-row"><span>Reserve floor</span><strong id="treasuryReserve">0 MIND</strong></div>
+          <div class="stat-row"><span>MIND reserve</span><strong id="treasuryBalance">0 MIND</strong></div>
+          <div class="stat-row"><span>XNT reserve</span><strong id="treasuryXnt">0 XNT</strong></div>
+          <div class="stat-row"><span>Claim status</span><strong id="claimStatus">none</strong></div>
+        </aside>
+      </section>
+
+      <section class="control-band">
+        <button id="claim" class="primary-button" type="button">Claim MIND</button>
+        <button id="cancel" class="secondary-button" type="button">Cancel Claim</button>
+        <button id="openMenu" class="secondary-button" type="button">Back to Menu</button>
+      </section>
+
+      <section class="workshop-band">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Workshop</p>
+            <h2>Upgrade the operator rig</h2>
+          </div>
+          <p class="section-copy">Upgrades cost MIND. They improve tap power, energy, claim efficiency, and streak safety.</p>
+        </div>
+
+        <div id="upgradeGrid" class="upgrade-grid"></div>
+      </section>
+
+      <section class="lower-band">
+        <article class="side-card">
+          <p class="eyebrow">Today</p>
+          <ul id="todaySession" class="list"></ul>
+        </article>
+
+        <article class="feed-card">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">Factory feed</p>
+              <h2>Recent activity</h2>
+            </div>
+          </div>
+          <div id="feedLog" class="feed-log"></div>
+        </article>
+      </section>
+
+      <p id="demoBanner" class="demo-banner hidden">Demo mode. Open this Mini App from Telegram to play live.</p>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

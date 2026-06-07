@@ -311,34 +311,20 @@ export default function SwapPage() {
     return "0%";
   }
 
-  // GigaSwap prize range: payout = fee × mult + min(pool/500, fee×4), capped by dominant pool
+  // GigaSwap prize range: payout = % of dominant pool balance (pool-based formula)
+  // min = 1% of pool, max = 25% of pool (capped at 33% on-chain)
   const gigaPrize = (() => {
-    if (!quote?.gigaQualified || !quote.ourFee) return null;
-    const feeRaw = BigInt(quote.ourFee);
+    if (!quote?.gigaQualified) return null;
     const rPoolMind = BigInt(quote.rewardPoolMind ?? "0");
     const rPoolXnt  = BigInt(quote.rewardPoolXnt  ?? "0");
-    const dominantBal = rPoolMind >= rPoolXnt ? rPoolMind : rPoolXnt;
     const isDominantMind = rPoolMind >= rPoolXnt;
-    const isMindInput = direction === "mind_to_xnt";
+    const dominantBal = isDominantMind ? rPoolMind : rPoolXnt;
+    if (dominantBal === 0n) return null;
 
-    // Mirror on-chain normalization: convert fee to dominant-token lamports using vault ratio
-    const vaultXnt  = BigInt(quote.poolXnt  ?? "1");
-    const vaultMind = BigInt(quote.poolMind ?? "1");
-    let fee = feeRaw;
-    if (isDominantMind !== isMindInput) {
-      if (isDominantMind && vaultXnt > 0n) {
-        fee = (feeRaw * vaultMind) / vaultXnt; // XNT fee → MIND
-      } else if (!isDominantMind && vaultMind > 0n) {
-        fee = (feeRaw * vaultXnt) / vaultMind; // MIND fee → XNT
-      }
-    }
-
-    const poolBonus = dominantBal > 0n ? (dominantBal / 500n < fee * 4n ? dominantBal / 500n : fee * 4n) : 0n;
-    const cap = (v: bigint) => dominantBal > 0n && v > dominantBal ? dominantBal : v;
-    const minWin = cap(fee + poolBonus);
-    const maxWin = cap(fee * 15n + poolBonus);
+    const minWin = dominantBal * 100n / 10_000n;        // 1% of pool
+    const maxWin = dominantBal * 2500n / 10_000n;       // 25% of pool
     const symbol = isDominantMind ? "MIND" : "XNT";
-    // USD conversion
+
     const xntUsd = BigInt(quote.xntUsdCents ?? "0");
     const DECS = 1_000_000_000n;
     function toUsd(amount: bigint): number {

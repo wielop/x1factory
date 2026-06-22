@@ -142,6 +142,11 @@ const RIG_PLANS: RigPlan[] = [
   },
 ];
 
+function rigDiscountPercent(plan: RigPlan): number | null {
+  if (!plan.originalCostXnt) return null;
+  return Math.round((1 - plan.costXnt / plan.originalCostXnt) * 100);
+}
+
 const ACTIVE_STAKERS_SUMMARY = {
   unique: 13,
   totalStaked: "981.5273",
@@ -2891,7 +2896,7 @@ export function PublicDashboard() {
                     </div>
                     {plan.originalCostXnt ? (
                       <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-400">
-                        -50% this week
+                        -{rigDiscountPercent(plan)}% this week
                       </div>
                     ) : null}
                     <div className="mt-1 text-[11px] text-zinc-500">
@@ -2938,7 +2943,7 @@ export function PublicDashboard() {
                       <span className="text-zinc-500 line-through">{selectedPlan.originalCostXnt} XNT</span>{" "}
                       <span className="text-green-400">{selectedPlan.costXnt} XNT</span>{" "}
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-green-400">
-                        -50% this week
+                        -{rigDiscountPercent(selectedPlan)}% this week
                       </span>
                     </>
                   ) : (

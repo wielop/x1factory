@@ -1,6 +1,5 @@
 import type { BotContext, BotInstance } from "../bot/types.js";
 import { FACTORY_XP, factoryHeader, mainMenuKeyboard } from "../bot/ui.js";
-import { isAdminTelegramUser } from "./adminAuth.js";
 
 export async function showHowItWorks(ctx: BotContext): Promise<void> {
   const publicLines = [
@@ -20,27 +19,9 @@ export async function showHowItWorks(ctx: BotContext): Promise<void> {
     "Use the Season Panel to track your rank, badges and missions."
   ];
 
-  const adminLines = [
-    "",
-    "Admin console:",
-    "/admin_startseason - start a season",
-    "/admin_endseason - end active season",
-    "/admin_status - active season status",
-    "/admin_addpoints - add manual points",
-    "/admin_removepoints - remove manual points",
-    "/admin_event - process an admin event",
-    "/admin_eventtypes - list supported event types",
-    "/admin_scanner_status - scanner status",
-    "/admin_scanner_once - run scanner now",
-    "/admin_scan_wallet - scan one wallet",
-    "/admin_set_wallet - update a user's wallet",
-    "/admin_broadcast - broadcast a message"
-  ];
-
   await ctx.reply(
     [
       ...publicLines,
-      ...(ctx.from && isAdminTelegramUser(ctx.from.id) ? adminLines : []),
       "",
       `${FACTORY_XP} tracks your on-chain activity score.`
     ].join("\n"),

@@ -44,6 +44,90 @@ function operatorId(userId: number): string {
   return "OP-" + String(userId).padStart(4, "0");
 }
 
+const WALLET_REGISTRATION_POINTS = 50;
+
+// Auto-connects a wallet from a previous season to the current/upcoming one
+// the first time the panel loads, instead of requiring /register in the bot.
+async function ensureSeasonRegistration(userId: number, walletId: number, walletAddress: string, seasonId: number) {
+  const existing = await prisma.seasonRegistration.findUnique({
+    where: { userId_seasonId: { userId, seasonId } },
+  });
+
+  if (existing) return null;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.seasonRegistration.upsert({
+      where: { userId_seasonId: { userId, seasonId } },
+      create: { userId, walletId, seasonId, status: "ACTIVE" },
+      update: { walletId, status: "ACTIVE" },
+    });
+
+    const detectedEvent = await tx.detectedEvent.create({
+      data: {
+        txHash: `wallet-registration:${seasonId}:${walletAddress}`,
+        eventType: "wallet_registration",
+        walletId,
+        seasonId,
+        occurredAt: new Date(),
+        rawData: { walletAddress },
+      },
+    });
+
+    await tx.seasonPoint.create({
+      data: {
+        seasonId,
+        userId,
+        walletId,
+        detectedEventId: detectedEvent.id,
+        points: WALLET_REGISTRATION_POINTS,
+        category: "wallet_registration",
+        source: "EVENT",
+        reason: "Wallet registration",
+        metadata: { txHash: detectedEvent.txHash, walletAddress },
+      },
+    });
+
+    const [pointsAgg, eventCount] = await Promise.all([
+      tx.seasonPoint.aggregate({
+        where: { userId, seasonId },
+        _sum: { points: true },
+        _max: { createdAt: true },
+      }),
+      tx.seasonPoint.count({ where: { userId, seasonId } }),
+    ]);
+
+    await tx.userSeasonStats.upsert({
+      where: { userId_seasonId: { userId, seasonId } },
+      create: {
+        userId,
+        seasonId,
+        totalPoints: pointsAgg._sum.points ?? 0,
+        eventsCount: eventCount,
+        lastEventAt: pointsAgg._max.createdAt ?? null,
+      },
+      update: {
+        totalPoints: pointsAgg._sum.points ?? 0,
+        eventsCount: eventCount,
+        lastEventAt: pointsAgg._max.createdAt ?? null,
+      },
+    });
+
+    const leaderboard = await tx.userSeasonStats.findMany({
+      where: { seasonId },
+      orderBy: [{ totalPoints: "desc" }, { lastEventAt: "asc" }, { userId: "asc" }],
+      select: { id: true },
+    });
+
+    await Promise.all(
+      leaderboard.map((entry, index) =>
+        tx.userSeasonStats.update({ where: { id: entry.id }, data: { rank: index + 1 } })
+      )
+    );
+
+    return tx.userSeasonStats.findUniqueOrThrow({ where: { userId_seasonId: { userId, seasonId } } });
+  });
+}
+
 async function getTelegramPhotoUrl(telegramId: bigint, botToken: string): Promise<string | null> {
   try {
     const r1 = await fetch(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${telegramId}&limit=1`);
@@ -207,6 +291,18 @@ export async function GET(req: NextRequest) {
         select: { id: true },
       }),
     ]);
+
+    if (wallet && season) {
+      const newStats = await ensureSeasonRegistration(user.id, wallet.id, wallet.address, season.id);
+      if (newStats) {
+        allTimeStatsList.push({
+          seasonId: newStats.seasonId,
+          totalPoints: newStats.totalPoints,
+          rank: newStats.rank,
+          streakCount: newStats.streakCount,
+        });
+      }
+    }
 
     const todayUtcEnd = new Date(todayUtcStart.getTime() + 86400000);
 

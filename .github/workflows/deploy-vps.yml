@@ -1,0 +1,47 @@
+name: Deploy bot to VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.bot.json"
+      - "web/public/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 51.83.160.27 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync code to VPS
+        run: |
+          rsync -az --delete \
+            --exclude 'node_modules' --exclude 'web/node_modules' \
+            --exclude 'target' --exclude '.next' --exclude 'web/.next' \
+            --exclude '.git' --exclude 'dist' --exclude '.vercel' \
+            --exclude '.codex' --exclude '.agents' --exclude 'tsconfig.tsbuildinfo' \
+            --exclude '.env' --exclude '.env.local' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./ ubuntu@51.83.160.27:~/x1factory-seasons-bot/
+
+      - name: Rebuild and restart bot
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ubuntu@51.83.160.27 "
+            cd ~/x1factory-seasons-bot &&
+            npm install &&
+            npm run bot:build &&
+            sudo systemctl restart x1factory-bot &&
+            sleep 3 &&
+            sudo systemctl is-active x1factory-bot
+          "

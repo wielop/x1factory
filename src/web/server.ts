@@ -13,7 +13,7 @@ import { formatEventCategory } from "../services/eventLabels.js";
 
 type JsonRecord = Record<string, unknown>;
 
-const WEB_ROOT = resolve(process.cwd(), "web");
+const WEB_ROOT = resolve(process.cwd(), "web", "public");
 const PORT = Number.isFinite(env.miniAppPort) && env.miniAppPort > 0 ? env.miniAppPort : 4174;
 
 const MIME_TYPES: Record<string, string> = {
@@ -51,7 +51,11 @@ async function readStaticFile(pathname: string): Promise<Buffer | null> {
     return await readFile(filePath);
   } catch {
     if (pathname === "/" || pathname === "/index.html" || !extname(pathname)) {
-      return readFile(resolve(WEB_ROOT, "index.html"));
+      try {
+        return await readFile(resolve(WEB_ROOT, "panel.html"));
+      } catch {
+        return null;
+      }
     }
     return null;
   }
@@ -212,9 +216,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/panel") {
-    const file = await readFile(resolve(WEB_ROOT, "panel.html"));
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-    res.end(file);
+    try {
+      const file = await readFile(resolve(WEB_ROOT, "panel.html"));
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(file);
+    } catch {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+    }
     return;
   }
 

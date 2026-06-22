@@ -109,6 +109,7 @@ interface RigPlan {
   durationDays: number;
   baseHp: number;
   costXnt: number;
+  originalCostXnt?: number;
   maxBuffPercent: number;
 }
 
@@ -127,6 +128,7 @@ const RIG_PLANS: RigPlan[] = [
     durationDays: 14,
     baseHp: 8,
     costXnt: 4,
+    originalCostXnt: 9,
     maxBuffPercent: 0.035,
   },
   {
@@ -135,6 +137,7 @@ const RIG_PLANS: RigPlan[] = [
     durationDays: 28,
     baseHp: 16,
     costXnt: 11,
+    originalCostXnt: 24,
     maxBuffPercent: 0.05,
   },
 ];
@@ -1817,7 +1820,6 @@ export function PublicDashboard() {
     mintDecimals != null && dailyMintTarget > 0n
       ? formatRoundedToken(dailyMintTarget, mintDecimals.mind, 0)
       : "-";
-  const rewardPoolBadge = "3900.14";
   const totalStakedBadge =
     mintDecimals != null && config ? formatRoundedToken(config.stakingTotalStakedMind, mintDecimals.mind) : "-";
   const stakingShareLabel =
@@ -2808,7 +2810,6 @@ export function PublicDashboard() {
             <Badge variant="muted">
               Active miners: Unique addresses: {activeMinerTotal} | Active rigs: {activeRigTotal}
             </Badge>
-            <Badge variant="muted">Reward pool: {rewardPoolBadge} XNT</Badge>
             <Badge variant="muted">
               Total staked: {totalStakedBadge} MIND{stakingShareLabel}
             </Badge>
@@ -2878,8 +2879,21 @@ export function PublicDashboard() {
                       </button>
                     </div>
                     <div className="mt-2 text-sm font-semibold text-white">
-                      {plan.baseHp} HP <span className="text-zinc-500">•</span> {plan.costXnt} XNT
+                      {plan.baseHp} HP <span className="text-zinc-500">•</span>{" "}
+                      {plan.originalCostXnt ? (
+                        <>
+                          <span className="text-zinc-500 line-through">{plan.originalCostXnt} XNT</span>{" "}
+                          <span className="text-green-400">{plan.costXnt} XNT</span>
+                        </>
+                      ) : (
+                        <span>{plan.costXnt} XNT</span>
+                      )}
                     </div>
+                    {plan.originalCostXnt ? (
+                      <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-400">
+                        -50% this week
+                      </div>
+                    ) : null}
                     <div className="mt-1 text-[11px] text-zinc-500">
                       {RIG_STYLE_SUMMARY[plan.type]}
                     </div>
@@ -2917,7 +2931,20 @@ export function PublicDashboard() {
               <div className="mt-3 space-y-2 text-sm font-medium text-white">
                 <div>Hashpower: {selectedPlan.baseHp} HP</div>
                 <div>Duration: {selectedPlan.durationDays} days</div>
-                <div>Cost: {selectedPlan.costXnt} XNT</div>
+                <div>
+                  Cost:{" "}
+                  {selectedPlan.originalCostXnt ? (
+                    <>
+                      <span className="text-zinc-500 line-through">{selectedPlan.originalCostXnt} XNT</span>{" "}
+                      <span className="text-green-400">{selectedPlan.costXnt} XNT</span>{" "}
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-green-400">
+                        -50% this week
+                      </span>
+                    </>
+                  ) : (
+                    `${selectedPlan.costXnt} XNT`
+                  )}
+                </div>
               </div>
               <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">

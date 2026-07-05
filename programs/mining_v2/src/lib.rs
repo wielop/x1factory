@@ -1609,6 +1609,32 @@ pub mod mining_v2 {
         save_user_profile(&ctx.accounts.user_profile, &profile)?;
         Ok(())
     }
+
+    pub fn admin_mint_mind(ctx: Context<AdminMintMind>, amount: u64) -> Result<()> {
+        require!(amount > 0, ErrorCode::InvalidAmount);
+        let cfg = &ctx.accounts.config;
+        require_keys_eq!(cfg.admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+
+        let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[cfg.bumps.vault_authority]];
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.mind_mint.to_account_info(),
+                    to: ctx.accounts.admin_mind_ata.to_account_info(),
+                    authority: ctx.accounts.vault_authority.to_account_info(),
+                },
+                &[signer_seeds],
+            ),
+            amount,
+        )?;
+
+        emit!(AdminMindMinted {
+            admin: cfg.admin,
+            amount,
+        });
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -2379,6 +2405,32 @@ pub struct AdminAddXp<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct AdminMintMind<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bumps.config
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(seeds = [VAULT_SEED], bump = config.bumps.vault_authority)]
+    /// CHECK: PDA derived from VAULT_SEED/bump used as vault authority.
+    pub vault_authority: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        constraint = mind_mint.key() == config.mind_mint
+    )]
+    pub mind_mint: Account<'info, Mint>,
+    #[account(
+        mut,
+        constraint = admin_mind_ata.owner == admin.key(),
+        constraint = admin_mind_ata.mint == mind_mint.key()
+    )]
+    pub admin_mind_ata: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct NativeVault {
@@ -2608,6 +2660,12 @@ pub struct MindUnstaked {
     pub struct EpochRolled {
         pub rate: u64,
         pub epoch_end_ts: i64,
+}
+
+#[event]
+pub struct AdminMindMinted {
+    pub admin: Pubkey,
+    pub amount: u64,
 }
 
 fn level_bonus_bps(level: u8) -> u16 {

@@ -1,0 +1,21 @@
+[package]
+name = "melt-v1"
+version = "0.1.0"
+description = "MELT Auction (pro-rata) for Mind Factory"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "melt_v1"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+
+[dependencies]
+anchor-lang = { version = "0.28.0", features = ["init-if-needed"] }
+anchor-spl = { version = "0.28.0", features = ["token", "associated_token"] }
+solana-program = "=1.16.27"

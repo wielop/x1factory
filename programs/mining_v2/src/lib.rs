@@ -3438,15 +3438,22 @@ fn update_mining_global(cfg: &mut Account<Config>, now: i64) -> Result<()> {
         .checked_sub(cfg.last_update_ts)
         .ok_or(ErrorCode::MathOverflow)?;
     let dt_u64 = u64::try_from(dt).map_err(|_| ErrorCode::MathOverflow)?;
-    require!(dt_u64 <= MAX_MINING_DT_SECONDS, ErrorCode::UpdateWindowExceeded);
+    // Clamp instead of rejecting: if the network went quiet for longer than the
+    // catch-up window (bot downtime, RPC outage, etc.), advance by at most one
+    // window per call rather than permanently reverting every future update.
+    // Subsequent calls keep advancing last_update_ts until it catches up to `now`.
+    let dt_u64 = dt_u64.min(MAX_MINING_DT_SECONDS);
     if cfg.network_hp_active == 0 {
-        cfg.last_update_ts = now;
+        cfg.last_update_ts = cfg
+            .last_update_ts
+            .checked_add(dt_u64 as i64)
+            .ok_or(ErrorCode::MathOverflow)?;
         return Ok(());
     }
-    let mintable = (dt as u128)
+    let mintable = (dt_u64 as u128)
         .checked_mul(cfg.emission_per_sec as u128)
         .ok_or(ErrorCode::MathOverflow)?;
-    let delta = mintable
+    let mut delta = mintable
         .checked_mul(ACC_SCALE)
         .ok_or(ErrorCode::MathOverflow)?
         .checked_div(cfg.network_hp_active as u128)
@@ -3458,13 +3465,18 @@ fn update_mining_global(cfg: &mut Account<Config>, now: i64) -> Result<()> {
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(BPS_DENOMINATOR)
             .ok_or(ErrorCode::MathOverflow)?;
-        require!(delta <= acc_cap, ErrorCode::AccDeltaTooLarge);
+        // Same reasoning: clamp the per-call jump instead of reverting, so a
+        // stale accumulator can never permanently deadlock the program.
+        delta = delta.min(acc_cap);
     }
     cfg.acc_mind_per_hp = cfg
         .acc_mind_per_hp
         .checked_add(delta)
         .ok_or(ErrorCode::MathOverflow)?;
-    cfg.last_update_ts = now;
+    cfg.last_update_ts = cfg
+        .last_update_ts
+        .checked_add(dt_u64 as i64)
+        .ok_or(ErrorCode::MathOverflow)?;
     Ok(())
 }
 

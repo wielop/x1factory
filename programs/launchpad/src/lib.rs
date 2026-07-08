@@ -1,8 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hashv;
+use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
+use anchor_lang::solana_program::program::invoke_signed;
 use anchor_lang::system_program::{self, Transfer as SystemTransfer};
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::{self, Mint, MintTo, SetAuthority, Token, TokenAccount, Transfer as SplTransfer};
+use anchor_spl::associated_token::{get_associated_token_address, AssociatedToken};
+use anchor_spl::token::{
+    self, Burn, Mint, MintTo, SetAuthority, SyncNative, Token, TokenAccount, Transfer as SplTransfer,
+};
 use solana_program::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
 
 declare_id!("AGAdJKoLhrGrdFwrZZDEWsoR1Tq8kMcXGRKxX2wa2jfm");
@@ -40,6 +44,16 @@ const REWARD_POOL_TOKEN_ALLOCATION: u64 = 100_000_000 * DECIMALS_MULTIPLIER; // 
 const GRAD_RESERVE_ALLOCATION: u64 = 50_000_000 * DECIMALS_MULTIPLIER; // 5% — reserved for v2 graduation, untouched in v1
 const CREATOR_ALLOCATION: u64 = 50_000_000 * DECIMALS_MULTIPLIER; // 5% — immediate, unlocked (known v1 tradeoff)
 
+/// Below this many raw token units left on the curve, graduation is allowed even though the
+/// curve isn't at literal zero. Discovered via local testing: the constant-product formula's
+/// u64 integer division means the last fraction of a token (a few hundred raw units — a small
+/// multiple of k/virtual_xnt^2, the curve's local granularity near full sellout) is often
+/// mathematically unbuyable at any lamport amount, so requiring exactly 0 would make
+/// `graduate()` practically uncallable. 1,000 raw units = 0.001 of a token — worth a small
+/// fraction of a cent even at the curve's full-sellout price, and it just sits inert in
+/// `curve_token_vault` forever after graduation.
+const GRADUATION_DUST_THRESHOLD: u64 = 1_000;
+
 /// Virtual reserves determine the starting price curve (pump.fun-style constant product).
 /// NOTE: these are purely virtual accounting numbers used by the pricing formula — nobody
 /// deposits this XNT anywhere at token creation, it only shapes how fast price moves per
@@ -48,6 +62,39 @@ const CREATOR_ALLOCATION: u64 = 50_000_000 * DECIMALS_MULTIPLIER; // 5% — imme
 /// curve fully sells out (at $0.50/XNT), raising ~586 XNT (~$293) total into the curve.
 const INITIAL_VIRTUAL_TOKEN_RESERVES: u64 = 1_073_000_000 * DECIMALS_MULTIPLIER;
 const INITIAL_VIRTUAL_XNT_RESERVES: u64 = 200 * XNT_BASE; // 200 XNT
+
+/// xdex = the xdex AMM on X1, confirmed during Faza 1 research to be an unmodified fork of
+/// Raydium CP-Swap (byte-for-byte identical `initialize` discriminator, args, account order
+/// and every PDA seed, verified against the real transaction that created the MIND/XNT pool).
+/// No published crate/IDL exists for it, so `graduate()` below builds and signs the CPI by
+/// hand instead of depending on one.
+const XDEX_PROGRAM_ID: Pubkey = solana_program::pubkey!("sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN");
+const XDEX_AMM_CONFIG: Pubkey = solana_program::pubkey!("2eFPWosizV6nSAGeSvi5tRgXLoqhjnSesra23ALA248c");
+/// Confirmed against the live xdex program's own enforced constraint (not just the address seen
+/// in one historical pool-creation tx, which turned out to be per-amm_config, not global) —
+/// caught by a real `ConstraintAddress` revert during local testing.
+const XDEX_CREATE_POOL_FEE_RECEIVER: Pubkey =
+    solana_program::pubkey!("SKc6b6zAv2kkB9EtitjppbzPVR48bCMfRtE5B8KDuF1");
+const WXNT_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
+
+const XDEX_CREATOR_SEED: &[u8] = b"xdex_creator";
+const XDEX_AUTHORITY_SEED: &[u8] = b"vault_and_lp_mint_auth_seed";
+const XDEX_POOL_SEED: &[u8] = b"pool";
+const XDEX_POOL_LP_MINT_SEED: &[u8] = b"pool_lp_mint";
+const XDEX_POOL_VAULT_SEED: &[u8] = b"pool_vault";
+const XDEX_OBSERVATION_SEED: &[u8] = b"observation";
+
+/// sha256("global:initialize")[..8] — confirmed byte-for-byte against a real xdex pool-creation
+/// transaction (Anchor's standard global-instruction discriminator scheme, unmodified by xdex).
+const XDEX_INITIALIZE_DISCRIMINATOR: [u8; 8] = [0xaf, 0xaf, 0x6d, 0x1f, 0x0d, 0x98, 0x9b, 0xed];
+
+/// Lamports transferred into `xdex_creator` right before the graduation CPI so it can afford to
+/// be xdex's rent payer for the five brand-new accounts `initialize` creates (pool_state,
+/// lp_mint, 2 vaults, observation_state) plus the curve's own LP ATA, *and* xdex's own fixed
+/// pool-creation fee (confirmed via local testing to be 0.1 XNT, on top of rent — the account
+/// rents alone run ~0.042 XNT, so 0.1 XNT total wasn't enough). Deliberately generous — any
+/// leftover just sits in `xdex_creator`, a dedicated PDA with no other purpose.
+const GRADUATION_RENT_BUFFER_LAMPORTS: u64 = 250_000_000; // 0.25 XNT
 
 // ── Program ──────────────────────────────────────────────────────────────────
 
@@ -630,6 +677,210 @@ pub mod launchpad {
         )?;
         Ok(())
     }
+
+    /// Permissionless: once a curve is (almost) fully sold out — `real_token_reserves` at or
+    /// below `GRADUATION_DUST_THRESHOLD` — it can no longer serve buys or sells, the exact
+    /// stuck-token failure mode this instruction exists to close. Anyone may call it to migrate
+    /// the curve's real XNT + the reserved 5% graduation allocation into a brand-new xdex pool,
+    /// exactly like pump.fun's graduation to Raydium: wrap the real XNT into WXNT, CPI into
+    /// xdex's `initialize`, then permanently burn the LP tokens the new pool mints back to us so
+    /// nobody — including the admin — can ever pull that liquidity back out.
+    ///
+    /// Split into two instructions purely because of the same Solana BPF stack limit that split
+    /// `create_token` — this many accounts (13 xdex PDAs/ATAs plus the curve's own) overflow the
+    /// 4KB frame in a single `try_accounts` even after boxing. Step 1 (this fn): fund
+    /// `xdex_creator`, wrap the curve's real XNT into WXNT, move the graduation-reserve tokens
+    /// into a plain ATA. Step 2 (`graduate_finalize`): the actual xdex CPI + LP burn.
+    pub fn graduate_prepare(ctx: Context<GraduatePrepare>) -> Result<()> {
+        require!(!ctx.accounts.curve.complete, LaunchpadError::CurveComplete);
+        require!(
+            ctx.accounts.curve.real_token_reserves <= GRADUATION_DUST_THRESHOLD,
+            LaunchpadError::CurveNotSoldOut
+        );
+
+        let mint_key = ctx.accounts.mint.key();
+        let curve_bump = ctx.accounts.curve.bump;
+        let curve_seeds: &[&[u8]] = &[CURVE_SEED, mint_key.as_ref(), &[curve_bump]];
+
+        // xdex's `initialize` acts as both the signing authority AND the rent-payer for the
+        // five new accounts it creates internally (pool_state, lp_mint, 2 vaults,
+        // observation_state) plus our LP ATA — and it pays for them with plain System Program
+        // transfers, which require the source to be a data-less account. `curve` itself can't
+        // play that role (it's a data-carrying Anchor account), so `xdex_creator` is a second,
+        // purely-a-signer PDA that only this instruction ever touches — top it up first.
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                SystemTransfer {
+                    from: ctx.accounts.payer.to_account_info(),
+                    to: ctx.accounts.xdex_creator.to_account_info(),
+                },
+            ),
+            GRADUATION_RENT_BUFFER_LAMPORTS,
+        )?;
+
+        // xdex pools are plain SPL-token pairs with no native-SOL side — wrap the curve's real
+        // XNT into WXNT exactly like a normal wallet would. curve_xnt_vault is program-owned so
+        // a raw lamport debit is legal (same trick sell() uses). Discovered empirically: a raw
+        // lamport credit must be the *last* thing that touches an account in a given top-level
+        // instruction — following it with a CPI on that same account (even an unrelated one,
+        // even in a different instruction call within the same fn) trips the runtime's lamport
+        // conservation check. So the credit happens here, last, and `sync_native` (a CPI on this
+        // same account) is deferred to graduate_finalize, a separate top-level instruction.
+        let xnt_amount = ctx.accounts.curve.real_xnt_reserves;
+        require!(xnt_amount > 0, LaunchpadError::InsufficientLiquidity);
+
+        // Move the reserved 5% graduation allocation out of its custom-seeded vault into a
+        // plain ATA owned by `xdex_creator` — xdex's initialize expects a canonical ATA, not
+        // our program's custom-seeded token account. Done *before* the raw XNT credit below so
+        // that credit can be this instruction's last touch on any account.
+        let token_amount = ctx.accounts.grad_reserve_vault.amount;
+        require!(token_amount > 0, LaunchpadError::InsufficientLiquidity);
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                SplTransfer {
+                    from: ctx.accounts.grad_reserve_vault.to_account_info(),
+                    to: ctx.accounts.curve_mint_ata.to_account_info(),
+                    authority: ctx.accounts.curve.to_account_info(),
+                },
+                &[curve_seeds],
+            ),
+            token_amount,
+        )?;
+
+        transfer_lamports(
+            &ctx.accounts.curve_xnt_vault.to_account_info(),
+            &ctx.accounts.curve_wxnt_ata.to_account_info(),
+            xnt_amount,
+        )?;
+        Ok(())
+    }
+
+    /// Step 2 of 2: the actual xdex pool-creation CPI plus the LP burn — reads the exact
+    /// amounts `graduate_prepare` moved from `curve_wxnt_ata`/`curve_mint_ata` directly, so no
+    /// extra state needs to survive between the two instructions beyond those two ATAs.
+    pub fn graduate_finalize(ctx: Context<GraduateFinalize>) -> Result<()> {
+        require!(!ctx.accounts.curve.complete, LaunchpadError::CurveComplete);
+
+        let mint_key = ctx.accounts.mint.key();
+        let xdex_creator_bump = *ctx.bumps.get("xdex_creator").unwrap();
+        let xdex_creator_seeds: &[&[u8]] =
+            &[XDEX_CREATOR_SEED, mint_key.as_ref(), &[xdex_creator_bump]];
+
+        // graduate_prepare only credited curve_wxnt_ata's raw lamports (deliberately, as the
+        // very last touch on that account in that instruction — see comment there); its SPL
+        // `amount` field still reads 0 until sync_native runs, so do that first and reload.
+        token::sync_native(CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            SyncNative {
+                account: ctx.accounts.curve_wxnt_ata.to_account_info(),
+            },
+        ))?;
+        ctx.accounts.curve_wxnt_ata.reload()?;
+
+        let xnt_amount = ctx.accounts.curve_wxnt_ata.amount;
+        let token_amount = ctx.accounts.curve_mint_ata.amount;
+        require!(xnt_amount > 0, LaunchpadError::InsufficientLiquidity);
+        require!(token_amount > 0, LaunchpadError::InsufficientLiquidity);
+
+        // Raw CPI into xdex's `initialize` — no published crate/IDL to depend on, so the
+        // instruction is built by hand. Account order, discriminator and every PDA seed below
+        // were confirmed byte-for-byte against the real MIND/XNT pool-creation transaction
+        // during Faza 1 research (see plan notes): creator, amm_config, authority, pool_state,
+        // mint_0 (always WXNT), mint_1, lp_mint, creator_ata_0, creator_ata_1, creator_lp_ata,
+        // vault_0, vault_1, create_pool_fee_receiver, observation_state, token_program x3,
+        // associated_token_program, system_program, rent.
+        let open_time = Clock::get()?.unix_timestamp as u64;
+        let mut ix_data = XDEX_INITIALIZE_DISCRIMINATOR.to_vec();
+        ix_data.extend_from_slice(&xnt_amount.to_le_bytes());
+        ix_data.extend_from_slice(&token_amount.to_le_bytes());
+        ix_data.extend_from_slice(&open_time.to_le_bytes());
+
+        let account_metas = vec![
+            AccountMeta::new(ctx.accounts.xdex_creator.key(), true),
+            AccountMeta::new_readonly(ctx.accounts.xdex_amm_config.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.xdex_authority.key(), false),
+            AccountMeta::new(ctx.accounts.xdex_pool_state.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.wxnt_mint.key(), false),
+            AccountMeta::new_readonly(mint_key, false),
+            AccountMeta::new(ctx.accounts.xdex_lp_mint.key(), false),
+            AccountMeta::new(ctx.accounts.curve_wxnt_ata.key(), false),
+            AccountMeta::new(ctx.accounts.curve_mint_ata.key(), false),
+            AccountMeta::new(ctx.accounts.curve_lp_ata.key(), false),
+            AccountMeta::new(ctx.accounts.xdex_vault_0.key(), false),
+            AccountMeta::new(ctx.accounts.xdex_vault_1.key(), false),
+            AccountMeta::new(ctx.accounts.xdex_create_pool_fee_receiver.key(), false),
+            AccountMeta::new(ctx.accounts.xdex_observation_state.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.associated_token_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.rent.key(), false),
+        ];
+        let account_infos = vec![
+            ctx.accounts.xdex_creator.to_account_info(),
+            ctx.accounts.xdex_amm_config.to_account_info(),
+            ctx.accounts.xdex_authority.to_account_info(),
+            ctx.accounts.xdex_pool_state.to_account_info(),
+            ctx.accounts.wxnt_mint.to_account_info(),
+            ctx.accounts.mint.to_account_info(),
+            ctx.accounts.xdex_lp_mint.to_account_info(),
+            ctx.accounts.curve_wxnt_ata.to_account_info(),
+            ctx.accounts.curve_mint_ata.to_account_info(),
+            ctx.accounts.curve_lp_ata.to_account_info(),
+            ctx.accounts.xdex_vault_0.to_account_info(),
+            ctx.accounts.xdex_vault_1.to_account_info(),
+            ctx.accounts.xdex_create_pool_fee_receiver.to_account_info(),
+            ctx.accounts.xdex_observation_state.to_account_info(),
+            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.associated_token_program.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.rent.to_account_info(),
+            ctx.accounts.xdex_program.to_account_info(), // runtime requires the invoked
+                                                          // program's own account be present
+                                                          // among the CPI account_infos
+        ];
+        let ix = Instruction {
+            program_id: XDEX_PROGRAM_ID,
+            accounts: account_metas,
+            data: ix_data,
+        };
+        invoke_signed(&ix, &account_infos, &[xdex_creator_seeds])?;
+
+        // Permanently lock liquidity: burn every LP token the pool just minted back to us.
+        // Nobody — including the admin — has any way to withdraw it afterward.
+        let lp_amount = anchor_spl::token::accessor::amount(&ctx.accounts.curve_lp_ata.to_account_info())?;
+        if lp_amount > 0 {
+            token::burn(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Burn {
+                        mint: ctx.accounts.xdex_lp_mint.to_account_info(),
+                        from: ctx.accounts.curve_lp_ata.to_account_info(),
+                        authority: ctx.accounts.xdex_creator.to_account_info(),
+                    },
+                    &[xdex_creator_seeds],
+                ),
+                lp_amount,
+            )?;
+        }
+
+        let curve = &mut ctx.accounts.curve;
+        curve.complete = true;
+        curve.real_xnt_reserves = 0;
+
+        emit!(LaunchpadGraduatedEvent {
+            mint: mint_key,
+            pool_state: ctx.accounts.xdex_pool_state.key(),
+            lp_mint: ctx.accounts.xdex_lp_mint.key(),
+            xnt_migrated: xnt_amount,
+            tokens_migrated: token_amount,
+            lp_burned: lp_amount,
+        });
+        Ok(())
+    }
 }
 
 // ── Account contexts ─────────────────────────────────────────────────────────
@@ -973,6 +1224,178 @@ pub struct AdminWithdrawTreasury<'info> {
     pub admin: Signer<'info>,
 }
 
+#[derive(Accounts)]
+pub struct GraduatePrepare<'info> {
+    /// Anyone may call this and cover the one-time rent buffer — permissionless, like pump.fun's
+    /// own graduation trigger.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    pub mint: Box<Account<'info, Mint>>,
+
+    #[account(mut, seeds = [CURVE_SEED, mint.key().as_ref()], bump = curve.bump, has_one = mint)]
+    pub curve: Box<Account<'info, BondingCurve>>,
+
+    #[account(
+        mut,
+        seeds = [CURVE_XNT_VAULT_SEED, mint.key().as_ref()],
+        bump = curve.curve_xnt_vault_bump,
+    )]
+    pub curve_xnt_vault: Box<Account<'info, NativeVault>>,
+
+    #[account(
+        mut,
+        seeds = [GRAD_RESERVE_SEED, mint.key().as_ref()],
+        bump = curve.grad_reserve_vault_bump,
+    )]
+    pub grad_reserve_vault: Box<Account<'info, TokenAccount>>,
+
+    #[account(address = WXNT_MINT)]
+    pub wxnt_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: purely-a-signer PDA, never `init`'d as an Anchor account — stays System-owned
+    /// with zero data so it's eligible to be xdex's rent-paying "creator" in graduate_finalize
+    /// (Raydium's own `initialize` pays for its new accounts via plain System Program transfers,
+    /// which require the source to be data-less; `curve` itself can't play that role since it's
+    /// a real Anchor account with state). Funded with a small lamport buffer here.
+    #[account(mut, seeds = [XDEX_CREATOR_SEED, mint.key().as_ref()], bump)]
+    pub xdex_creator: UncheckedAccount<'info>,
+
+    /// Canonical WXNT ATA owned by `xdex_creator` — xdex pools are plain SPL-token pairs, so
+    /// the curve's real XNT gets wrapped in here before graduate_finalize's CPI.
+    #[account(
+        init,
+        payer = payer,
+        associated_token::mint = wxnt_mint,
+        associated_token::authority = xdex_creator,
+    )]
+    pub curve_wxnt_ata: Box<Account<'info, TokenAccount>>,
+
+    /// Canonical ATA (this mint) owned by `xdex_creator` — receives the 5% graduation
+    /// allocation out of `grad_reserve_vault`.
+    #[account(
+        init,
+        payer = payer,
+        associated_token::mint = mint,
+        associated_token::authority = xdex_creator,
+    )]
+    pub curve_mint_ata: Box<Account<'info, TokenAccount>>,
+
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct GraduateFinalize<'info> {
+    pub mint: Box<Account<'info, Mint>>,
+
+    #[account(mut, seeds = [CURVE_SEED, mint.key().as_ref()], bump = curve.bump, has_one = mint)]
+    pub curve: Box<Account<'info, BondingCurve>>,
+
+    /// CHECK: same purely-a-signer PDA funded in graduate_prepare.
+    #[account(mut, seeds = [XDEX_CREATOR_SEED, mint.key().as_ref()], bump)]
+    pub xdex_creator: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = wxnt_mint,
+        associated_token::authority = xdex_creator,
+    )]
+    pub curve_wxnt_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = xdex_creator,
+    )]
+    pub curve_mint_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(address = WXNT_MINT)]
+    pub wxnt_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: xdex's global fee-tier config — same address the existing MIND/XNT pool uses,
+    /// shared by every pool on xdex, not created or owned by this program.
+    #[account(address = XDEX_AMM_CONFIG)]
+    pub xdex_amm_config: UncheckedAccount<'info>,
+
+    /// CHECK: xdex's single global vault/LP-mint-authority PDA — verified byte-for-byte
+    /// against a real xdex pool during Faza 1 research, not owned or written by us.
+    #[account(
+        seeds = [XDEX_AUTHORITY_SEED],
+        bump,
+        seeds::program = XDEX_PROGRAM_ID,
+    )]
+    pub xdex_authority: UncheckedAccount<'info>,
+
+    /// CHECK: new xdex pool_state PDA for (WXNT, this mint) — created inside the CPI below.
+    #[account(
+        mut,
+        seeds = [XDEX_POOL_SEED, xdex_amm_config.key().as_ref(), wxnt_mint.key().as_ref(), mint.key().as_ref()],
+        bump,
+        seeds::program = XDEX_PROGRAM_ID,
+    )]
+    pub xdex_pool_state: UncheckedAccount<'info>,
+
+    /// CHECK: new xdex LP mint for this pool — created inside the CPI below.
+    #[account(
+        mut,
+        seeds = [XDEX_POOL_LP_MINT_SEED, xdex_pool_state.key().as_ref()],
+        bump,
+        seeds::program = XDEX_PROGRAM_ID,
+    )]
+    pub xdex_lp_mint: UncheckedAccount<'info>,
+
+    /// CHECK: LP ATA owned by `xdex_creator` — created and funded by the CPI below, then burned
+    /// in full immediately after so this liquidity can never be withdrawn by anyone.
+    #[account(mut, address = get_associated_token_address(&xdex_creator.key(), &xdex_lp_mint.key()))]
+    pub curve_lp_ata: UncheckedAccount<'info>,
+
+    /// CHECK: new xdex token vault for the WXNT side — created inside the CPI below.
+    #[account(
+        mut,
+        seeds = [XDEX_POOL_VAULT_SEED, xdex_pool_state.key().as_ref(), wxnt_mint.key().as_ref()],
+        bump,
+        seeds::program = XDEX_PROGRAM_ID,
+    )]
+    pub xdex_vault_0: UncheckedAccount<'info>,
+
+    /// CHECK: new xdex token vault for this mint's side — created inside the CPI below.
+    #[account(
+        mut,
+        seeds = [XDEX_POOL_VAULT_SEED, xdex_pool_state.key().as_ref(), mint.key().as_ref()],
+        bump,
+        seeds::program = XDEX_PROGRAM_ID,
+    )]
+    pub xdex_vault_1: UncheckedAccount<'info>,
+
+    /// CHECK: xdex's fixed pool-creation fee receiver — the same constant address every pool
+    /// on xdex pays, not something this program controls.
+    #[account(mut, address = XDEX_CREATE_POOL_FEE_RECEIVER)]
+    pub xdex_create_pool_fee_receiver: UncheckedAccount<'info>,
+
+    /// CHECK: new xdex price-observation PDA for this pool — created inside the CPI below.
+    #[account(
+        mut,
+        seeds = [XDEX_OBSERVATION_SEED, xdex_pool_state.key().as_ref()],
+        bump,
+        seeds::program = XDEX_PROGRAM_ID,
+    )]
+    pub xdex_observation_state: UncheckedAccount<'info>,
+
+    /// CHECK: xdex program itself — the Solana runtime requires the invoked program's own
+    /// account be present among the CPI's account list even though it never appears in the
+    /// instruction's own account metas.
+    #[account(address = XDEX_PROGRAM_ID)]
+    pub xdex_program: UncheckedAccount<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
 // ── State ────────────────────────────────────────────────────────────────────
 
 #[account]
@@ -1070,6 +1493,16 @@ pub struct LaunchpadGigaEvent {
     pub mint: Pubkey,        // offset 73
 }
 
+#[event]
+pub struct LaunchpadGraduatedEvent {
+    pub mint: Pubkey,
+    pub pool_state: Pubkey,
+    pub lp_mint: Pubkey,
+    pub xnt_migrated: u64,
+    pub tokens_migrated: u64,
+    pub lp_burned: u64,
+}
+
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 #[error_code]
@@ -1088,6 +1521,8 @@ pub enum LaunchpadError {
     UriTooLong,
     #[msg("Curve has already graduated")]
     CurveComplete,
+    #[msg("Curve has not fully sold out yet")]
+    CurveNotSoldOut,
     #[msg("Not enough tokens left on the curve")]
     SoldOut,
     #[msg("Not enough XNT liquidity on the curve")]

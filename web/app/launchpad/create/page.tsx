@@ -227,7 +227,7 @@ export default function CreateLaunchpadTokenPage() {
               value={name}
               onChange={(e) => setName(e.target.value.slice(0, 32))}
               placeholder="My Memecoin"
-              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/10 transition"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/10 transition"
             />
           </div>
           <div>
@@ -237,7 +237,7 @@ export default function CreateLaunchpadTokenPage() {
               value={symbol}
               onChange={(e) => setSymbol(e.target.value.toUpperCase().slice(0, 10))}
               placeholder="MEME"
-              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/10 transition"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/10 transition"
             />
           </div>
           <div>
@@ -250,7 +250,7 @@ export default function CreateLaunchpadTokenPage() {
               value={initialRewardPoolXnt}
               onChange={(e) => setInitialRewardPoolXnt(e.target.value.replace(/[^0-9.]/g, ""))}
               placeholder="0"
-              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/10 transition"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/10 transition"
             />
           </div>
 
@@ -263,6 +263,15 @@ export default function CreateLaunchpadTokenPage() {
             {!connected ? "Connect Wallet" : status.type === "loading" ? status.msg : uploading ? "Uploading image…" : "Create Token"}
           </Button>
 
+          {connected && status.type === "idle" && !uploading && (!name.trim() || !symbol.trim()) && (
+            <div className="text-[11px] text-amber-400/80">
+              {!name.trim() && !symbol.trim()
+                ? "Fill in a name and symbol to continue."
+                : !name.trim()
+                ? "Fill in a name to continue."
+                : "Fill in a symbol to continue."}
+            </div>
+          )}
           {status.type === "error" && <div className="text-xs text-red-400">{status.msg}</div>}
           {status.type === "success" && <div className="text-xs text-neon">{status.msg}</div>}
         </div>

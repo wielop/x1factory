@@ -6,6 +6,9 @@ import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Transaction, PublicKey } from "@solana/web3.js";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/shared/CopyButton";
 
 const TOKEN_DECIMALS = 6;
 const XNT_DECIMALS = 9;
@@ -38,6 +41,10 @@ function parseTokens(amt: string, decimals: number): bigint {
   }
 }
 
+function shortAddr(addr: string) {
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+}
+
 function fmtTokens(raw: string | bigint, decimals: number, dp = 4): string {
   const n = Number(BigInt(raw)) / Math.pow(10, decimals);
   return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: dp });
@@ -51,6 +58,9 @@ function fmtUsd(n: number) {
 
 interface Quote {
   ok: boolean;
+  name?: string | null;
+  symbol?: string | null;
+  image?: string | null;
   priceUsd?: number;
   fdvUsd?: number;
   progressPct?: number;
@@ -62,6 +72,31 @@ interface Quote {
   feeTotal?: string;
   soldOut?: boolean;
   insufficientLiquidity?: boolean;
+}
+
+function TokenAvatar({ image, symbol, size = 56 }: { image?: string | null; symbol?: string | null; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  const initial = (symbol ?? "?").slice(0, 1).toUpperCase();
+  if (!image || broken) {
+    return (
+      <div
+        className="flex-shrink-0 rounded-full bg-gradient-to-br from-cyan-400/30 to-emerald-400/20 border border-cyan-400/20 flex items-center justify-center font-bold text-cyan-100"
+        style={{ width: size, height: size, fontSize: size * 0.4 }}
+      >
+        {initial}
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={image}
+      alt={symbol ?? "token"}
+      onError={() => setBroken(true)}
+      className="flex-shrink-0 rounded-full object-cover border border-cyan-400/20"
+      style={{ width: size, height: size }}
+    />
+  );
 }
 
 export default function LaunchpadTokenPage() {
@@ -194,52 +229,74 @@ export default function LaunchpadTokenPage() {
     !quote?.complete;
 
   return (
-    <div className="min-h-screen bg-[#07090e] text-zinc-100 font-sans">
-      <div className="sticky top-0 z-10 backdrop-blur bg-[#07090e]/90 border-b border-zinc-900">
-        <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
-          <span className="text-[11px] font-mono font-bold text-neon">LAUNCHPAD</span>
-          <Link href="/launchpad" className="text-[11px] text-zinc-600 hover:text-zinc-400 transition">
+    <div className="min-h-screen bg-[#050810] text-zinc-100 font-sans">
+      <div
+        className="pointer-events-none fixed inset-0 opacity-60"
+        style={{
+          background:
+            "radial-gradient(ellipse 90% 50% at 50% -10%, rgba(34,242,255,0.10) 0%, transparent 60%)",
+        }}
+      />
+      <div className="sticky top-0 z-10 backdrop-blur-xl bg-[#050810]/85 border-b border-cyan-400/10">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <span className="text-[11px] font-mono font-bold text-neon tracking-widest">LAUNCHPAD</span>
+          <Link href="/launchpad" className="text-[11px] text-zinc-500 hover:text-zinc-300 transition">
             ← All tokens
           </Link>
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6">
-        <div className="mb-4">
-          <h1 className="text-lg font-bold font-mono truncate">{mint}</h1>
-          {quote?.complete && (
-            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-neon/10 text-neon">
-              graduated
-            </span>
-          )}
+      <div className="relative max-w-lg mx-auto px-4 py-6">
+        <div className="flex items-center gap-3 mb-1">
+          <TokenAvatar image={quote?.image} symbol={quote?.symbol} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold truncate">{quote?.name ?? shortAddr(mint)}</h1>
+              {quote?.complete && <Badge variant="success">graduated</Badge>}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+              {quote?.symbol && <span className="font-mono">${quote.symbol}</span>}
+              <span className="font-mono">{shortAddr(mint)}</span>
+              <CopyButton text={mint} label="Copy" />
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl p-3">
-            <div className="text-[9px] uppercase text-zinc-600 mb-1">Price</div>
+        <div className="grid grid-cols-3 gap-2 mb-4 mt-4">
+          <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+            <div className="text-[9px] uppercase text-zinc-500 mb-1">Price</div>
             <div className="text-sm font-mono font-bold">{quote?.priceUsd !== undefined ? fmtUsd(quote.priceUsd) : "—"}</div>
           </div>
-          <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl p-3">
-            <div className="text-[9px] uppercase text-zinc-600 mb-1">FDV</div>
+          <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+            <div className="text-[9px] uppercase text-zinc-500 mb-1">Market Cap</div>
             <div className="text-sm font-mono font-bold">{quote?.fdvUsd !== undefined ? fmtUsd(quote.fdvUsd) : "—"}</div>
           </div>
-          <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl p-3">
-            <div className="text-[9px] uppercase text-zinc-600 mb-1">Giga Hits</div>
+          <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+            <div className="text-[9px] uppercase text-zinc-500 mb-1">Giga Hits</div>
             <div className="text-sm font-mono font-bold text-neon">{quote?.gigaHits ?? "—"}</div>
           </div>
         </div>
 
-        {quote?.progressPct !== undefined && (
+        {quote?.progressPct !== undefined && !quote?.complete && (
           <div className="mb-6">
-            <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-1">
-              <div className="h-full bg-neon transition-all" style={{ width: `${quote.progressPct.toFixed(1)}%` }} />
+            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mb-1">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all"
+                style={{ width: `${quote.progressPct.toFixed(1)}%` }}
+              />
             </div>
             <div className="text-[10px] text-zinc-600 text-right">{quote.progressPct.toFixed(1)}% sold on curve</div>
           </div>
         )}
 
-        <div className="bg-[#0d1117] border border-zinc-800 rounded-2xl p-4">
-          <div className="flex gap-1 mb-4 bg-zinc-900 rounded-xl p-1">
+        {quote?.complete && (
+          <div className="mb-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-3 text-xs text-emerald-200/80 text-center">
+            🎓 Ta krzywa zgraduowała — token handluje się teraz na xdex.
+          </div>
+        )}
+
+        <div className="rounded-3xl border border-cyan-400/10 bg-white/[0.02] p-4">
+          <div className="flex gap-1 mb-4 bg-black/30 rounded-xl p-1">
             <button
               onClick={() => { setSide("buy"); setAmount(""); }}
               className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${side === "buy" ? "bg-neon text-black" : "text-zinc-400 hover:text-zinc-200"}`}
@@ -255,7 +312,7 @@ export default function LaunchpadTokenPage() {
           </div>
 
           <div className="mb-3">
-            <div className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1">
+            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">
               {side === "buy" ? "XNT in" : "Tokens in"}
             </div>
             <input
@@ -271,7 +328,7 @@ export default function LaunchpadTokenPage() {
           {quote?.estimatedOut && (
             <div className="text-xs text-zinc-500 mb-3">
               ≈ {fmtTokens(quote.estimatedOut, side === "buy" ? TOKEN_DECIMALS : XNT_DECIMALS)}{" "}
-              {side === "buy" ? "tokens" : "XNT"} (1% fee included)
+              {side === "buy" ? (quote?.symbol ? `$${quote.symbol}` : "tokens") : "XNT"} (1% fee included)
             </div>
           )}
           {(quote?.soldOut || quote?.insufficientLiquidity) && (
@@ -280,13 +337,14 @@ export default function LaunchpadTokenPage() {
             </div>
           )}
 
-          <button
+          <Button
             onClick={handleTrade}
             disabled={!canTrade && connected}
-            className="w-full py-3 rounded-xl font-bold text-sm uppercase tracking-wide bg-neon text-black disabled:bg-zinc-800 disabled:text-zinc-600 transition"
+            size="lg"
+            className="w-full"
           >
             {!connected ? "Connect Wallet" : status.type === "loading" ? status.msg : side === "buy" ? "Buy" : "Sell"}
-          </button>
+          </Button>
 
           {status.type === "success" && <div className="text-xs text-neon mt-3">{status.msg}</div>}
           {status.type === "error" && <div className="text-xs text-red-400 mt-3">{status.msg}</div>}

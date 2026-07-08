@@ -1,4 +1,10 @@
-import { PublicKey } from "@solana/web3.js";
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  TransactionInstruction,
+  AccountMeta,
+} from "@solana/web3.js";
 import { createHash } from "node:crypto";
 
 export const LAUNCHPAD_PROGRAM_ID = new PublicKey("AGAdJKoLhrGrdFwrZZDEWsoR1Tq8kMcXGRKxX2wa2jfm");
@@ -176,4 +182,146 @@ export function progressPct(curve: BondingCurveState): number {
   const sold = CURVE_ALLOCATION - Number(curve.realTokenReserves);
   const pct = CURVE_ALLOCATION > 0 ? (sold / CURVE_ALLOCATION) * 100 : 0;
   return Math.max(0, Math.min(100, pct));
+}
+
+// ── Metaplex Token Metadata (hand-rolled — no SDK dependency, matches this file's
+// existing raw-instruction style) ───────────────────────────────────────────────
+
+export const MPL_TOKEN_METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
+
+export const APP_BASE_URL = "https://x1factory.xyz";
+
+export function metadataPda(mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("metadata"), MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    MPL_TOKEN_METADATA_PROGRAM_ID
+  )[0];
+}
+
+/**
+ * CreateMetadataAccountV3 (instruction discriminator `33`, a plain u8 — Metaplex's Shank-based
+ * programs don't use Anchor's 8-byte sha256 discriminator scheme). Data layout confirmed against
+ * `@metaplex-foundation/mpl-token-metadata`'s generated `CreateMetadataAccountV3.js`: u8 disc +
+ * DataV2 { name, symbol, uri: Borsh strings, sellerFeeBasisPoints: u16, creators/collection/uses:
+ * None } + isMutable: bool + collectionDetails: None.
+ */
+export function buildCreateMetadataV3Instruction(params: {
+  mint: PublicKey;
+  mintAuthority: PublicKey;
+  payer: PublicKey;
+  updateAuthority: PublicKey;
+  name: string;
+  symbol: string;
+  uri: string;
+}): TransactionInstruction {
+  const metadata = metadataPda(params.mint);
+  const data = Buffer.concat([
+    Buffer.from([33]), // instructionDiscriminator
+    encodeBorshString(params.name),
+    encodeBorshString(params.symbol),
+    encodeBorshString(params.uri),
+    (() => {
+      const b = Buffer.alloc(2);
+      b.writeUInt16LE(0, 0);
+      return b;
+    })(), // sellerFeeBasisPoints = 0
+    Buffer.from([0]), // creators: None
+    Buffer.from([0]), // collection: None
+    Buffer.from([0]), // uses: None
+    Buffer.from([1]), // isMutable: true
+    Buffer.from([0]), // collectionDetails: None
+  ]);
+
+  const keys: AccountMeta[] = [
+    { pubkey: metadata, isSigner: false, isWritable: true },
+    { pubkey: params.mint, isSigner: false, isWritable: false },
+    { pubkey: params.mintAuthority, isSigner: true, isWritable: false },
+    { pubkey: params.payer, isSigner: true, isWritable: true },
+    { pubkey: params.updateAuthority, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+  ];
+
+  return new TransactionInstruction({ programId: MPL_TOKEN_METADATA_PROGRAM_ID, keys, data });
+}
+
+// ── Resolving a token's name/symbol/image, derived from the LaunchpadMintCreated event ──
+// No DB: the on-chain Metaplex `uri` we set at creation always points back to
+// /api/launchpad/metadata/[mint], which re-derives the fields live from the creation
+// transaction's logs (immutable once created, so an in-memory cache is safe and permanent).
+
+export interface LaunchpadTokenIdentity {
+  name: string;
+  symbol: string;
+  image: string;
+}
+
+const MINT_CREATED_DISC = createHash("sha256").update("event:LaunchpadMintCreated").digest().subarray(0, 8);
+
+const identityCache = new Map<string, LaunchpadTokenIdentity | null>();
+
+function decodeBorshString(buf: Buffer, offset: { o: number }): string {
+  const len = buf.readUInt32LE(offset.o);
+  offset.o += 4;
+  const s = buf.subarray(offset.o, offset.o + len).toString("utf8");
+  offset.o += len;
+  return s;
+}
+
+/** Finds the oldest confirmed signature for `address` — the launchpad mint/curve accounts are
+ * only ever touched by their own one-shot creation transaction besides trading, and mints in
+ * particular have very few signatures, so a handful of paginated calls suffices. */
+async function findOldestSignature(conn: Connection, address: PublicKey): Promise<string | null> {
+  let before: string | undefined;
+  let oldest: string | null = null;
+  for (let i = 0; i < 20; i++) {
+    const sigs = await conn.getSignaturesForAddress(address, { before, limit: 1000 });
+    if (sigs.length === 0) break;
+    oldest = sigs[sigs.length - 1].signature;
+    if (sigs.length < 1000) break;
+    before = oldest;
+  }
+  return oldest;
+}
+
+export async function resolveLaunchpadTokenIdentity(
+  conn: Connection,
+  mint: PublicKey
+): Promise<LaunchpadTokenIdentity | null> {
+  const key = mint.toBase58();
+  const cached = identityCache.get(key);
+  if (cached !== undefined) return cached;
+
+  try {
+    const sig = await findOldestSignature(conn, mint);
+    if (!sig) {
+      identityCache.set(key, null);
+      return null;
+    }
+    const tx = await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+    const logs = tx?.meta?.logMessages ?? [];
+    for (const log of logs) {
+      const m = log.match(/^Program data: (.+)$/);
+      if (!m) continue;
+      const buf = Buffer.from(m[1], "base64");
+      if (buf.length < 8) continue;
+      if (!buf.subarray(0, 8).equals(MINT_CREATED_DISC)) continue;
+      const offset = { o: 8 + 32 + 32 }; // disc + mint + creator
+      const name = decodeBorshString(buf, offset);
+      const symbol = decodeBorshString(buf, offset);
+      const uri = decodeBorshString(buf, offset);
+      const identity: LaunchpadTokenIdentity = {
+        name: name || symbol || "Unknown",
+        symbol: symbol || "???",
+        image: /^https?:\/\//.test(uri) ? uri : "",
+      };
+      identityCache.set(key, identity);
+      return identity;
+    }
+    identityCache.set(key, null);
+    return null;
+  } catch {
+    return null;
+  }
 }

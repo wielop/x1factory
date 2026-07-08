@@ -26,6 +26,8 @@ import {
   anchorDiscriminator,
   encodeBorshString,
   encodeU64LE,
+  buildCreateMetadataV3Instruction,
+  APP_BASE_URL,
 } from "@/lib/launchpad";
 
 export const dynamic = "force-dynamic";
@@ -177,8 +179,30 @@ export async function POST(req: NextRequest) {
       Buffer.concat([DISC_FINALIZE_TOKEN, encodeU64LE(initialSeed)])
     );
 
+    // Real on-chain Metaplex metadata, pointing at our own metadata endpoint (which re-derives
+    // name/symbol/image live from this same transaction's LaunchpadMintCreated event — no DB).
+    // Must land after create_mint (mint must exist, and mint authority is still `creator` here)
+    // and before finalize_token (which permanently revokes mint authority).
+    const metadataIx = buildCreateMetadataV3Instruction({
+      mint,
+      mintAuthority: creator,
+      payer: creator,
+      updateAuthority: creator,
+      name,
+      symbol,
+      uri: `${APP_BASE_URL}/api/launchpad/metadata/${mint.toBase58()}`,
+    });
+
     const tx = new Transaction();
-    tx.add(createMintIx, initCurveIx, initCurveTokenVaultIx, initRewardPoolTokenVaultIx, initGradReserveVaultIx, finalizeTokenIx);
+    tx.add(
+      createMintIx,
+      metadataIx,
+      initCurveIx,
+      initCurveTokenVaultIx,
+      initRewardPoolTokenVaultIx,
+      initGradReserveVaultIx,
+      finalizeTokenIx
+    );
 
     const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
     tx.recentBlockhash = blockhash;

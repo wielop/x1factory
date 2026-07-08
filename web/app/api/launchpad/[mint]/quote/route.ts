@@ -9,6 +9,7 @@ import {
   priceUsd,
   fdvUsd,
   progressPct,
+  resolveLaunchpadTokenIdentity,
 } from "@/lib/launchpad";
 
 export const dynamic = "force-dynamic";
@@ -37,9 +38,10 @@ export async function GET(req: NextRequest, { params }: { params: { mint: string
 
     const conn = new Connection(RPC, "confirmed");
     const curve = curvePda(mint);
-    const [curveInfo, configInfo] = await Promise.all([
+    const [curveInfo, configInfo, identity] = await Promise.all([
       conn.getAccountInfo(curve),
       conn.getAccountInfo(ROUTER_CONFIG_PDA).catch(() => null),
+      resolveLaunchpadTokenIdentity(conn, mint),
     ]);
     if (!curveInfo || curveInfo.data.length < BONDING_CURVE_SIZE) {
       return NextResponse.json({ ok: false, error: "Curve not found for this mint" }, { status: 404 });
@@ -55,6 +57,9 @@ export async function GET(req: NextRequest, { params }: { params: { mint: string
     const base = {
       ok: true,
       xntUsdCents,
+      name: identity?.name ?? null,
+      symbol: identity?.symbol ?? null,
+      image: identity?.image || null,
       priceUsd: priceUsd(curveState, xntUsdCents),
       fdvUsd: fdvUsd(curveState, xntUsdCents),
       progressPct: progressPct(curveState),

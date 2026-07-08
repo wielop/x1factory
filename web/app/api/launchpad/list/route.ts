@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
+import { resolveLaunchpadTokenIdentity } from "@/lib/launchpad";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -95,7 +96,7 @@ export async function GET() {
     }
     const xntUsd = xntUsdCents / 100;
 
-    const tokens = curveAccounts
+    const parsed = curveAccounts
       .map(({ pubkey, account }) => parseBondingCurve(account.data, pubkey))
       .map((t) => {
         const priceXnt =
@@ -113,6 +114,16 @@ export async function GET() {
         };
       })
       .sort((a, b) => b.createdAt - a.createdAt);
+
+    const identities = await Promise.all(
+      parsed.map((t) => resolveLaunchpadTokenIdentity(conn, new PublicKey(t.mint)))
+    );
+    const tokens = parsed.map((t, i) => ({
+      ...t,
+      name: identities[i]?.name ?? null,
+      symbol: identities[i]?.symbol ?? null,
+      image: identities[i]?.image || null,
+    }));
 
     return NextResponse.json({
       ok: true,

@@ -15,14 +15,14 @@ function ImagePreview({ url }: { url: string }) {
   const valid = /^https?:\/\/.+/i.test(url.trim());
   if (!valid) {
     return (
-      <div className="w-16 h-16 rounded-2xl bg-white/5 border border-dashed border-white/15 flex items-center justify-center text-2xl flex-shrink-0">
+      <div className="w-24 h-24 rounded-2xl bg-white/5 border border-dashed border-white/15 flex items-center justify-center text-3xl flex-shrink-0">
         🖼️
       </div>
     );
   }
   if (broken) {
     return (
-      <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-[10px] text-red-300 text-center px-1 flex-shrink-0">
+      <div className="w-24 h-24 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-[10px] text-red-300 text-center px-1 flex-shrink-0">
         can&apos;t load
       </div>
     );
@@ -33,7 +33,7 @@ function ImagePreview({ url }: { url: string }) {
       src={url.trim()}
       alt="preview"
       onError={() => setBroken(true)}
-      className="w-16 h-16 rounded-2xl object-cover border border-cyan-400/20 flex-shrink-0"
+      className="w-24 h-24 rounded-2xl object-cover border border-cyan-400/20 flex-shrink-0"
     />
   );
 }
@@ -140,8 +140,8 @@ export default function CreateLaunchpadTokenPage() {
           <div className="flex items-center gap-3">
             <ImagePreview url={uri} />
             <div className="min-w-0 flex-1">
-              <div className="font-bold text-sm truncate">{name.trim() || "Your token name"}</div>
-              <div className="text-xs text-zinc-500 font-mono">${symbol.trim() || "SYMBOL"}</div>
+              <div className="font-extrabold text-lg truncate">{name.trim() || "Your token name"}</div>
+              <div className="text-sm text-cyan-200/70 font-mono">${symbol.trim() || "SYMBOL"}</div>
             </div>
           </div>
 

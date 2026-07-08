@@ -74,16 +74,13 @@ interface Quote {
   insufficientLiquidity?: boolean;
 }
 
-function TokenAvatar({ image, symbol, size = 56 }: { image?: string | null; symbol?: string | null; size?: number }) {
+function TokenTile({ image, symbol }: { image?: string | null; symbol?: string | null }) {
   const [broken, setBroken] = useState(false);
   const initial = (symbol ?? "?").slice(0, 1).toUpperCase();
   if (!image || broken) {
     return (
-      <div
-        className="flex-shrink-0 rounded-full bg-gradient-to-br from-cyan-400/30 to-emerald-400/20 border border-cyan-400/20 flex items-center justify-center font-bold text-cyan-100"
-        style={{ width: size, height: size, fontSize: size * 0.4 }}
-      >
-        {initial}
+      <div className="w-full h-full rounded-2xl bg-gradient-to-br from-cyan-400/25 via-emerald-400/10 to-transparent border border-white/10 flex items-center justify-center">
+        <span className="text-4xl font-black text-cyan-100/70">{initial}</span>
       </div>
     );
   }
@@ -93,8 +90,7 @@ function TokenAvatar({ image, symbol, size = 56 }: { image?: string | null; symb
       src={image}
       alt={symbol ?? "token"}
       onError={() => setBroken(true)}
-      className="flex-shrink-0 rounded-full object-cover border border-cyan-400/20"
-      style={{ width: size, height: size }}
+      className="w-full h-full rounded-2xl object-cover border border-white/10"
     />
   );
 }
@@ -238,7 +234,7 @@ export default function LaunchpadTokenPage() {
         }}
       />
       <div className="sticky top-0 z-10 backdrop-blur-xl bg-[#050810]/85 border-b border-cyan-400/10">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <span className="text-[11px] font-mono font-bold text-neon tracking-widest">LAUNCHPAD</span>
           <Link href="/launchpad" className="text-[11px] text-zinc-500 hover:text-zinc-300 transition">
             ← All tokens
@@ -246,56 +242,73 @@ export default function LaunchpadTokenPage() {
         </div>
       </div>
 
-      <div className="relative max-w-lg mx-auto px-4 py-6">
-        <div className="flex items-center gap-3 mb-1">
-          <TokenAvatar image={quote?.image} symbol={quote?.symbol} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold truncate">{quote?.name ?? shortAddr(mint)}</h1>
-              {quote?.complete && <Badge variant="success">graduated</Badge>}
+      <div className="relative max-w-4xl mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6 items-start">
+        <div>
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-24 h-24 flex-shrink-0">
+              <TokenTile image={quote?.image} symbol={quote?.symbol} />
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-              {quote?.symbol && <span className="font-mono">${quote.symbol}</span>}
-              <span className="font-mono">{shortAddr(mint)}</span>
-              <CopyButton text={mint} label="Copy" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl font-extrabold truncate">{quote?.name ?? shortAddr(mint)}</h1>
+                {quote?.complete && <Badge variant="success">🎓 graduated</Badge>}
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-zinc-500 mt-1">
+                {quote?.symbol && <span className="font-mono text-sm text-cyan-200/80">${quote.symbol}</span>}
+                <span className="font-mono">{shortAddr(mint)}</span>
+                <CopyButton text={mint} label="Copy" />
+              </div>
             </div>
           </div>
+
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+              <div className="text-[9px] uppercase text-zinc-500 mb-1">Price</div>
+              <div className="text-sm font-mono font-bold">{quote?.priceUsd !== undefined ? fmtUsd(quote.priceUsd) : "—"}</div>
+            </div>
+            <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+              <div className="text-[9px] uppercase text-zinc-500 mb-1">Market Cap</div>
+              <div className="text-sm font-mono font-bold">{quote?.fdvUsd !== undefined ? fmtUsd(quote.fdvUsd) : "—"}</div>
+            </div>
+            <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+              <div className="text-[9px] uppercase text-zinc-500 mb-1">Giga Hits</div>
+              <div className="text-sm font-mono font-bold text-neon">⚡{quote?.gigaHits ?? "—"}</div>
+            </div>
+          </div>
+
+          {quote?.progressPct !== undefined && !quote?.complete && (
+            <div className="mb-4">
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden mb-1">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all"
+                  style={{ width: `${quote.progressPct.toFixed(1)}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-zinc-600 text-right">{quote.progressPct.toFixed(1)}% sold on curve</div>
+            </div>
+          )}
+
+          {quote?.complete && (
+            <div className="mb-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-3 text-xs text-emerald-200/80 text-center">
+              🎓 Ta krzywa zgraduowała — token handluje się teraz na xdex.
+            </div>
+          )}
+
+          {gigaWin && (
+            <div className="bg-neon/10 border border-neon/40 rounded-2xl p-6 text-center">
+              <div className="text-xs uppercase tracking-widest text-neon mb-2">GigaSwap Jackpot!</div>
+              <div className="text-2xl font-bold font-mono text-neon">
+                +{gigaWin.paidInToken
+                  ? fmtTokens(gigaWin.payout, TOKEN_DECIMALS)
+                  : fmtTokens(gigaWin.payout, XNT_DECIMALS)}{" "}
+                {gigaWin.paidInToken ? "tokens" : "XNT"}
+              </div>
+              <div className="text-[11px] text-zinc-500 mt-1">tier: {(gigaWin.tierBps / 100).toString()}% of pool</div>
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mb-4 mt-4">
-          <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
-            <div className="text-[9px] uppercase text-zinc-500 mb-1">Price</div>
-            <div className="text-sm font-mono font-bold">{quote?.priceUsd !== undefined ? fmtUsd(quote.priceUsd) : "—"}</div>
-          </div>
-          <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
-            <div className="text-[9px] uppercase text-zinc-500 mb-1">Market Cap</div>
-            <div className="text-sm font-mono font-bold">{quote?.fdvUsd !== undefined ? fmtUsd(quote.fdvUsd) : "—"}</div>
-          </div>
-          <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
-            <div className="text-[9px] uppercase text-zinc-500 mb-1">Giga Hits</div>
-            <div className="text-sm font-mono font-bold text-neon">{quote?.gigaHits ?? "—"}</div>
-          </div>
-        </div>
-
-        {quote?.progressPct !== undefined && !quote?.complete && (
-          <div className="mb-6">
-            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mb-1">
-              <div
-                className="h-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all"
-                style={{ width: `${quote.progressPct.toFixed(1)}%` }}
-              />
-            </div>
-            <div className="text-[10px] text-zinc-600 text-right">{quote.progressPct.toFixed(1)}% sold on curve</div>
-          </div>
-        )}
-
-        {quote?.complete && (
-          <div className="mb-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-3 text-xs text-emerald-200/80 text-center">
-            🎓 Ta krzywa zgraduowała — token handluje się teraz na xdex.
-          </div>
-        )}
-
-        <div className="rounded-3xl border border-cyan-400/10 bg-white/[0.02] p-4">
+        <div className="rounded-3xl border border-cyan-400/10 bg-white/[0.02] p-4 md:sticky md:top-20">
           <div className="flex gap-1 mb-4 bg-black/30 rounded-xl p-1">
             <button
               onClick={() => { setSide("buy"); setAmount(""); }}
@@ -349,19 +362,6 @@ export default function LaunchpadTokenPage() {
           {status.type === "success" && <div className="text-xs text-neon mt-3">{status.msg}</div>}
           {status.type === "error" && <div className="text-xs text-red-400 mt-3">{status.msg}</div>}
         </div>
-
-        {gigaWin && (
-          <div className="mt-6 bg-neon/10 border border-neon/40 rounded-2xl p-6 text-center">
-            <div className="text-xs uppercase tracking-widest text-neon mb-2">GigaSwap Jackpot!</div>
-            <div className="text-2xl font-bold font-mono text-neon">
-              +{gigaWin.paidInToken
-                ? fmtTokens(gigaWin.payout, TOKEN_DECIMALS)
-                : fmtTokens(gigaWin.payout, XNT_DECIMALS)}{" "}
-              {gigaWin.paidInToken ? "tokens" : "XNT"}
-            </div>
-            <div className="text-[11px] text-zinc-500 mt-1">tier: {(gigaWin.tierBps / 100).toString()}% of pool</div>
-          </div>
-        )}
       </div>
     </div>
   );

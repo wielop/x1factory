@@ -44,11 +44,6 @@ function fmtUsd(n: number) {
   return `$${n.toFixed(6)}`;
 }
 
-function fmtXnt(raw: string, xntBase: number) {
-  const n = Number(BigInt(raw)) / xntBase;
-  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-}
-
 function fmtAgo(ts: number) {
   if (!ts) return "—";
   const diffMs = Date.now() - ts * 1000;
@@ -60,16 +55,14 @@ function fmtAgo(ts: number) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function TokenAvatar({ image, symbol, size = 44 }: { image: string | null; symbol: string | null; size?: number }) {
+/** Square, image-forward thumbnail — the dominant element on a grid card, pump.fun-style. */
+function TokenTile({ image, symbol }: { image: string | null; symbol: string | null }) {
   const [broken, setBroken] = useState(false);
   const initial = (symbol ?? "?").slice(0, 1).toUpperCase();
   if (!image || broken) {
     return (
-      <div
-        className="flex-shrink-0 rounded-full bg-gradient-to-br from-cyan-400/30 to-emerald-400/20 border border-cyan-400/20 flex items-center justify-center font-bold text-cyan-100"
-        style={{ width: size, height: size, fontSize: size * 0.4 }}
-      >
-        {initial}
+      <div className="aspect-square w-full rounded-xl bg-gradient-to-br from-cyan-400/25 via-emerald-400/10 to-transparent border border-white/10 flex items-center justify-center">
+        <span className="text-4xl font-black text-cyan-100/70">{initial}</span>
       </div>
     );
   }
@@ -79,8 +72,7 @@ function TokenAvatar({ image, symbol, size = 44 }: { image: string | null; symbo
       src={image}
       alt={symbol ?? "token"}
       onError={() => setBroken(true)}
-      className="flex-shrink-0 rounded-full object-cover border border-cyan-400/20"
-      style={{ width: size, height: size }}
+      className="aspect-square w-full rounded-xl object-cover border border-white/10"
     />
   );
 }
@@ -111,7 +103,6 @@ export default function LaunchpadPage() {
     return () => clearInterval(id);
   }, [load]);
 
-  const xntBase = data?.xntBase ?? 1_000_000_000;
   const tokens = [...(data?.tokens ?? [])].sort((a, b) => {
     if (sort === "mcap") return b.fdvUsd - a.fdvUsd;
     if (sort === "progress") return b.progressPct - a.progressPct;
@@ -131,7 +122,7 @@ export default function LaunchpadPage() {
         }}
       />
       <div className="sticky top-0 z-10 backdrop-blur-xl bg-[#050810]/85 border-b border-cyan-400/10">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-mono font-bold text-neon tracking-widest">
               LAUNCHPAD
@@ -148,7 +139,7 @@ export default function LaunchpadPage() {
         </div>
       </div>
 
-      <div className="relative max-w-5xl mx-auto px-4 py-8">
+      <div className="relative max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-start justify-between mb-2 flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-transparent">
@@ -185,27 +176,33 @@ export default function LaunchpadPage() {
 
         {king && !loading && (
           <Link href={`/launchpad/${king.mint}`} className="block mb-6 group">
-            <div className="relative overflow-hidden rounded-3xl border border-amber-400/25 bg-gradient-to-br from-amber-400/[0.06] via-white/[0.02] to-transparent p-4 transition hover:border-amber-300/40">
-              <div className="flex items-center gap-3">
-                <TokenAvatar image={king.image} symbol={king.symbol} size={52} />
+            <div className="relative overflow-hidden rounded-3xl border border-amber-400/25 bg-gradient-to-br from-amber-400/[0.08] via-white/[0.02] to-transparent p-4 transition hover:border-amber-300/50 hover:shadow-[0_0_32px_rgba(251,191,36,0.12)]">
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 flex-shrink-0">
+                  <TokenTile image={king.image} symbol={king.symbol} />
+                </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="warning">👑 king of the hill</Badge>
-                  </div>
-                  <div className="mt-1 flex items-baseline gap-2 min-w-0">
-                    <span className="font-bold text-zinc-100 truncate">
+                  <Badge variant="warning">👑 king of the hill</Badge>
+                  <div className="mt-1.5 flex items-baseline gap-2 min-w-0">
+                    <span className="font-extrabold text-lg text-zinc-100 truncate">
                       {king.name ?? shortAddr(king.mint)}
                     </span>
                     {king.symbol && (
-                      <span className="text-xs text-zinc-500 font-mono flex-shrink-0">
+                      <span className="text-sm text-zinc-500 font-mono flex-shrink-0">
                         ${king.symbol}
                       </span>
                     )}
                   </div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-white/5 overflow-hidden max-w-xs">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-300 to-yellow-200"
+                      style={{ width: `${king.progressPct.toFixed(1)}%` }}
+                    />
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="text-[10px] uppercase text-zinc-500">Market Cap</div>
-                  <div className="font-mono font-bold text-amber-200">{fmtUsd(king.fdvUsd)}</div>
+                  <div className="font-mono font-bold text-lg text-amber-200">{fmtUsd(king.fdvUsd)}</div>
                 </div>
               </div>
             </div>
@@ -231,9 +228,13 @@ export default function LaunchpadPage() {
         </div>
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-[132px] rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.02] p-2.5">
+                <div className="aspect-square w-full rounded-xl bg-white/5 animate-pulse mb-2" />
+                <div className="h-3 w-2/3 rounded bg-white/5 animate-pulse mb-1.5" />
+                <div className="h-2.5 w-1/3 rounded bg-white/5 animate-pulse" />
+              </div>
             ))}
           </div>
         )}
@@ -256,59 +257,49 @@ export default function LaunchpadPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {tokens.map((t) => (
             <Link
               key={t.mint}
               href={`/launchpad/${t.mint}`}
-              className="group block rounded-2xl border border-white/5 bg-white/[0.02] p-4 transition hover:border-cyan-300/30 hover:bg-white/[0.04] hover:shadow-[0_0_24px_rgba(34,242,255,0.10)]"
+              className="group block rounded-2xl border border-white/5 bg-white/[0.02] p-2.5 transition hover:border-cyan-300/30 hover:bg-white/[0.04] hover:shadow-[0_0_20px_rgba(34,242,255,0.10)] hover:-translate-y-0.5"
             >
-              <div className="flex items-center gap-3 mb-3">
-                <TokenAvatar image={t.image} symbol={t.symbol} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-sm text-zinc-100 truncate">
-                      {t.name ?? shortAddr(t.mint)}
-                    </span>
-                    {t.complete && <Badge variant="success">graduated</Badge>}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-                    {t.symbol && <span className="font-mono">${t.symbol}</span>}
-                    <span>·</span>
-                    <span>{fmtAgo(t.createdAt)}</span>
-                  </div>
-                </div>
+              <div className="relative mb-2">
+                <TokenTile image={t.image} symbol={t.symbol} />
+                {t.complete && (
+                  <span className="absolute top-1.5 right-1.5">
+                    <Badge variant="success">🎓</Badge>
+                  </span>
+                )}
+                {t.gigaHits !== "0" && (
+                  <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur text-neon border border-neon/30">
+                    ⚡{t.gigaHits}
+                  </span>
+                )}
               </div>
 
-              <div className="grid grid-cols-4 gap-2 text-center mb-3">
-                <div>
-                  <div className="text-[9px] uppercase text-zinc-600">Price</div>
-                  <div className="text-xs font-mono font-bold">{fmtUsd(t.priceUsd)}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] uppercase text-zinc-600">MCap</div>
-                  <div className="text-xs font-mono font-bold">{fmtUsd(t.fdvUsd)}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] uppercase text-zinc-600">Raised</div>
-                  <div className="text-xs font-mono font-bold">
-                    {fmtXnt(t.realXntReserves, xntBase)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[9px] uppercase text-zinc-600">Giga</div>
-                  <div className="text-xs font-mono font-bold text-neon">{t.gigaHits}</div>
-                </div>
+              <div className="flex items-baseline gap-1 min-w-0">
+                <span className="font-bold text-xs text-zinc-100 truncate">
+                  {t.name ?? shortAddr(t.mint)}
+                </span>
+                {t.symbol && (
+                  <span className="text-[10px] text-zinc-500 font-mono flex-shrink-0">
+                    ${t.symbol}
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] text-zinc-600 mb-1.5">{fmtAgo(t.createdAt)}</div>
+
+              <div className="flex items-center justify-between text-[11px] mb-1.5">
+                <span className="text-zinc-500">MCap</span>
+                <span className="font-mono font-bold text-zinc-200">{fmtUsd(t.fdvUsd)}</span>
               </div>
 
-              <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mb-1">
+              <div className="h-1 rounded-full bg-white/5 overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all"
                   style={{ width: `${t.progressPct.toFixed(1)}%` }}
                 />
-              </div>
-              <div className="text-[10px] text-zinc-600 text-right">
-                {t.progressPct.toFixed(1)}% sold on curve
               </div>
             </Link>
           ))}

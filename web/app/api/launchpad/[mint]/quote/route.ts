@@ -66,6 +66,8 @@ export async function GET(req: NextRequest, { params }: { params: { mint: string
       complete: curveState.complete,
       realXntReserves: curveState.realXntReserves.toString(),
       realTokenReserves: curveState.realTokenReserves.toString(),
+      virtualTokenReserves: curveState.virtualTokenReserves.toString(),
+      virtualXntReserves: curveState.virtualXntReserves.toString(),
       rewardPoolXntBalance: curveState.rewardPoolXntBalance.toString(),
       rewardPoolTokenBalance: curveState.rewardPoolTokenBalance.toString(),
       gigaHits: curveState.gigaHits.toString(),

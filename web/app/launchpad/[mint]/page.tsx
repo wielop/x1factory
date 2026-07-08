@@ -133,18 +133,64 @@ interface PricePoint {
   priceUsd: number;
 }
 
-/** Real price-over-time chart, sampled roughly every minute by scripts/launchpad-keeper.ts
- * and stored in Postgres — this is actual trade history, not the theoretical curve shape. */
+interface Candle {
+  time: number; // seconds, lightweight-charts convention
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+const TIMEFRAMES = [
+  { key: "5m", label: "5m", bucketMs: 5 * 60_000, sinceHours: 24 },
+  { key: "15m", label: "15m", bucketMs: 15 * 60_000, sinceHours: 3 * 24 },
+  { key: "1h", label: "1h", bucketMs: 60 * 60_000, sinceHours: 14 * 24 },
+  { key: "4h", label: "4h", bucketMs: 4 * 60 * 60_000, sinceHours: 30 * 24 },
+  { key: "1d", label: "1D", bucketMs: 24 * 60 * 60_000, sinceHours: 90 * 24 },
+] as const;
+
+/** Buckets raw (roughly 1-per-minute) price samples into OHLC candles — our sampling is
+ * periodic, not per-trade, so a candle's open/close are just the first/last sample seen in
+ * that window rather than the true first/last trade, but high/low/close are otherwise exact. */
+function toCandles(points: PricePoint[], bucketMs: number): Candle[] {
+  const buckets = new Map<number, PricePoint[]>();
+  for (const p of points) {
+    const bucket = Math.floor(p.t / bucketMs) * bucketMs;
+    const arr = buckets.get(bucket);
+    if (arr) arr.push(p);
+    else buckets.set(bucket, [p]);
+  }
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([bucket, pts]) => {
+      const prices = pts.map((p) => p.priceUsd);
+      return {
+        time: Math.floor(bucket / 1000),
+        open: prices[0],
+        high: Math.max(...prices),
+        low: Math.min(...prices),
+        close: prices[prices.length - 1],
+      };
+    });
+}
+
+/** Real price-over-time candlestick chart (lightweight-charts), fed by scripts/
+ * launchpad-keeper.ts sampling every ~60s into Postgres — actual trade-adjacent history, not
+ * the theoretical bonding-curve shape. */
 function PriceChart({ mint }: { mint: string }) {
-  const [points, setPoints] = useState<PricePoint[] | null>(null);
+  const [rawPoints, setRawPoints] = useState<PricePoint[] | null>(null);
+  const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>(TIMEFRAMES[0]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<import("lightweight-charts").IChartApi | null>(null);
+  const seriesRef = useRef<import("lightweight-charts").ISeriesApi<"Candlestick"> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch(`${HISTORY_URL_BASE}/${mint}/history?sinceHours=168`);
+        const res = await fetch(`${HISTORY_URL_BASE}/${mint}/history?sinceHours=${timeframe.sinceHours}`);
         const data = await res.json();
-        if (!cancelled && data.ok) setPoints(data.points);
+        if (!cancelled && data.ok) setRawPoints(data.points);
       } catch {
         // ignore
       }
@@ -155,78 +201,109 @@ function PriceChart({ mint }: { mint: string }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [mint]);
+  }, [mint, timeframe]);
 
-  const width = 100;
-  const height = 100;
+  const candles = rawPoints ? toCandles(rawPoints, timeframe.bucketMs) : [];
 
-  if (points === null) {
-    return (
-      <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-4">
-        <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Price</div>
-        <div className="h-32 flex items-center justify-center text-xs text-zinc-600 animate-pulse">Loading…</div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!containerRef.current || candles.length < 2) return;
+    let disposed = false;
 
-  if (points.length < 2) {
-    return (
-      <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-4">
-        <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Price</div>
-        <div className="h-32 flex flex-col items-center justify-center gap-1 text-center px-4">
-          <span className="text-xs text-zinc-500">Building price history…</span>
-          <span className="text-[10px] text-zinc-700">
-            Sampled every ~60s once trading starts. Check back shortly.
-          </span>
-        </div>
-      </div>
-    );
-  }
+    (async () => {
+      const { createChart, CandlestickSeries, ColorType } = await import("lightweight-charts");
+      if (disposed || !containerRef.current) return;
 
-  const prices = points.map((p) => p.priceUsd);
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
-  const range = maxPrice - minPrice || maxPrice || 1;
-  const minT = points[0].t;
-  const maxT = points[points.length - 1].t;
-  const spanT = maxT - minT || 1;
+      if (!chartRef.current) {
+        const chart = createChart(containerRef.current, {
+          layout: {
+            background: { type: ColorType.Solid, color: "transparent" },
+            textColor: "rgb(148,163,184)",
+            fontSize: 10,
+          },
+          grid: {
+            vertLines: { color: "rgba(255,255,255,0.04)" },
+            horzLines: { color: "rgba(255,255,255,0.04)" },
+          },
+          rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+          timeScale: { borderColor: "rgba(255,255,255,0.08)", timeVisible: true },
+          crosshair: { mode: 0 },
+          height: 220,
+        });
+        chartRef.current = chart;
+        seriesRef.current = chart.addSeries(CandlestickSeries, {
+          upColor: "rgb(52,211,153)",
+          downColor: "rgb(248,113,113)",
+          borderVisible: false,
+          wickUpColor: "rgb(52,211,153)",
+          wickDownColor: "rgb(248,113,113)",
+          priceFormat: { type: "price", precision: 8, minMove: 0.00000001 },
+        });
+      }
+      seriesRef.current?.setData(candles as never);
+      chartRef.current?.timeScale().fitContent();
+    })();
 
-  const toXY = (p: PricePoint) => {
-    const x = ((p.t - minT) / spanT) * width;
-    const y = height - ((p.priceUsd - minPrice) / range) * (height - 8) - 4;
-    return [x, y];
-  };
-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${toXY(p)[0].toFixed(2)},${toXY(p)[1].toFixed(2)}`).join(" ");
-  const areaPath = `${path} L${width},${height} L0,${height} Z`;
-  const first = prices[0];
-  const last = prices[prices.length - 1];
-  const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
+    return () => {
+      disposed = true;
+    };
+  }, [candles]);
+
+  // Resize + teardown the chart instance when the component itself unmounts.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      chartRef.current?.applyOptions({ width: container.clientWidth });
+    });
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      chartRef.current?.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, []);
+
+  const last = candles[candles.length - 1];
+  const first = candles[0];
+  const changePct = first && first.open > 0 ? ((last.close - first.open) / first.open) * 100 : 0;
   const up = changePct >= 0;
 
   return (
     <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] uppercase tracking-widest text-zinc-500">Price</span>
-        <span className={`text-[11px] font-mono font-bold ${up ? "text-emerald-400" : "text-red-400"}`}>
-          {up ? "▲" : "▼"} {Math.abs(changePct).toFixed(1)}% (7d)
-        </span>
+        <div className="flex items-center gap-1 bg-black/30 rounded-lg p-0.5">
+          {TIMEFRAMES.map((tf) => (
+            <button
+              key={tf.key}
+              onClick={() => setTimeframe(tf)}
+              className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${
+                timeframe.key === tf.key ? "bg-neon text-black" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+        {candles.length >= 2 && (
+          <span className={`text-[11px] font-mono font-bold ${up ? "text-emerald-400" : "text-red-400"}`}>
+            {up ? "▲" : "▼"} {Math.abs(changePct).toFixed(1)}%
+          </span>
+        )}
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={up ? "rgb(52,211,153)" : "rgb(248,113,113)"} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={up ? "rgb(52,211,153)" : "rgb(248,113,113)"} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={areaPath} fill="url(#priceFill)" />
-        <path
-          d={path}
-          fill="none"
-          stroke={up ? "rgb(52,211,153)" : "rgb(248,113,113)"}
-          strokeWidth="1.5"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
+
+      {rawPoints === null && (
+        <div className="h-[220px] flex items-center justify-center text-xs text-zinc-600 animate-pulse">Loading…</div>
+      )}
+      {rawPoints !== null && candles.length < 2 && (
+        <div className="h-[220px] flex flex-col items-center justify-center gap-1 text-center px-4">
+          <span className="text-xs text-zinc-500">Building price history…</span>
+          <span className="text-[10px] text-zinc-700">
+            Sampled every ~60s once trading starts. Try a shorter timeframe or check back shortly.
+          </span>
+        </div>
+      )}
+      <div ref={containerRef} className={candles.length < 2 ? "hidden" : ""} />
     </div>
   );
 }

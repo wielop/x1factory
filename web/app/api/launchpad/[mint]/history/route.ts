@@ -4,8 +4,10 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Keep this bounded — the keeper samples roughly once a minute, so a week is ~10k rows max.
-const MAX_POINTS = 2000;
+// Keep this bounded — the keeper samples roughly once a minute, so 90 days is ~130k rows max
+// for a mint. Fetch the most RECENT points up to this cap (not the oldest), since callers
+// asking for a long range (e.g. daily candles over 90 days) still mainly care about recency.
+const MAX_POINTS = 5000;
 
 export async function GET(req: NextRequest, { params }: { params: { mint: string } }) {
   try {
@@ -16,10 +18,11 @@ export async function GET(req: NextRequest, { params }: { params: { mint: string
 
     const points = await prisma.launchpadPricePoint.findMany({
       where: { mint: params.mint, createdAt: { gte: since } },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
       select: { priceUsd: true, createdAt: true },
       take: MAX_POINTS,
     });
+    points.reverse(); // back to ascending order for charting
 
     return NextResponse.json({
       ok: true,

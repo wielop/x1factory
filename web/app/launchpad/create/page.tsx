@@ -162,7 +162,7 @@ export default function CreateLaunchpadTokenPage() {
       <div className="relative max-w-lg mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight mb-1.5">Create a token</h1>
         <p className="text-sm text-zinc-500 mb-6 leading-relaxed">
-          Fixed supply 1,000,000,000 — 80% na krzywej, 10% w puli GigaSwap, 5% zarezerwowane na
+          Fixed supply 1,000,000,000 — 80% na krzywej, 1% w puli GigaSwap, 14% zarezerwowane na
           graduację, 5% dla Ciebie (bez blokady czasu). Handel startuje natychmiast.
         </p>
 

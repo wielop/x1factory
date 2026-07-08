@@ -40,8 +40,18 @@ const XNT_BASE: u64 = 1_000_000_000; // XNT/SOL lamports, 9 decimals
 
 /// Total supply of every launchpad token: 1,000,000,000 tokens (raw units below).
 const CURVE_ALLOCATION: u64 = 800_000_000 * DECIMALS_MULTIPLIER; // 80% — sellable on the curve
-const REWARD_POOL_TOKEN_ALLOCATION: u64 = 100_000_000 * DECIMALS_MULTIPLIER; // 10% — GigaSwap jackpot seed
-const GRAD_RESERVE_ALLOCATION: u64 = 50_000_000 * DECIMALS_MULTIPLIER; // 5% — reserved for v2 graduation, untouched in v1
+/// 1% — GigaSwap jackpot seed. Was 10% (100M) originally, but that made the very first
+/// qualifying trade on a brand-new token able to win a jackpot (up to 25% of this pool) worth
+/// far more than the token's entire market cap at that point — and since winnings are paid in
+/// the token itself, a lucky winner could immediately sell them into the curve for real XNT,
+/// draining real liquidity disproportionate to their own trade. Cut 10x (2026-07-08); the freed
+/// 9% moved to GRAD_RESERVE_ALLOCATION rather than CURVE_ALLOCATION so the bonding-curve price
+/// formula (which depends on CURVE_ALLOCATION relative to the fixed virtual reserves) is
+/// unaffected — only existing tokens created before this change keep the old, larger pool.
+const REWARD_POOL_TOKEN_ALLOCATION: u64 = 10_000_000 * DECIMALS_MULTIPLIER;
+/// 14% — reserved for graduation (was 5%; absorbed the 9% cut from the reward pool above,
+/// which also means graduated pools get deeper starting liquidity on the token side).
+const GRAD_RESERVE_ALLOCATION: u64 = 140_000_000 * DECIMALS_MULTIPLIER;
 const CREATOR_ALLOCATION: u64 = 50_000_000 * DECIMALS_MULTIPLIER; // 5% — immediate, unlocked (known v1 tradeoff)
 
 /// Below this many raw token units left on the curve, graduation is allowed even though the

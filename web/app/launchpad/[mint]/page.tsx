@@ -522,8 +522,8 @@ export default function LaunchpadTokenPage() {
                   <div className="text-neon font-bold mb-2 text-xs uppercase tracking-widest">Supply breakdown</div>
                   <div className="space-y-1.5 text-xs text-zinc-500">
                     <div className="flex justify-between"><span className="text-zinc-400">Bonding curve (buy/sell)</span><span className="font-mono text-zinc-300">80%</span></div>
-                    <div className="flex justify-between"><span className="text-zinc-400">GigaSwap reward pool</span><span className="font-mono text-zinc-300">10%</span></div>
-                    <div className="flex justify-between"><span className="text-zinc-400">Graduation reserve (→ xdex pool)</span><span className="font-mono text-zinc-300">5%</span></div>
+                    <div className="flex justify-between"><span className="text-zinc-400">GigaSwap reward pool</span><span className="font-mono text-zinc-300">1%</span></div>
+                    <div className="flex justify-between"><span className="text-zinc-400">Graduation reserve (→ xdex pool)</span><span className="font-mono text-zinc-300">14%</span></div>
                     <div className="flex justify-between"><span className="text-zinc-400">Creator allocation</span><span className="font-mono text-zinc-300">5%</span></div>
                   </div>
                 </div>

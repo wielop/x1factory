@@ -31,6 +31,15 @@ const TOTAL_SUPPLY = 1_000_000_000 * DECIMALS_MULTIPLIER;
 const CURVE_ALLOCATION = 800_000_000 * DECIMALS_MULTIPLIER;
 const XNT_BASE = 1_000_000_000;
 
+// Abandoned test curves from early mainnet testing — drained to 0 real XNT with ~800M tokens
+// still unsold, no organic activity, and no on-chain way to close/reclaim them (the program
+// deliberately has no close-curve or admin-withdraw instruction). Hidden from the public list
+// rather than left to confuse real users with a dead, 0%-progress token.
+const HIDDEN_MINTS = new Set([
+  "5JimQ3FUJi7hGEqsmCJmYh841QsWoxqFVLJUU4PLGLjP",
+  "AD6xH6w8f9Cpd3SB6ousvfz3Xur2RFgdz3Gx7mvvW9Fz",
+]);
+
 function parseBondingCurve(data: Buffer, pubkey: PublicKey) {
   let o = 8;
   const mint = new PublicKey(data.subarray(o, o + 32));
@@ -98,6 +107,7 @@ export async function GET() {
 
     const parsed = curveAccounts
       .map(({ pubkey, account }) => parseBondingCurve(account.data, pubkey))
+      .filter((t) => !HIDDEN_MINTS.has(t.mint))
       .map((t) => {
         const priceXnt =
           t.virtualTokenReservesNum > 0 ? t.virtualXntReservesNum / t.virtualTokenReservesNum : 0;

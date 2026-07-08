@@ -589,19 +589,6 @@ export default function LaunchpadTokenPage() {
             </div>
           )}
 
-          {gigaWin && (
-            <div className="bg-neon/10 border border-neon/40 rounded-2xl p-6 text-center">
-              <div className="text-xs uppercase tracking-widest text-neon mb-2">GigaSwap Jackpot!</div>
-              <div className="text-2xl font-bold font-mono text-neon">
-                +{gigaWin.paidInToken
-                  ? fmtTokens(gigaWin.payout, TOKEN_DECIMALS)
-                  : fmtTokens(gigaWin.payout, XNT_DECIMALS)}{" "}
-                {gigaWin.paidInToken ? "tokens" : "XNT"}
-              </div>
-              <div className="text-[11px] text-zinc-500 mt-1">tier: {(gigaWin.tierBps / 100).toString()}% of pool</div>
-            </div>
-          )}
-
           {/* How it works */}
           <div>
             <button
@@ -725,56 +712,81 @@ export default function LaunchpadTokenPage() {
           </div>
 
           {/* You Pay */}
-          <div className="bg-black/20 border border-white/5 rounded-2xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase tracking-widest text-zinc-500">You Pay</span>
-              {connected && (
-                <span className="text-[10px] text-zinc-500">
-                  Balance: <span className="text-zinc-300">
-                    {side === "buy" ? fmtTokens(xntBalance, XNT_DECIMALS, 4) : fmtTokens(tokenBalance, TOKEN_DECIMALS, 4)}
+          <div className="relative">
+            <div className="bg-black/20 border border-white/5 rounded-2xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500">You Pay</span>
+                {connected && (
+                  <span className="text-[10px] text-zinc-500">
+                    Balance: <span className="text-zinc-300">
+                      {side === "buy" ? fmtTokens(xntBalance, XNT_DECIMALS, 4) : fmtTokens(tokenBalance, TOKEN_DECIMALS, 4)}
+                    </span>
                   </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="0.0"
+                  className="flex-1 min-w-0 bg-transparent text-2xl font-mono font-bold outline-none placeholder:text-zinc-700"
+                />
+                <span className="flex-shrink-0 text-xs font-bold text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5">
+                  {side === "buy" ? "XNT" : `$${quote?.symbol ?? "TOKEN"}`}
                 </span>
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-600">{usdValue !== null ? `≈ $${usdValue.toFixed(2)}` : "—"}</div>
+              {connected && (
+                <div className="grid grid-cols-4 gap-1.5 mt-2">
+                  {[25, 50, 75, 100].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPercent(p)}
+                      className="py-1 rounded-lg text-[10px] font-bold border border-white/10 text-zinc-400 hover:border-neon/40 hover:text-neon transition"
+                    >
+                      {p === 100 ? "MAX" : `${p}%`}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-                placeholder="0.0"
-                className="flex-1 min-w-0 bg-transparent text-2xl font-mono font-bold outline-none placeholder:text-zinc-700"
-              />
-              <span className="flex-shrink-0 text-xs font-bold text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5">
-                {side === "buy" ? "XNT" : `$${quote?.symbol ?? "TOKEN"}`}
-              </span>
-            </div>
-            <div className="mt-1 text-[10px] text-zinc-600">{usdValue !== null ? `≈ $${usdValue.toFixed(2)}` : "—"}</div>
-            {connected && (
-              <div className="grid grid-cols-4 gap-1.5 mt-2">
-                {[25, 50, 75, 100].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPercent(p)}
-                    className="py-1 rounded-lg text-[10px] font-bold border border-white/10 text-zinc-400 hover:border-neon/40 hover:text-neon transition"
-                  >
-                    {p === 100 ? "MAX" : `${p}%`}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
 
-          {/* You Receive */}
-          <div className="bg-black/20 border border-white/5 rounded-2xl p-3">
-            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">You Receive</div>
-            <div className="flex items-center gap-2">
-              <span className={`flex-1 min-w-0 text-2xl font-mono font-bold truncate ${quoteLoading ? "text-zinc-600 animate-pulse" : "text-zinc-100"}`}>
-                {quoteLoading ? "…" : quote?.estimatedOut ? fmtTokens(quote.estimatedOut, side === "buy" ? TOKEN_DECIMALS : XNT_DECIMALS) : "0.00"}
-              </span>
-              <span className="flex-shrink-0 text-xs font-bold text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5">
-                {side === "buy" ? `$${quote?.symbol ?? "TOKEN"}` : "XNT"}
-              </span>
+            {/* Flip buy/sell — same pattern as /swap's direction toggle */}
+            <div className="flex justify-center -my-3 relative z-10">
+              <button
+                onClick={() => { setSide((s) => (s === "buy" ? "sell" : "buy")); setAmount(""); }}
+                className="w-8 h-8 rounded-full bg-[#0d1117] border border-white/10 hover:border-neon/50 flex items-center justify-center text-zinc-400 hover:text-neon transition shadow-lg"
+                title="Switch buy/sell"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="5 12 12 19 19 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* You Receive */}
+            <div className="bg-black/20 border border-white/5 rounded-2xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500">You Receive</span>
+                {connected && (
+                  <span className="text-[10px] text-zinc-500">
+                    Balance: <span className="text-zinc-300">
+                      {side === "buy" ? fmtTokens(tokenBalance, TOKEN_DECIMALS, 4) : fmtTokens(xntBalance, XNT_DECIMALS, 4)}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`flex-1 min-w-0 text-2xl font-mono font-bold truncate ${quoteLoading ? "text-zinc-600 animate-pulse" : "text-zinc-100"}`}>
+                  {quoteLoading ? "…" : quote?.estimatedOut ? fmtTokens(quote.estimatedOut, side === "buy" ? TOKEN_DECIMALS : XNT_DECIMALS) : "0.00"}
+                </span>
+                <span className="flex-shrink-0 text-xs font-bold text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5">
+                  {side === "buy" ? `$${quote?.symbol ?? "TOKEN"}` : "XNT"}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -851,6 +863,63 @@ export default function LaunchpadTokenPage() {
           {status.type === "error" && <div className="text-xs text-red-400">{status.msg}</div>}
         </div>
       </div>
+
+      {/* GigaSwap win overlay — same pattern as /swap's win modal, easy to miss as just an
+          inline card given how much else is on this page. */}
+      {gigaWin && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setGigaWin(null)}
+        >
+          <div
+            className="relative mx-4 w-full max-w-sm rounded-2xl bg-neon/10 border border-neon/40 shadow-[0_0_60px_rgba(34,242,255,0.3)] p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-5">
+              <span className="text-3xl font-black tracking-widest text-neon animate-pulse drop-shadow-[0_0_12px_rgba(34,242,255,0.9)]">
+                ⚡ GIGA SWAP
+              </span>
+              <span className="text-[11px] font-bold text-neon/70 bg-neon/10 border border-neon/30 rounded-full px-2 py-0.5 animate-pulse">
+                WIN!
+              </span>
+            </div>
+
+            <div className="bg-neon/5 border border-neon/20 rounded-xl px-5 py-4 mb-4 text-center">
+              <div className="text-[11px] text-neon/50 uppercase tracking-widest mb-1">You won</div>
+              <div className="text-4xl font-black text-neon drop-shadow-[0_0_16px_rgba(34,242,255,0.7)]">
+                {gigaWin.paidInToken ? fmtTokens(gigaWin.payout, TOKEN_DECIMALS, 4) : fmtTokens(gigaWin.payout, XNT_DECIMALS, 4)}
+              </div>
+              <div className="text-lg font-bold text-neon/70 mt-0.5">
+                {gigaWin.paidInToken ? `$${quote?.symbol ?? "TOKEN"}` : "XNT"}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mb-5">
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Pool tier</div>
+                <div className="text-2xl font-black text-neon">{(gigaWin.tierBps / 100).toString()}%</div>
+              </div>
+              <div className="w-px h-10 bg-neon/20" />
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Of pool</div>
+                <div className="text-sm font-bold text-neon/70">dominant</div>
+              </div>
+              <div className="w-px h-10 bg-neon/20" />
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-neon/40 uppercase tracking-wider mb-1">Token</div>
+                <div className="text-sm font-bold text-neon/70">{gigaWin.paidInToken ? `$${quote?.symbol ?? "TOKEN"}` : "XNT"}</div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setGigaWin(null)}
+              className="w-full py-3 rounded-xl font-bold text-sm border border-neon/30 text-neon hover:bg-neon/10 transition"
+            >
+              Claim & Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

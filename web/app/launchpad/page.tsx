@@ -103,13 +103,12 @@ export default function LaunchpadPage() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h1 className="text-2xl font-bold tracking-tight lowercase">launchpad</h1>
-          <button
-            disabled
-            title="Coming soon"
-            className="text-xs font-bold uppercase tracking-wide px-4 py-2 rounded-lg bg-zinc-800/60 text-zinc-500 cursor-not-allowed border border-zinc-800"
+          <Link
+            href="/launchpad/create"
+            className="text-xs font-bold uppercase tracking-wide px-4 py-2 rounded-lg bg-neon text-black hover:bg-neon/90 transition"
           >
-            Create Token — soon
-          </button>
+            Create Token
+          </Link>
         </div>
 
         <p className="text-sm text-zinc-500 mb-6">
@@ -150,9 +149,10 @@ export default function LaunchpadPage() {
 
         <div className="space-y-2">
           {tokens.map((t) => (
-            <div
+            <Link
               key={t.mint}
-              className="bg-[#0d1117] border border-zinc-800 rounded-2xl p-4 hover:border-zinc-700 transition"
+              href={`/launchpad/${t.mint}`}
+              className="block bg-[#0d1117] border border-zinc-800 rounded-2xl p-4 hover:border-zinc-700 transition"
             >
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
@@ -200,7 +200,7 @@ export default function LaunchpadPage() {
               <div className="text-[10px] text-zinc-600 text-right">
                 {t.progressPct.toFixed(1)}% sold on curve
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

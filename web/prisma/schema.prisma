@@ -414,3 +414,15 @@ model TreasuryConfig {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }
+
+/// Launchpad token images — stored directly in Postgres (already configured/working in
+/// production) instead of an external object store, so there's no extra credential to wire
+/// up on Vercel. Uploaded before the mint even exists (the create form lets you pick an image
+/// first), so keyed by a random id rather than the mint; served back via
+/// /api/launchpad/image/[id].
+model LaunchpadImage {
+  id        String   @id @default(cuid())
+  data      Bytes
+  mimeType  String
+  createdAt DateTime @default(now())
+}

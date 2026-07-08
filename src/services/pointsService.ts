@@ -2,6 +2,7 @@ import {
   CLAIM_MIND_DAILY_CAP,
   CLAIM_MIND_DAILY_THRESHOLDS,
   FIXED_EVENT_TYPES,
+  LAUNCHPAD_TRADE_DAILY_CAP,
   POINT_VALUES,
   STAKE_THRESHOLDS,
   STREAK_BONUSES,
@@ -292,7 +293,16 @@ export async function processEvent(
   }
 
   if (eventType === "giga_swap_win") {
-    return processGigaSwapWin(userId, seasonId, metadata ?? {});
+    return processGigaSwapWin(userId, seasonId, "giga_swap_win", metadata ?? {});
+  }
+
+  if (eventType === "launchpad_trade") {
+    const usdCents = Number(metadata?.usdCents ?? 0);
+    return processLaunchpadTrade(userId, seasonId, usdCents);
+  }
+
+  if (eventType === "launchpad_giga_win") {
+    return processGigaSwapWin(userId, seasonId, "launchpad_giga_win", metadata ?? {});
   }
 
   throw new Error(`Unsupported event type: ${eventType}`);
@@ -531,6 +541,7 @@ export async function processSwap(
 export async function processGigaSwapWin(
   userId: number,
   seasonId: number,
+  category: "giga_swap_win" | "launchpad_giga_win",
   metadata: PointsMetadata
 ): Promise<AddPointsResult> {
   const txHash = typeof metadata.txHash === "string" ? metadata.txHash : undefined;
@@ -542,22 +553,19 @@ export async function processGigaSwapWin(
 
   if (txHash) {
     const existing = await prisma.seasonPoint.findFirst({
-      where: { userId, seasonId, category: "giga_swap_win", reason: txHash },
+      where: { userId, seasonId, category, reason: txHash },
     });
     if (existing) {
       return { created: false, points: 0, totalPoints: existingStats?.totalPoints ?? 0, rank: existingStats?.rank ?? null };
     }
   }
 
-  const payoutUsdCents = Number(metadata.payoutUsdCents ?? 0);
-  const payoutXnt = Number(metadata.payout ?? 0) / 1e9;
-
   await prisma.seasonPoint.create({
     data: {
       userId,
       seasonId,
       points: 0,
-      category: "giga_swap_win",
+      category,
       source: "EVENT",
       reason: txHash ?? "GigaSwap win",
       metadata: metadata as Prisma.InputJsonValue,
@@ -565,6 +573,41 @@ export async function processGigaSwapWin(
   });
 
   return { created: true, points: 0, totalPoints: existingStats?.totalPoints ?? 0, rank: existingStats?.rank ?? null };
+}
+
+export async function processLaunchpadTrade(
+  userId: number,
+  seasonId: number,
+  usdCents: number,
+  date?: string | Date
+): Promise<AddPointsResult> {
+  const tier = SWAP_THRESHOLDS.find(t => usdCents >= t.minUsdCents);
+  const tierPoints = tier?.points ?? 0;
+
+  if (tierPoints === 0) {
+    return { created: false, points: 0, totalPoints: 0, rank: null };
+  }
+
+  const normalizedDate = normalizeDate(date);
+  const dayStart = startOfUtcDay(normalizedDate);
+  const dayEnd = addUtcDays(dayStart, 1);
+
+  const existing = await prisma.seasonPoint.aggregate({
+    where: { userId, seasonId, category: "launchpad_trade", createdAt: { gte: dayStart, lt: dayEnd } },
+    _sum: { points: true },
+  });
+
+  const alreadyAwarded = existing._sum.points ?? 0;
+  const pointsToAward = Math.max(0, Math.min(tierPoints, LAUNCHPAD_TRADE_DAILY_CAP - alreadyAwarded));
+
+  return addPoints(
+    userId,
+    seasonId,
+    pointsToAward,
+    "launchpad_trade",
+    `Launchpad trade $${(usdCents / 100).toFixed(2)}`,
+    { usdCents, tierPoints, suppressDefaultNotification: true }
+  );
 }
 
 export async function processDailyCheckin(

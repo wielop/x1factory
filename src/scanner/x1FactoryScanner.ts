@@ -623,6 +623,211 @@ async function scanSwapEventsForWallet(params: {
   return { pointsAwarded, eventsDetected };
 }
 
+// ── Launchpad scanner ─────────────────────────────────────────────────────────
+
+const LAUNCHPAD_PROGRAM_ID = new PublicKey("AGAdJKoLhrGrdFwrZZDEWsoR1Tq8kMcXGRKxX2wa2jfm");
+const LAUNCHPAD_TRADE_DISC = createHash("sha256").update("event:LaunchpadTradeEvent").digest().subarray(0, 8).toString("hex");
+const LAUNCHPAD_GIGA_DISC = createHash("sha256").update("event:LaunchpadGigaEvent").digest().subarray(0, 8).toString("hex");
+const LAUNCHPAD_TOKEN_CREATED_DISC = createHash("sha256").update("event:LaunchpadTokenCreated").digest().subarray(0, 8).toString("hex");
+const [LAUNCHPAD_CONFIG_PDA] = PublicKey.findProgramAddressSync(
+  [Buffer.from("launchpad_config")],
+  LAUNCHPAD_PROGRAM_ID
+);
+
+type LaunchpadTradeEventData = { mint: string; isBuy: boolean; xntAmount: bigint };
+type LaunchpadGigaEventData = { mint: string; payout: bigint; paidInToken: boolean };
+
+function parseLaunchpadTradeEventFromLogs(logs: string[]): LaunchpadTradeEventData | null {
+  for (const log of logs) {
+    if (!log.startsWith("Program data: ")) continue;
+    const raw = Buffer.from(log.slice("Program data: ".length), "base64");
+    if (raw.length < 8) continue;
+    if (raw.subarray(0, 8).toString("hex") !== LAUNCHPAD_TRADE_DISC) continue;
+    // LaunchpadTradeEvent layout after discriminator (8):
+    // user: Pubkey (32), mint: Pubkey (32), is_buy: bool (1), xnt_amount: u64 (8),
+    // token_amount: u64 (8), fee_total: u64 (8)
+    if (raw.length < 97) continue;
+    const mint = new PublicKey(raw.subarray(40, 72)).toBase58();
+    const isBuy = raw[72] !== 0;
+    const xntAmount = raw.readBigUInt64LE(73);
+    return { mint, isBuy, xntAmount };
+  }
+  return null;
+}
+
+function parseLaunchpadGigaEventFromLogs(logs: string[]): LaunchpadGigaEventData | null {
+  for (const log of logs) {
+    if (!log.startsWith("Program data: ")) continue;
+    const raw = Buffer.from(log.slice("Program data: ".length), "base64");
+    if (raw.length < 8) continue;
+    if (raw.subarray(0, 8).toString("hex") !== LAUNCHPAD_GIGA_DISC) continue;
+    // LaunchpadGigaEvent layout after discriminator (8): user: Pubkey (32) @8, trade_counter:
+    // u64 @40, usd_cents: u64 @48, tier_bps: u64 @56, payout: u64 @64, paid_in_token: bool @72,
+    // mint: Pubkey @73
+    if (raw.length < 105) continue;
+    const payout = raw.readBigUInt64LE(64);
+    const paidInToken = raw[72] !== 0;
+    const mint = new PublicKey(raw.subarray(73, 105)).toBase58();
+    return { mint, payout, paidInToken };
+  }
+  return null;
+}
+
+function parseLaunchpadTokenCreatedFromLogs(logs: string[]): { mint: string } | null {
+  for (const log of logs) {
+    if (!log.startsWith("Program data: ")) continue;
+    const raw = Buffer.from(log.slice("Program data: ".length), "base64");
+    if (raw.length < 8) continue;
+    if (raw.subarray(0, 8).toString("hex") !== LAUNCHPAD_TOKEN_CREATED_DISC) continue;
+    // LaunchpadTokenCreated layout after discriminator (8): mint: Pubkey (32) @8
+    if (raw.length < 40) continue;
+    return { mint: new PublicKey(raw.subarray(8, 40)).toBase58() };
+  }
+  return null;
+}
+
+async function getLaunchpadXntUsd(): Promise<number> {
+  try {
+    const info = await swapConn.getAccountInfo(LAUNCHPAD_CONFIG_PDA);
+    // LaunchpadGlobalConfig layout after discriminator (8): admin: Pubkey (32) @8, xnt_usd_cents: u64 @40
+    if (info && info.data.length >= 48) {
+      const cents = Number(info.data.readBigUInt64LE(40));
+      if (cents > 0) return cents / 100;
+    }
+  } catch { /* ignore */ }
+  return 0.5;
+}
+
+// Token-side GigaSwap payouts need the curve's own price (tokens aren't worth the same per-unit
+// as XNT) — read virtual_token_reserves/virtual_xnt_reserves straight off the curve PDA.
+async function getLaunchpadTokenPriceInXnt(mint: string): Promise<number> {
+  try {
+    const [curve] = PublicKey.findProgramAddressSync(
+      [Buffer.from("curve"), new PublicKey(mint).toBuffer()],
+      LAUNCHPAD_PROGRAM_ID
+    );
+    const info = await swapConn.getAccountInfo(curve);
+    if (info && info.data.length >= 88) {
+      const virtualToken = info.data.readBigUInt64LE(72);
+      const virtualXnt = info.data.readBigUInt64LE(80);
+      if (virtualToken > 0n) {
+        return (Number(virtualXnt) / 1e9) / (Number(virtualToken) / 1e6);
+      }
+    }
+  } catch { /* ignore */ }
+  return 0;
+}
+
+async function scanLaunchpadEventsForWallet(params: {
+  userId: number;
+  seasonId: number;
+  wallet: Wallet;
+  seasonStartsAt: Date;
+  seasonEndsAt: Date;
+  sinceSlot?: number;
+}): Promise<{ pointsAwarded: number; eventsDetected: number }> {
+  let pointsAwarded = 0;
+  let eventsDetected = 0;
+
+  try {
+    const walletPk = new PublicKey(params.wallet.address);
+    const sigs = await swapConn.getSignaturesForAddress(walletPk, {
+      limit: 30,
+      minContextSlot: params.sinceSlot,
+    });
+
+    const filtered = sigs.filter(s => !s.err && (params.sinceSlot == null || s.slot > params.sinceSlot));
+    if (filtered.length === 0) return { pointsAwarded: 0, eventsDetected: 0 };
+
+    const txs = await swapConn.getParsedTransactions(
+      filtered.map(s => s.signature),
+      { maxSupportedTransactionVersion: 0, commitment: "confirmed" }
+    );
+
+    let xntUsd: number | null = null;
+
+    for (let i = 0; i < filtered.length; i++) {
+      const sig = filtered[i];
+      const tx = txs[i];
+      if (!tx?.meta?.logMessages) continue;
+
+      const involvedPrograms = tx.transaction.message.instructions.map((ix: { programId?: { toBase58?: () => string } }) =>
+        typeof ix.programId?.toBase58 === "function" ? ix.programId.toBase58() : ""
+      );
+      if (!involvedPrograms.includes(LAUNCHPAD_PROGRAM_ID.toBase58()) &&
+          !tx.meta.logMessages.some(l => l.includes(LAUNCHPAD_PROGRAM_ID.toBase58()))) {
+        continue;
+      }
+
+      const blockTime = sig.blockTime ? new Date(sig.blockTime * 1000) : null;
+      if (!blockTime || !isWithinSeasonWindow(blockTime, params.seasonStartsAt, params.seasonEndsAt)) continue;
+
+      const created = parseLaunchpadTokenCreatedFromLogs(tx.meta.logMessages);
+      if (created) {
+        const result = await processEvent(params.userId, params.seasonId, "launchpad_create", {
+          txHash: `launchpad-create:${created.mint}`,
+          originalTxHash: sig.signature,
+          blockTime: blockTime.toISOString(),
+          slot: sig.slot,
+          mint: created.mint,
+        });
+        if (result.created) {
+          pointsAwarded += result.points;
+          eventsDetected += 1;
+        }
+      }
+
+      const trade = parseLaunchpadTradeEventFromLogs(tx.meta.logMessages);
+      if (trade) {
+        if (xntUsd === null) xntUsd = await getLaunchpadXntUsd();
+        const usdCents = Math.round((Number(trade.xntAmount) / 1e9) * xntUsd * 100);
+
+        const txKey = `launchpad-trade:${sig.signature}`;
+        const result = await processEvent(params.userId, params.seasonId, "launchpad_trade", {
+          txHash: txKey,
+          originalTxHash: sig.signature,
+          blockTime: blockTime.toISOString(),
+          slot: sig.slot,
+          mint: trade.mint,
+          isBuy: trade.isBuy,
+          xntAmount: trade.xntAmount.toString(),
+          usdCents,
+        });
+
+        if (result.created) {
+          pointsAwarded += result.points;
+          eventsDetected += 1;
+        }
+      }
+
+      const giga = parseLaunchpadGigaEventFromLogs(tx.meta.logMessages);
+      if (giga && giga.payout > 0n) {
+        if (xntUsd === null) xntUsd = await getLaunchpadXntUsd();
+        const payoutXnt = giga.paidInToken
+          ? (Number(giga.payout) / 1e6) * (await getLaunchpadTokenPriceInXnt(giga.mint))
+          : Number(giga.payout) / 1e9;
+        const payoutUsdCents = Math.round(payoutXnt * xntUsd * 100);
+
+        const gigaKey = `launchpad-giga:${sig.signature}`;
+        await processEvent(params.userId, params.seasonId, "launchpad_giga_win", {
+          txHash: gigaKey,
+          originalTxHash: sig.signature,
+          blockTime: blockTime.toISOString(),
+          slot: sig.slot,
+          mint: giga.mint,
+          payout: giga.payout.toString(),
+          paidInToken: giga.paidInToken,
+          payoutUsdCents,
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn({ wallet: params.wallet.address, err }, "Launchpad scan failed for wallet");
+  }
+
+  return { pointsAwarded, eventsDetected };
+}
+
 async function scanRegisteredWallet(params: {
   seasonId: number;
   seasonStartsAt: Date;
@@ -692,9 +897,18 @@ async function scanRegisteredWallet(params: {
     sinceSlot: sinceSlot,
   });
 
+  const launchpadResult = await scanLaunchpadEventsForWallet({
+    userId: params.userId,
+    seasonId: params.seasonId,
+    wallet: params.wallet,
+    seasonStartsAt: params.seasonStartsAt,
+    seasonEndsAt: params.seasonEndsAt,
+    sinceSlot: sinceSlot,
+  });
+
   return {
-    pointsAwarded: applied.pointsAwarded + swapResult.pointsAwarded,
-    eventsDetected: applied.eventsDetected + swapResult.eventsDetected,
+    pointsAwarded: applied.pointsAwarded + swapResult.pointsAwarded + launchpadResult.pointsAwarded,
+    eventsDetected: applied.eventsDetected + swapResult.eventsDetected + launchpadResult.eventsDetected,
     scan: {
       ...scan,
       diagnostics: [...scan.diagnostics, ...applied.ignoredDiagnostics]

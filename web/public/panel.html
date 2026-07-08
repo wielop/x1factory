@@ -63,6 +63,10 @@
         <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M3.293 7.293a1 1 0 011.414 0L7 9.586V3a1 1 0 112 0v6.586l2.293-2.293a1 1 0 011.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414zM17 10a1 1 0 00-1 1v.586l-2.293-2.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4a1 1 0 00-1.414-1.414L17 11.586V11a1 1 0 00-1-1z"/></svg>
         <span class="tab-label">Swap</span>
       </button>
+      <button class="tab-btn" data-tab="launchpad" onclick="switchTab('launchpad')">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 01.894.553l1.382 2.76 3.046.443a1 1 0 01.554 1.706l-2.204 2.15.52 3.033a1 1 0 01-1.451 1.054L10 12.202l-2.741 1.497a1 1 0 01-1.451-1.054l.52-3.033-2.204-2.15a1 1 0 01.554-1.706l3.046-.443 1.382-2.76A1 1 0 0110 2z"/></svg>
+        <span class="tab-label">Launchpad</span>
+      </button>
     </nav>
 
     <main class="content">
@@ -522,6 +526,79 @@
         <div id="slb-podium" class="slb-podium hidden"></div>
 
         <div id="slb-list" class="slb-list">
+          <div class="empty-state">Loading...</div>
+        </div>
+
+      </section>
+
+      <!-- ═══ LAUNCHPAD TAB ═══ -->
+      <section id="tab-launchpad" class="tab-panel hidden">
+
+        <!-- Hero -->
+        <div class="swap-landing-hero card">
+          <div class="swap-landing-icon">🚀</div>
+          <h2 class="swap-landing-title">Token Launchpad</h2>
+          <p class="swap-landing-sub">Launch a token on a bonding curve, trade it, and chase GigaSwap jackpots. Earn Season Points for every trade.</p>
+          <button class="swap-landing-btn" onclick="openLaunchpadPage()">
+            Go to Launchpad →
+          </button>
+        </div>
+
+        <!-- Benefits -->
+        <div class="swap-benefits card">
+          <div class="swap-benefit-row">
+            <span class="swap-benefit-icon">🏆</span>
+            <div>
+              <div class="swap-benefit-title">Earn Season Points</div>
+              <div class="swap-benefit-desc">Every trade ≥ $5 earns <strong>1–5 Season Points</strong> based on volume, same tiers as the MIND/XNT swap.</div>
+            </div>
+          </div>
+          <div class="swap-benefit-row">
+            <span class="swap-benefit-icon">⚡</span>
+            <div>
+              <div class="swap-benefit-title">GigaSwap Jackpot</div>
+              <div class="swap-benefit-desc">Every qualifying trade has a shot at winning a slice of the token's reward pool — paid instantly, on-chain.</div>
+            </div>
+          </div>
+          <div class="swap-benefit-row">
+            <span class="swap-benefit-icon">🎓</span>
+            <div>
+              <div class="swap-benefit-title">Graduates to xdex</div>
+              <div class="swap-benefit-desc">Sell the curve out and it auto-migrates to a real xdex pool — no admin, no waiting.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live stats -->
+        <div class="swap-stats-card card" id="lp-stats-card">
+          <div class="swap-stat">
+            <span class="swap-stat-label">Tokens live</span>
+            <span class="swap-stat-value" id="lp-stat-live">—</span>
+          </div>
+          <div class="swap-stat">
+            <span class="swap-stat-label">Graduated</span>
+            <span class="swap-stat-value" id="lp-stat-graduated">—</span>
+          </div>
+          <div class="swap-stat">
+            <span class="swap-stat-label">Points/trade</span>
+            <span class="swap-stat-value">1–5 pts</span>
+          </div>
+        </div>
+
+        <!-- Launchpad Leaderboard -->
+        <div class="slb-header">
+          <span class="slb-title">🚀 Launchpad Rankings</span>
+          <div class="slb-tabs">
+            <button class="slb-tab active" id="lplb-tab-season" onclick="switchLaunchpadLb('season')">Season</button>
+            <button class="slb-tab" id="lplb-tab-alltime" onclick="switchLaunchpadLb('alltime')">All-time</button>
+          </div>
+        </div>
+
+        <div id="lplb-my-rank" class="slb-my-rank hidden"></div>
+
+        <div id="lplb-podium" class="slb-podium hidden"></div>
+
+        <div id="lplb-list" class="slb-list">
           <div class="empty-state">Loading...</div>
         </div>
 

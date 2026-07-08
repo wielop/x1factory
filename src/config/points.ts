@@ -12,6 +12,7 @@ export const POINT_VALUES = {
   daily_checkin: 10,
   energy_tap: 2,
   weekly_checkin_5: 200,
+  launchpad_create: 15,
 } as const;
 
 export const SWAP_THRESHOLDS = [
@@ -26,6 +27,10 @@ export const SWAP_THRESHOLDS = [
 ] as const;
 
 export const SWAP_DAILY_CAP = 250;
+
+// Same tier shape as SWAP_THRESHOLDS (reused directly, not duplicated) but its own daily cap —
+// trading on the launchpad shouldn't compete with swap_router's points budget.
+export const LAUNCHPAD_TRADE_DAILY_CAP = 250;
 
 export const CLAIM_MIND_DAILY_THRESHOLDS = [
   { minAmount: 500, points: 150 },
@@ -62,6 +67,8 @@ export const SUPPORTED_EVENT_TYPES = [
   "weekly_mission_checkin",
   "swap_mind_xnt",
   "giga_swap_win",
+  "launchpad_trade",
+  "launchpad_giga_win",
 ] as const;
 
 export type SupportedEventType = (typeof SUPPORTED_EVENT_TYPES)[number];

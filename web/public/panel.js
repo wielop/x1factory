@@ -129,6 +129,7 @@ function switchTab(tab) {
   if (tab === 'missions') renderMissionsTab();
   if (tab === 'leaderboard' && !S.lbLoaded) loadLeaderboard();
   if (tab === 'swap') initSwapTab();
+  if (tab === 'launchpad') initLaunchpadTab();
 }
 
 /* ── Header ────────────────────────────────────────────── */
@@ -744,7 +745,7 @@ function initSwapTab() {
 
 function switchSwapLb(mode) {
   slbMode = mode;
-  document.querySelectorAll('.slb-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#tab-swap .slb-tab').forEach(t => t.classList.remove('active'));
   const tab = q('#slb-tab-' + mode);
   if (tab) tab.classList.add('active');
   slbLoaded = false;
@@ -849,6 +850,123 @@ async function loadSwapPoolStats() {
 
 function openSwapPage() {
   const url = 'https://x1factory.xyz/swap';
+  if (window.Telegram?.WebApp?.openLink) {
+    window.Telegram.WebApp.openLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+/* ── Launchpad Tab ───────────────────────────────────────── */
+let lplbMode = 'season';
+let lplbLoaded = false;
+
+function initLaunchpadTab() {
+  loadLaunchpadStats();
+  if (!lplbLoaded) loadLaunchpadLeaderboard(lplbMode);
+}
+
+function switchLaunchpadLb(mode) {
+  lplbMode = mode;
+  document.querySelectorAll('#tab-launchpad .slb-tab').forEach(t => t.classList.remove('active'));
+  const tab = q('#lplb-tab-' + mode);
+  if (tab) tab.classList.add('active');
+  lplbLoaded = false;
+  loadLaunchpadLeaderboard(mode);
+}
+
+async function loadLaunchpadLeaderboard(mode) {
+  const list = q('#lplb-list');
+  const podium = q('#lplb-podium');
+  const myRankEl = q('#lplb-my-rank');
+  if (list) list.innerHTML = '<div class="empty-state">Loading...</div>';
+  if (podium) podium.classList.add('hidden');
+  if (myRankEl) myRankEl.classList.add('hidden');
+
+  try {
+    const data = await get('/api/panel/launchpad/leaderboard?mode=' + mode);
+    if (!data.ok) throw new Error(data.error || 'Failed');
+    lplbLoaded = true;
+
+    const entries = data.entries || [];
+    const myEntry = entries.find(e => e.userId === S.user?.id);
+
+    if (myEntry && myRankEl) {
+      myRankEl.innerHTML = `
+        <span class="slb-my-rank-pos">#${myEntry.rank}</span>
+        <div class="slb-my-rank-info">
+          <div class="slb-my-rank-name">Your rank</div>
+          <div class="slb-my-rank-vol">$${fmtNum(Math.round(myEntry.volumeUsd))} volume · ${myEntry.tradeCount} trades</div>
+        </div>
+        <div class="slb-my-rank-stat">${myEntry.gigaWins > 0 ? '⚡ ' + myEntry.gigaWins + ' wins' : ''}</div>
+      `;
+      myRankEl.classList.remove('hidden');
+    }
+
+    if (!entries.length) {
+      if (list) list.innerHTML = '<div class="empty-state">No launchpad activity yet.</div>';
+      return;
+    }
+
+    if (podium && entries.length >= 1) {
+      const top3        = entries.slice(0, Math.min(3, entries.length));
+      const displayOrder = [1, 0, 2];
+      const slotClass    = ['p2','p1','p3'];
+      const slotMedal    = ['🥈','🥇','🥉'];
+      podium.innerHTML = displayOrder.map((entryIdx, slotPos) => {
+        const e = top3[entryIdx];
+        if (!e) return '<div></div>';
+        const winStr = e.totalWinUsd > 0
+          ? 'Win: $' + e.totalWinUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+          : 'Win: —';
+        return `
+          <div class="slb-podium-card ${slotClass[slotPos]}">
+            <div class="slb-podium-medal">${slotMedal[slotPos]}</div>
+            <div class="slb-podium-name">${esc(e.name)}</div>
+            <div class="slb-podium-vol">Volume: $${fmtNum(Math.round(e.volumeUsd))}</div>
+            <div class="slb-podium-sub">${winStr}</div>
+          </div>`;
+      }).join('');
+      podium.classList.remove('hidden');
+    }
+
+    const restEntries = entries.length > 3 ? entries.slice(3) : entries;
+    if (!restEntries.length) { if (list) list.innerHTML = ''; return; }
+
+    if (list) list.innerHTML = restEntries.map(e => {
+      const isMe = e.userId === S.user?.id;
+      const winStr = e.totalWinUsd > 0
+        ? `<span class="slb-win-badge">Win: $${e.totalWinUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
+        : '';
+      return `
+        <div class="slb-row${isMe ? ' is-me' : ''}">
+          <div class="slb-row-rank">${e.rank}</div>
+          <div class="slb-row-name">${esc(e.name)}</div>
+          <div class="slb-row-right">
+            <div class="slb-row-vol">$${fmtNum(Math.round(e.volumeUsd))}</div>
+            <div class="slb-row-meta">${e.tradeCount} trades ${winStr}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+  } catch(err) {
+    if (list) list.innerHTML = `<div class="empty-state">${esc(err.message)}</div>`;
+  }
+}
+
+async function loadLaunchpadStats() {
+  try {
+    const res = await fetch('/api/launchpad/list');
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.tokens)) return;
+    const graduated = data.tokens.filter(t => t.complete).length;
+    setText('lp-stat-live', fmtNum(data.tokens.length - graduated));
+    setText('lp-stat-graduated', fmtNum(graduated));
+  } catch (_) { /* ignore */ }
+}
+
+function openLaunchpadPage() {
+  const url = 'https://x1factory.xyz/launchpad';
   if (window.Telegram?.WebApp?.openLink) {
     window.Telegram.WebApp.openLink(url);
   } else {

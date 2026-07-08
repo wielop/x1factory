@@ -426,3 +426,14 @@ model LaunchpadImage {
   mimeType  String
   createdAt DateTime @default(now())
 }
+
+/// Sampled periodically by scripts/launchpad-keeper.ts so the token page can chart real price
+/// over time instead of only the theoretical bonding-curve shape.
+model LaunchpadPricePoint {
+  id        String   @id @default(cuid())
+  mint      String
+  priceUsd  Float
+  createdAt DateTime @default(now())
+
+  @@index([mint, createdAt])
+}

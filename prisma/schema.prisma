@@ -201,3 +201,18 @@ model UserBadge {
   @@unique([userId, badgeId, seasonId])
   @@index([seasonId, awardedAt])
 }
+
+/// Sampled periodically by scripts/launchpad-keeper.ts (every ~60s while it's polling for
+/// graduation) so the launchpad token page can chart real price over time instead of only the
+/// theoretical bonding-curve shape. Declared here (not just web/prisma/schema.prisma) so the
+/// keeper script's own generated Prisma client — run from the repo root, not web/ — has
+/// matching types. Table itself lives in the one shared Postgres; only ever run
+/// `prisma db push` from web/prisma/schema.prisma, which is the authoritative/complete schema.
+model LaunchpadPricePoint {
+  id        String   @id @default(cuid())
+  mint      String
+  priceUsd  Float
+  createdAt DateTime @default(now())
+
+  @@index([mint, createdAt])
+}

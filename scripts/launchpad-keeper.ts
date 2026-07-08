@@ -1,5 +1,5 @@
 /**
- * Long-running keeper for the launchpad program. Two jobs, on a fixed poll interval:
+ * Long-running keeper for the launchpad program. Three jobs, on a fixed poll interval:
  *
  *   1. refresh_price — keeps LaunchpadGlobalConfig.xnt_usd_cents current (permissionless,
  *      reads the same xdex XNT/USDC pool swap_router's oracle uses).
@@ -8,6 +8,11 @@
  *      graduate_prepare + graduate_finalize on it. Without this, a curve that fully sells
  *      out from real trading gets permanently stuck — no one can buy or sell it — exactly
  *      the failure mode graduate() exists to close, so it needs someone actually calling it.
+ *   3. price sampling — records every curve's current price into LaunchpadPricePoint
+ *      (Postgres, same DB web/ already uses for everything else) so the token page can chart
+ *      real price over time. There's no per-trade indexer yet, so this poll-based sampling
+ *      (once a minute, whenever this keeper runs) *is* the price history — coarser than a
+ *      per-trade log, but a big step up from no history at all.
  *
  * Uses the low-privilege launchpad-bot keypair (~/.config/solana/launchpad-bot.json) as payer
  * for both jobs — deliberately NOT the program's upgrade-authority admin key, since this runs
@@ -27,10 +32,13 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
+import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
+
+const prisma = new PrismaClient();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RPC = "https://rpc.mainnet.x1.xyz";
@@ -110,13 +118,25 @@ function parseCurve(data: Buffer) {
   let o = 8;
   const mint = new PublicKey(data.subarray(o, o + 32));
   o += 32 + 32; // skip creator
-  o += 8 + 8; // skip virtual_token_reserves, virtual_xnt_reserves
+  const virtualTokenReserves = data.readBigUInt64LE(o);
+  o += 8;
+  const virtualXntReserves = data.readBigUInt64LE(o);
+  o += 8;
   const realTokenReserves = data.readBigUInt64LE(o);
   o += 8;
   const realXntReserves = data.readBigUInt64LE(o);
   o += 8 + 8 + 8 + 8 + 8; // skip reward pools, trade_counter, giga_hits
   const complete = data[o] !== 0;
-  return { mint, realTokenReserves, realXntReserves, complete };
+  return { mint, virtualTokenReserves, virtualXntReserves, realTokenReserves, realXntReserves, complete };
+}
+
+const TOKEN_DECIMALS = 6;
+const XNT_DECIMALS = 9;
+
+function priceUsd(virtualTokenReserves: bigint, virtualXntReserves: bigint, xntUsdCents: number): number {
+  if (virtualTokenReserves === 0n) return 0;
+  const priceXnt = Number(virtualXntReserves) / 10 ** XNT_DECIMALS / (Number(virtualTokenReserves) / 10 ** TOKEN_DECIMALS);
+  return priceXnt * (xntUsdCents / 100);
 }
 
 async function main() {
@@ -227,12 +247,35 @@ async function main() {
     log(`graduated ${mint.toBase58()} -> pool ${poolState.toBase58()} (tx ${sig})`);
   }
 
-  async function scanAndGraduate() {
+  async function getXntUsdCents(): Promise<number> {
+    const info = await connection.getAccountInfo(configPda);
+    if (!info || info.data.length < 40 + 8) return 50; // fallback, matches web/lib/launchpad.ts default
+    const cents = Number(info.data.readBigUInt64LE(40));
+    return cents > 0 ? cents : 50;
+  }
+
+  async function scanCurves() {
     const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
       filters: [{ dataSize: BONDING_CURVE_SIZE }],
     });
-    for (const { account } of accounts) {
-      const curve = parseCurve(account.data);
+    return accounts.map(({ account }) => parseCurve(account.data));
+  }
+
+  async function samplePrices(curves: ReturnType<typeof parseCurve>[], xntUsdCents: number) {
+    try {
+      await prisma.launchpadPricePoint.createMany({
+        data: curves.map((c) => ({
+          mint: c.mint.toBase58(),
+          priceUsd: priceUsd(c.virtualTokenReserves, c.virtualXntReserves, xntUsdCents),
+        })),
+      });
+    } catch (e: any) {
+      log(`price sampling failed (non-fatal): ${e?.message ?? e}`);
+    }
+  }
+
+  async function scanAndGraduate(curves: ReturnType<typeof parseCurve>[]) {
+    for (const curve of curves) {
       if (curve.complete) continue;
       if (curve.realTokenReserves > DUST_THRESHOLD) continue;
       if (curve.realXntReserves === 0n) continue; // never traded — nothing to migrate
@@ -248,7 +291,14 @@ async function main() {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     await refreshPrice();
-    await scanAndGraduate().catch((e) => log(`scan failed: ${e?.message ?? e}`));
+    try {
+      const curves = await scanCurves();
+      const xntUsdCents = await getXntUsdCents();
+      await samplePrices(curves, xntUsdCents);
+      await scanAndGraduate(curves);
+    } catch (e: any) {
+      log(`poll cycle failed: ${e?.message ?? e}`);
+    }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }

@@ -9,17 +9,12 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/CopyButton";
+import { Vial } from "@/components/shared/Vial";
 
 const TOKEN_DECIMALS = 6;
 const XNT_DECIMALS = 9;
 const TRADE_URL = "/api/launchpad/trade/prepare";
-
-// Same bonding-curve constants as programs/launchpad/src/lib.rs — used only to draw the
-// illustrative curve shape (ignores the tiny k-drift from integer rounding on real trades,
-// which is invisible at chart resolution).
-const INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_000 * 10 ** TOKEN_DECIMALS;
-const INITIAL_VIRTUAL_XNT_RESERVES = 200 * 10 ** XNT_DECIMALS;
-const CURVE_ALLOCATION = 800_000_000 * 10 ** TOKEN_DECIMALS;
+const HISTORY_URL_BASE = "/api/launchpad";
 
 // Same GigaSwap odds tables as web/app/swap/page.tsx — the formulas are copied 1:1 from
 // swap_router into programs/launchpad/src/lib.rs, so the numbers are identical.
@@ -133,60 +128,105 @@ function TokenTile({ image, symbol }: { image?: string | null; symbol?: string |
   );
 }
 
-/** Illustrative bonding-curve shape (price vs. % sold) with a marker at the curve's current
- * position. Not a trade-history chart (we don't index one) — the curve's price is a pure
- * function of how much has sold, so this shows "where you are" and why price accelerates. */
-function CurveChart({ progressPct }: { progressPct: number }) {
+interface PricePoint {
+  t: number;
+  priceUsd: number;
+}
+
+/** Real price-over-time chart, sampled roughly every minute by scripts/launchpad-keeper.ts
+ * and stored in Postgres — this is actual trade history, not the theoretical curve shape. */
+function PriceChart({ mint }: { mint: string }) {
+  const [points, setPoints] = useState<PricePoint[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${HISTORY_URL_BASE}/${mint}/history?sinceHours=168`);
+        const data = await res.json();
+        if (!cancelled && data.ok) setPoints(data.points);
+      } catch {
+        // ignore
+      }
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [mint]);
+
   const width = 100;
   const height = 100;
-  const points: Array<[number, number]> = [];
-  const k = INITIAL_VIRTUAL_TOKEN_RESERVES * INITIAL_VIRTUAL_XNT_RESERVES;
-  const N = 60;
-  for (let i = 0; i <= N; i++) {
-    const pct = (i / N) * 100;
-    const sold = (pct / 100) * CURVE_ALLOCATION;
-    const virtualToken = INITIAL_VIRTUAL_TOKEN_RESERVES - sold;
-    const virtualXnt = k / virtualToken;
-    const priceXntPerToken = virtualXnt / 10 ** XNT_DECIMALS / (virtualToken / 10 ** TOKEN_DECIMALS);
-    points.push([pct, priceXntPerToken]);
+
+  if (points === null) {
+    return (
+      <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-4">
+        <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Price</div>
+        <div className="h-32 flex items-center justify-center text-xs text-zinc-600 animate-pulse">Loading…</div>
+      </div>
+    );
   }
-  const maxPrice = points[points.length - 1][1];
-  const toXY = ([pct, price]: [number, number]) => {
-    const x = (pct / 100) * width;
-    // sqrt-scale the y-axis so the early, gentler part of the curve is still visible
-    const y = height - (Math.sqrt(price / maxPrice) * (height - 6) + 4);
+
+  if (points.length < 2) {
+    return (
+      <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-4">
+        <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Price</div>
+        <div className="h-32 flex flex-col items-center justify-center gap-1 text-center px-4">
+          <span className="text-xs text-zinc-500">Building price history…</span>
+          <span className="text-[10px] text-zinc-700">
+            Sampled every ~60s once trading starts. Check back shortly.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const prices = points.map((p) => p.priceUsd);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const range = maxPrice - minPrice || maxPrice || 1;
+  const minT = points[0].t;
+  const maxT = points[points.length - 1].t;
+  const spanT = maxT - minT || 1;
+
+  const toXY = (p: PricePoint) => {
+    const x = ((p.t - minT) / spanT) * width;
+    const y = height - ((p.priceUsd - minPrice) / range) * (height - 8) - 4;
     return [x, y];
   };
   const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${toXY(p)[0].toFixed(2)},${toXY(p)[1].toFixed(2)}`).join(" ");
   const areaPath = `${path} L${width},${height} L0,${height} Z`;
-  const clampedProgress = Math.max(0, Math.min(100, progressPct));
-  const markerSold = (clampedProgress / 100) * CURVE_ALLOCATION;
-  const markerVirtualToken = INITIAL_VIRTUAL_TOKEN_RESERVES - markerSold;
-  const markerPrice = (k / markerVirtualToken) / 10 ** XNT_DECIMALS / (markerVirtualToken / 10 ** TOKEN_DECIMALS);
-  const [markerX, markerY] = toXY([clampedProgress, markerPrice]);
+  const first = prices[0];
+  const last = prices[prices.length - 1];
+  const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
+  const up = changePct >= 0;
 
   return (
     <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] uppercase tracking-widest text-zinc-500">Bonding curve — price vs. % sold</span>
-        <span className="text-[10px] text-zinc-600">you are here ↓</span>
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500">Price</span>
+        <span className={`text-[11px] font-mono font-bold ${up ? "text-emerald-400" : "text-red-400"}`}>
+          {up ? "▲" : "▼"} {Math.abs(changePct).toFixed(1)}% (7d)
+        </span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32" preserveAspectRatio="none">
         <defs>
-          <linearGradient id="curveFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgb(34,242,255)" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="rgb(34,242,255)" stopOpacity="0" />
+          <linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={up ? "rgb(52,211,153)" : "rgb(248,113,113)"} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={up ? "rgb(52,211,153)" : "rgb(248,113,113)"} stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={areaPath} fill="url(#curveFill)" />
-        <path d={path} fill="none" stroke="rgb(34,242,255)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        <line x1={markerX} y1="0" x2={markerX} y2={height} stroke="rgb(34,242,255)" strokeOpacity="0.25" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
-        <circle cx={markerX} cy={markerY} r="2.2" fill="#050810" stroke="rgb(34,242,255)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+        <path d={areaPath} fill="url(#priceFill)" />
+        <path
+          d={path}
+          fill="none"
+          stroke={up ? "rgb(52,211,153)" : "rgb(248,113,113)"}
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
-      <div className="flex items-center justify-between text-[9px] text-zinc-600 mt-1">
-        <span>0% sold</span>
-        <span>fully sold → graduates to xdex</span>
-      </div>
     </div>
   );
 }
@@ -437,38 +477,34 @@ export default function LaunchpadTokenPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
-              <div className="text-[9px] uppercase text-zinc-500 mb-1">Price</div>
-              <div className="text-sm font-mono font-bold">{quote?.priceUsd !== undefined ? fmtUsd(quote.priceUsd) : "—"}</div>
+          <div className="flex items-stretch gap-3">
+            <div className="grid grid-cols-3 gap-2 flex-1">
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+                <div className="text-[9px] uppercase text-zinc-500 mb-1">Price</div>
+                <div className="text-sm font-mono font-bold">{quote?.priceUsd !== undefined ? fmtUsd(quote.priceUsd) : "—"}</div>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+                <div className="text-[9px] uppercase text-zinc-500 mb-1">Market Cap</div>
+                <div className="text-sm font-mono font-bold">{quote?.fdvUsd !== undefined ? fmtUsd(quote.fdvUsd) : "—"}</div>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
+                <div className="text-[9px] uppercase text-zinc-500 mb-1">Giga Hits</div>
+                <div className="text-sm font-mono font-bold text-neon">⚡{quote?.gigaHits ?? "—"}</div>
+              </div>
             </div>
-            <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
-              <div className="text-[9px] uppercase text-zinc-500 mb-1">Market Cap</div>
-              <div className="text-sm font-mono font-bold">{quote?.fdvUsd !== undefined ? fmtUsd(quote.fdvUsd) : "—"}</div>
-            </div>
-            <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-3">
-              <div className="text-[9px] uppercase text-zinc-500 mb-1">Giga Hits</div>
-              <div className="text-sm font-mono font-bold text-neon">⚡{quote?.gigaHits ?? "—"}</div>
-            </div>
-          </div>
-
-          {quote?.progressPct !== undefined && (
-            <CurveChart progressPct={quote.progressPct} />
-          )}
-
-          {quote?.progressPct !== undefined && !quote?.complete && (
-            <div>
-              <div className="h-2 rounded-full bg-white/5 overflow-hidden mb-1">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-all"
-                  style={{ width: `${quote.progressPct.toFixed(1)}%` }}
+            {quote?.progressPct !== undefined && (
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/[0.02] px-3 py-2 flex-shrink-0">
+                <Vial
+                  pct={quote.progressPct}
+                  hot={!quote.complete && quote.progressPct > 90}
+                  label={quote.complete ? "🎓" : `${quote.progressPct.toFixed(quote.progressPct < 1 ? 3 : 0)}%`}
+                  sublabel={quote.complete ? "graduated" : "sold"}
                 />
               </div>
-              <div className="text-[10px] text-zinc-600 text-right">
-                {quote.progressPct.toFixed(1)}% sold — graduates to a real xdex pool at 100%
-              </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          <PriceChart mint={mint} />
 
           {quote?.complete && (
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-3 text-xs text-emerald-200/80 text-center">

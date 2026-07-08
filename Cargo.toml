@@ -2,6 +2,7 @@
 members = [
     "programs/mining_v2",
     "programs/swap_router",
+    "programs/launchpad",
 ]
 resolver = "2"
 

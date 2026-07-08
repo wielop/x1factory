@@ -6,15 +6,18 @@ skip-lint = false
 
 [programs.localnet]
 mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
+launchpad = "AGAdJKoLhrGrdFwrZZDEWsoR1Tq8kMcXGRKxX2wa2jfm"
 
 [programs.mainnet]
 mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 melt_v1 = "HAWdiMtvTfiFhENgxPdWEgBQmoa3A5oN1KV9N3LSmxXz"
 swap_router = "2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6"
+launchpad = "AGAdJKoLhrGrdFwrZZDEWsoR1Tq8kMcXGRKxX2wa2jfm"
 
 [programs.testnet]
 mining_v2 = "uaDkkJGLLEY3kFMhhvrh5MZJ6fmwCmhNf8L7BZQJ9Aw"
 swap_router = "2xXG9bbggrffG976okAbEHzw1BJgfA58d9zHTToke2Z6"
+launchpad = "AGAdJKoLhrGrdFwrZZDEWsoR1Tq8kMcXGRKxX2wa2jfm"
 
 [registry]
 url = "https://api.apr.dev"

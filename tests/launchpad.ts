@@ -502,8 +502,8 @@ describe("launchpad", () => {
     // check have a chance to be picked across many trades (token side starts big at 10% of
     // supply; this just exercises the codepath without asserting on exact tier distribution).
     const user = Keypair.generate();
-    // Curve is small now (virtual_xnt_reserves = 200 XNT, ~586 XNT to fully sell out) — keep
-    // per-buy size well under that so the loop can't accidentally hit SoldOut mid-run.
+    // virtual_xnt_reserves = 1000 XNT, ~2,930 XNT to fully sell out — keep per-buy size well
+    // under that so the loop can't accidentally hit SoldOut mid-run.
     await airdrop(user.publicKey, 600); // 40 iterations × 12 XNT + fees, comfortably under sellout
     const userTokenAccount = await createAssociatedTokenAccountIdempotent(
       provider.connection,

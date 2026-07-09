@@ -337,11 +337,13 @@ describe("launchpad graduate()", function () {
 
   it("sells the curve fully out, then graduates it to a new xdex pool with LP burned", async () => {
     const creator = Keypair.generate();
-    await airdrop(creator.publicKey, 700);
+    await airdrop(creator.publicKey, 3500);
     const t = await createToken(creator);
 
-    // Buy in large chunks first, stopping well short of SoldOut...
-    const buyChunk = new BN(35).mul(new BN(LAMPORTS_PER_SOL));
+    // Buy in large chunks first, stopping well short of SoldOut... (chunk size and airdrop
+    // scaled 5x to match INITIAL_VIRTUAL_XNT_RESERVES 200 -> 1000 XNT: total sellout cost is
+    // linear in that constant, ~586 XNT -> ~2,930 XNT.)
+    const buyChunk = new BN(175).mul(new BN(LAMPORTS_PER_SOL));
     let buys = 0;
     for (let i = 0; i < 40; i++) {
       const curve = await (program.account as any).bondingCurve.fetch(t.curve);

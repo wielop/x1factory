@@ -1,5 +1,5 @@
 /**
- * Creates a brand-new launchpad test token with the bot wallet (current constants: 200 XNT
+ * Creates a brand-new launchpad test token with the bot wallet (current constants: 1000 XNT
  * initial virtual reserves). Prints the mint address for use by other scripts.
  *
  * Usage: npx tsx scripts/launchpad-create-token-mainnet.ts

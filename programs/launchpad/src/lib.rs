@@ -69,11 +69,13 @@ const GRADUATION_DUST_THRESHOLD: u64 = 1_000;
 /// Virtual reserves determine the starting price curve (pump.fun-style constant product).
 /// NOTE: these are purely virtual accounting numbers used by the pricing formula — nobody
 /// deposits this XNT anywhere at token creation, it only shapes how fast price moves per
-/// trade. X1 is a much smaller/thinner-liquidity chain than Solana, so this curve targets a
-/// much lower ceiling than a typical pump.fun launch: ~$93 starting FDV, ~$1,440 FDV once the
-/// curve fully sells out (at $0.50/XNT), raising ~586 XNT (~$293) total into the curve.
+/// trade. INITIAL_VIRTUAL_XNT_RESERVES raised 200 -> 1000 XNT (2026-07-09; total sellout cost
+/// scales linearly with this constant, verified against the fixed INITIAL_VIRTUAL_TOKEN_RESERVES/
+/// CURVE_ALLOCATION below): ~$466 starting FDV, ~$7,198 FDV once the curve fully sells out (at
+/// $0.50/XNT), raising ~2,930 XNT (~$1,465) total into the curve — up from ~$93/~$1,440/~586 XNT
+/// at the original 200 XNT setting.
 const INITIAL_VIRTUAL_TOKEN_RESERVES: u64 = 1_073_000_000 * DECIMALS_MULTIPLIER;
-const INITIAL_VIRTUAL_XNT_RESERVES: u64 = 200 * XNT_BASE; // 200 XNT
+const INITIAL_VIRTUAL_XNT_RESERVES: u64 = 1000 * XNT_BASE; // 1000 XNT
 
 /// xdex = the xdex AMM on X1, confirmed during Faza 1 research to be an unmodified fork of
 /// Raydium CP-Swap (byte-for-byte identical `initialize` discriminator, args, account order

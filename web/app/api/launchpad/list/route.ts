@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { resolveLaunchpadTokenIdentity } from "@/lib/launchpad";
+import { resolveLaunchpadTokenIdentity, fetchGraduatedPoolPrice } from "@/lib/launchpad";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -109,8 +109,11 @@ export async function GET() {
       .map(({ pubkey, account }) => parseBondingCurve(account.data, pubkey))
       .filter((t) => !HIDDEN_MINTS.has(t.mint))
       .map((t) => {
-        const priceXnt =
-          t.virtualTokenReservesNum > 0 ? t.virtualXntReservesNum / t.virtualTokenReservesNum : 0;
+        // XNT has 9 decimals, the token has 6 — must adjust each side by its own decimals
+        // before dividing, or the result is 10^(9-6) = 1000x too high (real bug, fixed 2026-07-09).
+        const vx = t.virtualXntReservesNum / XNT_BASE;
+        const vt = t.virtualTokenReservesNum / DECIMALS_MULTIPLIER;
+        const priceXnt = vt > 0 ? vx / vt : 0;
         const priceUsd = priceXnt * xntUsd;
         const fdvUsd = priceUsd * (TOTAL_SUPPLY / DECIMALS_MULTIPLIER);
         const sold = CURVE_ALLOCATION - t.realTokenReservesNum;
@@ -125,15 +128,26 @@ export async function GET() {
       })
       .sort((a, b) => b.createdAt - a.createdAt);
 
+    // Graduated curves are frozen — reprice from the real xdex pool instead of the stale final
+    // curve tick (same fix as the per-token quote route).
+    const graduatedPrices = await Promise.all(
+      parsed.map((t) => (t.complete ? fetchGraduatedPoolPrice(conn, new PublicKey(t.mint), xntUsdCents).catch(() => null) : null))
+    );
+
     const identities = await Promise.all(
       parsed.map((t) => resolveLaunchpadTokenIdentity(conn, new PublicKey(t.mint)))
     );
-    const tokens = parsed.map((t, i) => ({
-      ...t,
-      name: identities[i]?.name ?? null,
-      symbol: identities[i]?.symbol ?? null,
-      image: identities[i]?.image || null,
-    }));
+    const tokens = parsed.map((t, i) => {
+      const graduated = graduatedPrices[i];
+      return {
+        ...t,
+        priceUsd: graduated ? graduated.priceUsd : t.priceUsd,
+        fdvUsd: graduated ? graduated.priceUsd * (TOTAL_SUPPLY / DECIMALS_MULTIPLIER) : t.fdvUsd,
+        name: identities[i]?.name ?? null,
+        symbol: identities[i]?.symbol ?? null,
+        image: identities[i]?.image || null,
+      };
+    });
 
     return NextResponse.json({
       ok: true,

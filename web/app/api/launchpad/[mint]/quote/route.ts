@@ -10,6 +10,9 @@ import {
   fdvUsd,
   progressPct,
   resolveLaunchpadTokenIdentity,
+  fetchGraduatedPoolPrice,
+  TOTAL_SUPPLY,
+  DECIMALS_MULTIPLIER,
 } from "@/lib/launchpad";
 
 export const dynamic = "force-dynamic";
@@ -54,14 +57,26 @@ export async function GET(req: NextRequest, { params }: { params: { mint: string
       if (cents > 0) xntUsdCents = cents;
     }
 
+    // Graduated curves are frozen — price from the real xdex pool instead of the stale final
+    // curve tick. Falls back to the curve-based price only if the pool lookup fails.
+    let livePriceUsd = priceUsd(curveState, xntUsdCents);
+    let liveFdvUsd = fdvUsd(curveState, xntUsdCents);
+    if (curveState.complete) {
+      const poolPrice = await fetchGraduatedPoolPrice(conn, mint, xntUsdCents).catch(() => null);
+      if (poolPrice) {
+        livePriceUsd = poolPrice.priceUsd;
+        liveFdvUsd = poolPrice.priceUsd * (TOTAL_SUPPLY / DECIMALS_MULTIPLIER);
+      }
+    }
+
     const base = {
       ok: true,
       xntUsdCents,
       name: identity?.name ?? null,
       symbol: identity?.symbol ?? null,
       image: identity?.image || null,
-      priceUsd: priceUsd(curveState, xntUsdCents),
-      fdvUsd: fdvUsd(curveState, xntUsdCents),
+      priceUsd: livePriceUsd,
+      fdvUsd: liveFdvUsd,
       progressPct: progressPct(curveState),
       complete: curveState.complete,
       realXntReserves: curveState.realXntReserves.toString(),

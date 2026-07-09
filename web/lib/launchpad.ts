@@ -62,6 +62,58 @@ export function gradReserveVaultPda(mint: PublicKey) {
   )[0];
 }
 
+// ── Post-graduation pricing ──────────────────────────────────────────────────
+//
+// Once a curve graduates, its virtual_token_reserves/virtual_xnt_reserves are frozen forever at
+// whatever they were at the final tick — they stop reflecting reality the moment real trading
+// moves to the xdex pool. Pricing a graduated token off the frozen curve state showed a market
+// cap wildly disconnected from the pool's actual (much thinner) liquidity — a token page showed
+// a $1.2M market cap and a $118k reward pool on a pool holding a couple hundred XNT of real
+// liquidity. Real price for a graduated token must come from the xdex pool's own vault balances.
+
+export const XDEX_PROGRAM_ID = new PublicKey("sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN");
+export const XDEX_AMM_CONFIG = new PublicKey("2eFPWosizV6nSAGeSvi5tRgXLoqhjnSesra23ALA248c");
+export const WXNT_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+
+export function xdexPoolStatePda(mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("pool"), XDEX_AMM_CONFIG.toBuffer(), WXNT_MINT.toBuffer(), mint.toBuffer()],
+    XDEX_PROGRAM_ID
+  )[0];
+}
+export function xdexPoolVaultPda(poolState: PublicKey, vaultMint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("pool_vault"), poolState.toBuffer(), vaultMint.toBuffer()],
+    XDEX_PROGRAM_ID
+  )[0];
+}
+
+const SPL_TOKEN_AMOUNT_OFFSET = 64;
+
+/** Reads the real WXNT/token vault balances for a graduated token's xdex pool and returns the
+ * live price — null if the pool can't be found (shouldn't happen for a genuinely graduated
+ * curve, but callers should fall back to the curve-based price rather than crash). */
+export async function fetchGraduatedPoolPrice(
+  conn: Connection,
+  mint: PublicKey,
+  xntUsdCents: number
+): Promise<{ priceUsd: number; poolXntReserve: bigint; poolTokenReserve: bigint } | null> {
+  const poolState = xdexPoolStatePda(mint);
+  const wxntVault = xdexPoolVaultPda(poolState, WXNT_MINT);
+  const tokenVault = xdexPoolVaultPda(poolState, mint);
+  const [wxntInfo, tokenInfo] = await conn.getMultipleAccountsInfo([wxntVault, tokenVault]);
+  if (!wxntInfo || !tokenInfo || wxntInfo.data.length < 72 || tokenInfo.data.length < 72) {
+    return null;
+  }
+  const poolXntReserve = wxntInfo.data.readBigUInt64LE(SPL_TOKEN_AMOUNT_OFFSET);
+  const poolTokenReserve = tokenInfo.data.readBigUInt64LE(SPL_TOKEN_AMOUNT_OFFSET);
+  if (poolTokenReserve === 0n) return { priceUsd: 0, poolXntReserve, poolTokenReserve };
+  const vx = Number(poolXntReserve) / XNT_BASE;
+  const vt = Number(poolTokenReserve) / DECIMALS_MULTIPLIER;
+  const priceXnt = vt > 0 ? vx / vt : 0;
+  return { priceUsd: priceXnt * (xntUsdCents / 100), poolXntReserve, poolTokenReserve };
+}
+
 export function anchorDiscriminator(name: string): Buffer {
   return Buffer.from(createHash("sha256").update(`global:${name}`).digest().subarray(0, 8));
 }
@@ -170,7 +222,12 @@ export function quoteSell(curve: BondingCurveState, tokenIn: bigint, feeBps: big
 
 export function priceUsd(curve: BondingCurveState, xntUsdCents: number): number {
   if (curve.virtualTokenReserves === 0n) return 0;
-  const priceXnt = Number(curve.virtualXntReserves) / Number(curve.virtualTokenReserves);
+  // XNT has 9 decimals, the token has 6 — dividing raw units directly (without adjusting each
+  // side by its own decimals first) was off by 10^(9-6) = 1000x too high everywhere this was
+  // used (price/mcap/reward-pool-USD tiles), for every token, not just an edge case.
+  const vx = Number(curve.virtualXntReserves) / XNT_BASE;
+  const vt = Number(curve.virtualTokenReserves) / DECIMALS_MULTIPLIER;
+  const priceXnt = vt > 0 ? vx / vt : 0;
   return priceXnt * (xntUsdCents / 100);
 }
 

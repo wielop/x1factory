@@ -707,6 +707,28 @@ export default function LaunchpadTokenPage() {
         </div>
 
         <div className="rounded-3xl border border-cyan-400/10 bg-white/[0.02] p-4 md:sticky md:top-20 space-y-3">
+          {quote?.complete ? (
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-4 text-center">
+                <div className="text-2xl mb-1">🎓</div>
+                <div className="text-sm font-bold text-emerald-200/90 mb-1">This curve has graduated</div>
+                <div className="text-xs text-zinc-500 leading-relaxed">
+                  Trading moved to a real xdex pool — this page can no longer submit trades against
+                  the old bonding curve. The GigaSwap reward pool shown above is from the curve's
+                  final state and is no longer winnable; it isn't live liquidity.
+                </div>
+              </div>
+              <a
+                href={`https://app.xdex.xyz/swap?fromTokenAddress=111111111111111111111111111111111111111111&toTokenAddress=${mint}`}
+                target="_blank"
+                rel="noreferrer"
+                className="block w-full text-center py-3 rounded-xl font-bold text-sm bg-neon text-black hover:opacity-90 transition"
+              >
+                Trade on xdex →
+              </a>
+            </div>
+          ) : (
+            <>
           {totalPoolUsd !== null && totalPoolUsd > 0 && (
             <div className="rounded-2xl border border-neon/40 bg-gradient-to-br from-neon/15 to-neon/[0.03] p-3 text-center shadow-[0_0_30px_rgba(34,242,255,0.15)]">
               <div className="text-[9px] uppercase tracking-widest text-neon/70 font-bold">⚡ GigaSwap Reward Pool</div>
@@ -882,6 +904,8 @@ export default function LaunchpadTokenPage() {
 
           {status.type === "success" && <div className="text-xs text-neon">{status.msg}</div>}
           {status.type === "error" && <div className="text-xs text-red-400">{status.msg}</div>}
+            </>
+          )}
         </div>
       </div>
 

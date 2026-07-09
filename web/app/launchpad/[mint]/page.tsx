@@ -517,6 +517,17 @@ export default function LaunchpadTokenPage() {
     return { minWin, maxWin, decimals, symbol, minUsd: toUsd(minWin), maxUsd: toUsd(maxWin) };
   })();
 
+  // Total reward pool value (both sides combined) — shown prominently regardless of whether
+  // the user has typed a trade amount yet, since the whole point is to draw them into trading.
+  const totalPoolUsd = (() => {
+    if (!quote?.rewardPoolTokenBalance || !quote?.rewardPoolXntBalance || quote.priceUsd === undefined || quote.xntUsdCents === undefined) {
+      return null;
+    }
+    const tokenUsd = (Number(BigInt(quote.rewardPoolTokenBalance)) / 10 ** TOKEN_DECIMALS) * quote.priceUsd;
+    const xntUsd = (Number(BigInt(quote.rewardPoolXntBalance)) / 10 ** XNT_DECIMALS) * (quote.xntUsdCents / 100);
+    return tokenUsd + xntUsd;
+  })();
+
   return (
     <div className="min-h-screen bg-[#050810] text-zinc-100 font-sans">
       <div
@@ -696,6 +707,16 @@ export default function LaunchpadTokenPage() {
         </div>
 
         <div className="rounded-3xl border border-cyan-400/10 bg-white/[0.02] p-4 md:sticky md:top-20 space-y-3">
+          {totalPoolUsd !== null && totalPoolUsd > 0 && (
+            <div className="rounded-2xl border border-neon/40 bg-gradient-to-br from-neon/15 to-neon/[0.03] p-3 text-center shadow-[0_0_30px_rgba(34,242,255,0.15)]">
+              <div className="text-[9px] uppercase tracking-widest text-neon/70 font-bold">⚡ GigaSwap Reward Pool</div>
+              <div className="text-2xl font-black text-neon drop-shadow-[0_0_10px_rgba(34,242,255,0.5)]">
+                ${totalPoolUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-[10px] text-zinc-400">Trade ≥$5 for a shot at winning a slice</div>
+            </div>
+          )}
+
           <div className="flex gap-1 bg-black/30 rounded-xl p-1">
             <button
               onClick={() => { setSide("buy"); setAmount(""); }}

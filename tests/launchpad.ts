@@ -153,9 +153,9 @@ describe("launchpad", () => {
   const DECIMALS_MULTIPLIER = 1_000_000;
   const TOTAL_SUPPLY = new BN(1_000_000_000).mul(new BN(DECIMALS_MULTIPLIER));
   const CURVE_ALLOCATION = new BN(800_000_000).mul(new BN(DECIMALS_MULTIPLIER));
-  const REWARD_POOL_TOKEN_ALLOCATION = new BN(10_000_000).mul(new BN(DECIMALS_MULTIPLIER));
+  const REWARD_POOL_TOKEN_ALLOCATION = new BN(50_000_000).mul(new BN(DECIMALS_MULTIPLIER));
   const GRAD_RESERVE_ALLOCATION = new BN(140_000_000).mul(new BN(DECIMALS_MULTIPLIER));
-  const CREATOR_ALLOCATION = new BN(50_000_000).mul(new BN(DECIMALS_MULTIPLIER));
+  const CREATOR_ALLOCATION = new BN(10_000_000).mul(new BN(DECIMALS_MULTIPLIER));
   const XNT_USD_CENTS = 50; // $0.50 / XNT
 
   const airdrop = async (pubkey: PublicKey, sol = 5) => {

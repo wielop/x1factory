@@ -125,9 +125,22 @@ function parseCurve(data: Buffer) {
   const realTokenReserves = data.readBigUInt64LE(o);
   o += 8;
   const realXntReserves = data.readBigUInt64LE(o);
-  o += 8 + 8 + 8 + 8 + 8; // skip reward pools, trade_counter, giga_hits
+  o += 8;
+  const rewardPoolXntBalance = data.readBigUInt64LE(o);
+  o += 8;
+  const rewardPoolTokenBalance = data.readBigUInt64LE(o);
+  o += 8 + 8; // skip trade_counter, giga_hits
   const complete = data[o] !== 0;
-  return { mint, virtualTokenReserves, virtualXntReserves, realTokenReserves, realXntReserves, complete };
+  return {
+    mint,
+    virtualTokenReserves,
+    virtualXntReserves,
+    realTokenReserves,
+    realXntReserves,
+    rewardPoolXntBalance,
+    rewardPoolTokenBalance,
+    complete,
+  };
 }
 
 const TOKEN_DECIMALS = 6;
@@ -247,6 +260,34 @@ async function main() {
     log(`graduated ${mint.toBase58()} -> pool ${poolState.toBase58()} (tx ${sig})`);
   }
 
+  async function sweepRewardPool(mint: PublicKey) {
+    const [curve] = PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], PROGRAM_ID);
+    const [treasuryVault] = PublicKey.findProgramAddressSync([Buffer.from("launchpad_treasury")], PROGRAM_ID);
+    const [rewardPoolXntVault] = PublicKey.findProgramAddressSync(
+      [Buffer.from("reward_pool_xnt"), mint.toBuffer()],
+      PROGRAM_ID
+    );
+    const [rewardPoolTokenVault] = PublicKey.findProgramAddressSync(
+      [Buffer.from("reward_pool_token"), mint.toBuffer()],
+      PROGRAM_ID
+    );
+
+    const sig = await program.methods
+      .sweepRewardPool()
+      .accounts({
+        config: configPda,
+        treasuryVault,
+        mint,
+        curve,
+        rewardPoolXntVault,
+        rewardPoolTokenVault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      } as any)
+      .rpc();
+
+    log(`swept reward pool for ${mint.toBase58()} (tx ${sig})`);
+  }
+
   async function getXntUsdCents(): Promise<number> {
     const info = await connection.getAccountInfo(configPda);
     if (!info || info.data.length < 40 + 8) return 50; // fallback, matches web/lib/launchpad.ts default
@@ -288,6 +329,23 @@ async function main() {
     }
   }
 
+  // Once a curve has graduated, whatever's left in its reward pool is orphaned forever unless
+  // someone calls sweep_reward_pool (permissionless) — burns the token side, sends the XNT side
+  // to the treasury. Scans every complete curve with a non-zero pool, not just ones this cycle
+  // just graduated, so it also cleans up any that graduated before this job existed.
+  async function scanAndSweep(curves: ReturnType<typeof parseCurve>[]) {
+    for (const curve of curves) {
+      if (!curve.complete) continue;
+      if (curve.rewardPoolXntBalance === 0n && curve.rewardPoolTokenBalance === 0n) continue;
+      try {
+        await sweepRewardPool(curve.mint);
+      } catch (e: any) {
+        log(`sweep FAILED for ${curve.mint.toBase58()}: ${e?.message ?? e}`);
+        if (e?.logs) log(e.logs.join("\n"));
+      }
+    }
+  }
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     await refreshPrice();
@@ -296,6 +354,7 @@ async function main() {
       const xntUsdCents = await getXntUsdCents();
       await samplePrices(curves, xntUsdCents);
       await scanAndGraduate(curves);
+      await scanAndSweep(curves);
     } catch (e: any) {
       log(`poll cycle failed: ${e?.message ?? e}`);
     }

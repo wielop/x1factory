@@ -477,5 +477,44 @@ describe("launchpad graduate()", function () {
 
     console.log(`      pool_state: ${poolState.toBase58()}`);
     console.log(`      lp_mint:    ${lpMint.toBase58()} (supply ${lpMintInfo.supply}, all burned back to curve)`);
+
+    // sweep_reward_pool: burns whatever's left in the token-side reward pool, sends the
+    // XNT-side to the global treasury vault — verify both actually happen and the on-chain
+    // balance fields zero out.
+    const rewardTokenVault = rewardPoolTokenVaultPda(t.mint);
+    const rewardXntVault = rewardPoolXntVaultPda(t.mint);
+    const curveBeforeSweep = await (program.account as any).bondingCurve.fetch(t.curve);
+    const rewardTokenBefore = curveBeforeSweep.rewardPoolTokenBalance.toNumber();
+    const rewardXntBefore = curveBeforeSweep.rewardPoolXntBalance.toNumber();
+    expect(rewardTokenBefore > 0).to.equal(true);
+    expect(rewardXntBefore > 0).to.equal(true);
+
+    const treasuryBefore = await provider.connection.getBalance(treasuryVaultPda);
+    const mintInfoBefore = await getMint(provider.connection, t.mint);
+
+    await program.methods
+      .sweepRewardPool()
+      .accounts({
+        config: configPda,
+        treasuryVault: treasuryVaultPda,
+        mint: t.mint,
+        curve: t.curve,
+        rewardPoolXntVault: rewardXntVault,
+        rewardPoolTokenVault: rewardTokenVault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      } as any)
+      .rpc();
+
+    const curveAfterSweep = await (program.account as any).bondingCurve.fetch(t.curve);
+    expect(curveAfterSweep.rewardPoolTokenBalance.toNumber()).to.equal(0);
+    expect(curveAfterSweep.rewardPoolXntBalance.toNumber()).to.equal(0);
+
+    const mintInfoAfter = await getMint(provider.connection, t.mint);
+    expect(Number(mintInfoBefore.supply - mintInfoAfter.supply)).to.equal(rewardTokenBefore);
+
+    const treasuryAfter = await provider.connection.getBalance(treasuryVaultPda);
+    expect(treasuryAfter - treasuryBefore).to.equal(rewardXntBefore);
+
+    console.log(`      sweep_reward_pool: burned ${rewardTokenBefore} tokens, sent ${rewardXntBefore} lamports to treasury`);
   });
 });

@@ -893,6 +893,58 @@ pub mod launchpad {
         });
         Ok(())
     }
+
+    /// Permissionless, callable only once a curve has graduated: whatever's left in the curve's
+    /// own GigaSwap reward pool (never won during the curve's lifetime) is otherwise orphaned
+    /// forever — the curve can't process buy/sell anymore to ever pay it out, and by design
+    /// there's no admin withdraw for a live reward pool (see admin_withdraw_treasury's comment).
+    /// Once graduated, "live reward pool" no longer applies, so: token side is burned (reduces
+    /// circulating supply, same treatment as the LP tokens graduate_finalize burns), XNT side
+    /// goes to the global treasury vault (real value, treated as revenue — same destination
+    /// as ordinary trading fees — rather than destroyed or left frozen).
+    pub fn sweep_reward_pool(ctx: Context<SweepRewardPool>) -> Result<()> {
+        require!(ctx.accounts.curve.complete, LaunchpadError::CurveNotGraduated);
+
+        let mint_key = ctx.accounts.mint.key();
+        let curve_bump = ctx.accounts.curve.bump;
+        let curve_seeds: &[&[u8]] = &[CURVE_SEED, mint_key.as_ref(), &[curve_bump]];
+
+        let token_amount = ctx.accounts.reward_pool_token_vault.amount;
+        if token_amount > 0 {
+            token::burn(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Burn {
+                        mint: ctx.accounts.mint.to_account_info(),
+                        from: ctx.accounts.reward_pool_token_vault.to_account_info(),
+                        authority: ctx.accounts.curve.to_account_info(),
+                    },
+                    &[curve_seeds],
+                ),
+                token_amount,
+            )?;
+        }
+
+        let xnt_amount = ctx.accounts.curve.reward_pool_xnt_balance;
+        if xnt_amount > 0 {
+            transfer_lamports(
+                &ctx.accounts.reward_pool_xnt_vault.to_account_info(),
+                &ctx.accounts.treasury_vault.to_account_info(),
+                xnt_amount,
+            )?;
+        }
+
+        let curve = &mut ctx.accounts.curve;
+        curve.reward_pool_token_balance = 0;
+        curve.reward_pool_xnt_balance = 0;
+
+        emit!(LaunchpadRewardPoolSweptEvent {
+            mint: mint_key,
+            tokens_burned: token_amount,
+            xnt_to_treasury: xnt_amount,
+        });
+        Ok(())
+    }
 }
 
 // ── Account contexts ─────────────────────────────────────────────────────────
@@ -1408,6 +1460,38 @@ pub struct GraduateFinalize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
+#[derive(Accounts)]
+pub struct SweepRewardPool<'info> {
+    #[account(seeds = [GLOBAL_CONFIG_SEED], bump = config.bump)]
+    pub config: Box<Account<'info, LaunchpadGlobalConfig>>,
+
+    #[account(mut, seeds = [TREASURY_VAULT_SEED], bump = config.treasury_vault_bump)]
+    pub treasury_vault: Box<Account<'info, NativeVault>>,
+
+    /// mut: token::burn below needs the mint writable (it changes total supply).
+    #[account(mut)]
+    pub mint: Box<Account<'info, Mint>>,
+
+    #[account(mut, seeds = [CURVE_SEED, mint.key().as_ref()], bump = curve.bump, has_one = mint)]
+    pub curve: Box<Account<'info, BondingCurve>>,
+
+    #[account(
+        mut,
+        seeds = [REWARD_POOL_XNT_SEED, mint.key().as_ref()],
+        bump = curve.reward_pool_xnt_vault_bump,
+    )]
+    pub reward_pool_xnt_vault: Box<Account<'info, NativeVault>>,
+
+    #[account(
+        mut,
+        seeds = [REWARD_POOL_TOKEN_SEED, mint.key().as_ref()],
+        bump = curve.reward_pool_token_vault_bump,
+    )]
+    pub reward_pool_token_vault: Box<Account<'info, TokenAccount>>,
+
+    pub token_program: Program<'info, Token>,
+}
+
 // ── State ────────────────────────────────────────────────────────────────────
 
 #[account]
@@ -1515,6 +1599,13 @@ pub struct LaunchpadGraduatedEvent {
     pub lp_burned: u64,
 }
 
+#[event]
+pub struct LaunchpadRewardPoolSweptEvent {
+    pub mint: Pubkey,
+    pub tokens_burned: u64,
+    pub xnt_to_treasury: u64,
+}
+
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 #[error_code]
@@ -1535,6 +1626,8 @@ pub enum LaunchpadError {
     CurveComplete,
     #[msg("Curve has not fully sold out yet")]
     CurveNotSoldOut,
+    #[msg("Curve has not graduated yet")]
+    CurveNotGraduated,
     #[msg("Not enough tokens left on the curve")]
     SoldOut,
     #[msg("Not enough XNT liquidity on the curve")]

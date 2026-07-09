@@ -239,12 +239,18 @@ pub struct SwapBaseInput<'info> {
     #[account(mut)]
     pub user_output_account: Account<'info, TokenAccount>,
 
-    /// Treasury's ATA for input token (receives 0.2%)
-    #[account(mut)]
+    /// Treasury's ATA for input token (receives 0.2%). Owner pinned to TREASURY — previously
+    /// unconstrained, which let a hand-built transaction (bypassing our own UI) redirect the
+    /// treasury's fee cut to any token account the caller wanted. Purely additive: any
+    /// legitimately-built transaction already passes the real treasury ATA, so honest callers
+    /// are unaffected.
+    #[account(mut, constraint = treasury_input_account.owner == TREASURY @ RouterError::Unauthorized)]
     pub treasury_input_account: Account<'info, TokenAccount>,
 
-    /// Reward pool ATA for input token (receives 0.2% fee)
-    #[account(mut)]
+    /// Reward pool ATA for input token (receives 0.2% fee). Owner pinned to the reward_pool_mind
+    /// PDA for the same reason — otherwise config.reward_pool_*_balance could be incremented
+    /// without the tokens actually landing in the PDA-controlled vault.
+    #[account(mut, constraint = reward_pool_input_account.owner == reward_pool_mind.key() @ RouterError::Unauthorized)]
     pub reward_pool_input_account: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,
